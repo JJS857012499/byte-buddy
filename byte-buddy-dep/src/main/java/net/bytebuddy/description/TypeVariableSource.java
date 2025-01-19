@@ -18,10 +18,8 @@ package net.bytebuddy.description;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.description.type.TypeList;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
 import static net.bytebuddy.matcher.ElementMatchers.named;
 
@@ -33,7 +31,7 @@ public interface TypeVariableSource extends ModifierReviewable.OfAbstraction {
     /**
      * Indicates that a type variable source is undefined.
      */
-    @Nonnull(when = When.NEVER)
+    @AlwaysNull
     TypeVariableSource UNDEFINED = null;
 
     /**
@@ -48,7 +46,7 @@ public interface TypeVariableSource extends ModifierReviewable.OfAbstraction {
      *
      * @return The enclosing source or {@code null} if no such source exists.
      */
-    @Nullable
+    @MaybeNull
     TypeVariableSource getEnclosingSource();
 
     /**
@@ -64,8 +62,17 @@ public interface TypeVariableSource extends ModifierReviewable.OfAbstraction {
      * @param symbol The symbolic name of the type variable.
      * @return The type variable or {@code null} if it was not found.
      */
-    @Nullable
+    @MaybeNull
     TypeDescription.Generic findVariable(String symbol);
+
+    /**
+     * Finds a particular variable with the given name in the closes type variable source that is visible from this instance.
+     * If the variable is not found, an exception is thrown.
+     *
+     * @param symbol The symbolic name of the type variable.
+     * @return The type variable.
+     */
+    TypeDescription.Generic findExpectedVariable(String symbol);
 
     /**
      * Applies a visitor on this type variable source.
@@ -81,6 +88,7 @@ public interface TypeVariableSource extends ModifierReviewable.OfAbstraction {
      * <ul>
      * <li>A type declares type variables or is an inner class of a type with a generic declaration.</li>
      * <li>A method declares at least one type variable.</li>
+     * <li>A type is a class that is declared within a method with a generic declaration.</li>
      * </ul>
      *
      * @return {@code true} if this type code element has a generic declaration.
@@ -144,7 +152,7 @@ public interface TypeVariableSource extends ModifierReviewable.OfAbstraction {
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription.Generic findVariable(String symbol) {
             TypeList.Generic typeVariables = getTypeVariables().filter(named(symbol));
             if (typeVariables.isEmpty()) {
@@ -156,5 +164,24 @@ public interface TypeVariableSource extends ModifierReviewable.OfAbstraction {
                 return typeVariables.getOnly();
             }
         }
+
+        /**
+         * {@inheritDoc}
+         */
+        public TypeDescription.Generic findExpectedVariable(String symbol) {
+            TypeDescription.Generic variable = findVariable(symbol);
+            if (variable == null) {
+                throw new IllegalArgumentException("Cannot resolve " + symbol + " from " + toSafeString());
+            }
+            return variable;
+        }
+
+        /**
+         * Returns a {@link Object#toString()} representation that does not attempt to resolve any
+         * type variables to avoid stack overflow exceptions.
+         *
+         * @return A safe string representation.
+         */
+        protected abstract String toSafeString();
     }
 }

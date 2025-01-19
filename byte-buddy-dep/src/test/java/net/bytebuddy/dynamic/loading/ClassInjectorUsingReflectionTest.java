@@ -9,21 +9,27 @@ import net.bytebuddy.implementation.bind.annotation.AllArguments;
 import net.bytebuddy.implementation.bind.annotation.Origin;
 import net.bytebuddy.implementation.bind.annotation.RuntimeType;
 import net.bytebuddy.implementation.bind.annotation.Super;
-import net.bytebuddy.test.utility.LegacyGetPackageClassLoader;
 import net.bytebuddy.test.utility.ClassReflectionInjectionAvailableRule;
 import net.bytebuddy.test.utility.JavaVersionRule;
+import net.bytebuddy.test.utility.LegacyGetPackageClassLoader;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.MethodRule;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.Collections;
 
 import static net.bytebuddy.matcher.ElementMatchers.named;
-import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.Mockito.mock;
 
@@ -53,7 +59,7 @@ public class ClassInjectorUsingReflectionTest {
     @ClassReflectionInjectionAvailableRule.Enforce
     public void testInjection() throws Exception {
         new ClassInjector.UsingReflection(classLoader).inject(Collections.singletonMap(TypeDescription.ForLoadedType.of(Foo.class),
-                        ClassFileLocator.ForClassLoader.read(Foo.class)));
+                ClassFileLocator.ForClassLoader.read(Foo.class)));
         assertThat(classLoader.loadClass(Foo.class.getName()).getClassLoader(), is(classLoader));
     }
 
@@ -227,6 +233,43 @@ public class ClassInjectorUsingReflectionTest {
         assertThat(ClassInjector.UsingReflection.isAvailable(), is(true));
         assertThat(new ClassInjector.UsingReflection(ClassLoader.getSystemClassLoader()).isAlive(), is(true));
         assertThat(new ClassInjector.UsingReflection.Dispatcher.Initializable.Unavailable(null).isAvailable(), is(false));
+    }
+
+    @Test
+    public void testMultipleClassLoaderUsingDispatch() throws Exception {
+        ClassLoader classLoader = new ClassLoader(ClassLoadingStrategy.BOOTSTRAP_LOADER) {
+            @Override
+            protected Class<?> findClass(String name) throws ClassNotFoundException {
+                if (name.startsWith("net.bytebuddy.") || name.startsWith("org.objectweb.") || name.startsWith("codes.rafael.asmjdkbridge.")) {
+                    InputStream inputStream = ClassInjectorUsingReflectionTest.class.getResourceAsStream("/"
+                        + name.replace('.', '/')
+                        + ClassFileLocator.CLASS_FILE_EXTENSION);
+                    if (inputStream != null) {
+                        try {
+                            try {
+                                ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+                                byte[] buffer = new byte[1024];
+                                int length;
+                                while ((length = inputStream.read(buffer, 0, buffer.length)) != -1) {
+                                    outputStream.write(buffer, 0, length);
+                                }
+                                byte[] classFile = outputStream.toByteArray();
+                                return defineClass(name, classFile, 0, classFile.length);
+                            } finally {
+                                inputStream.close();
+                            }
+                        } catch (IOException e) {
+                            throw new AssertionError(e);
+                        }
+                    }
+                }
+                return super.findClass(name);
+            }
+        };
+        assertThat(Class.forName(ClassInjector.UsingReflection.class.getName()), not((Object) Class.forName(
+            ClassInjector.UsingReflection.class.getName(),
+            true,
+            classLoader)));
     }
 
     private static class Foo {

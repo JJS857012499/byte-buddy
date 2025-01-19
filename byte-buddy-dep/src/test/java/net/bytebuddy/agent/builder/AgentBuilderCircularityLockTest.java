@@ -5,7 +5,6 @@ import org.junit.Test;
 import java.util.concurrent.TimeUnit;
 
 import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 public class AgentBuilderCircularityLockTest {
@@ -19,7 +18,7 @@ public class AgentBuilderCircularityLockTest {
         assertThat(circularityLock.acquire(), is(true));
         assertThat(circularityLock.acquire(), is(false));
         circularityLock.release();
-        assertThat(circularityLock.get(), nullValue(Boolean.class));
+        assertThat(circularityLock.isLocked(), is(false));
     }
 
     @Test

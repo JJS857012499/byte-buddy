@@ -15,6 +15,7 @@
  */
 package net.bytebuddy.dynamic.scaffold.subclass;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
 import net.bytebuddy.description.method.MethodDescription;
@@ -75,7 +76,7 @@ public class SubclassImplementationTarget extends Implementation.Target.Abstract
                 ? new MethodList.Empty<MethodDescription.InGenericShape>()
                 : superClass.getDeclaredMethods().filter(hasSignature(token).and(isVisibleTo(instrumentedType)));
         return candidates.size() == 1
-                ? Implementation.SpecialMethodInvocation.Simple.of(candidates.getOnly(), instrumentedType.getSuperClass().asErasure())
+                ? Implementation.SpecialMethodInvocation.Simple.of(candidates.getOnly(), superClass.asErasure())
                 : Implementation.SpecialMethodInvocation.Illegal.INSTANCE;
     }
 
@@ -85,6 +86,7 @@ public class SubclassImplementationTarget extends Implementation.Target.Abstract
      * @param token A token describing the method to be invoked.
      * @return A special method invocation for a method representing the given method token, if available.
      */
+    @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming super class for given instance.")
     private Implementation.SpecialMethodInvocation invokeMethod(MethodDescription.SignatureToken token) {
         MethodGraph.Node methodNode = methodGraph.getSuperClassGraph().locate(token);
         return methodNode.getSort().isUnique()
@@ -110,6 +112,7 @@ public class SubclassImplementationTarget extends Implementation.Target.Abstract
          */
         SUPER_CLASS {
             @Override
+            @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming super class for given instance.")
             protected TypeDefinition identify(TypeDescription typeDescription) {
                 return typeDescription.getSuperClass();
             }

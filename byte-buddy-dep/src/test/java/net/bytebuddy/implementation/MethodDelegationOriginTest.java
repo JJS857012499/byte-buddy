@@ -23,13 +23,15 @@ public class MethodDelegationOriginTest {
 
     private static final String FOO = "foo", TYPE = "TYPE";
 
-    private static final String ORIGIN_METHOD_HANDLE = "net.bytebuddy.test.precompiled.OriginMethodHandle";
+    private static final String ORIGIN_METHOD_HANDLE = "net.bytebuddy.test.precompiled.v7.OriginMethodHandle";
 
-    private static final String ORIGIN_METHOD_TYPE = "net.bytebuddy.test.precompiled.OriginMethodType";
+    private static final String ORIGIN_METHOD_TYPE = "net.bytebuddy.test.precompiled.v7.OriginMethodType";
 
-    private static final String ORIGIN_EXECUTABLE = "net.bytebuddy.test.precompiled.OriginExecutable";
+    private static final String ORIGIN_METHOD_HANDLES_LOOKUP = "net.bytebuddy.test.precompiled.v7.OriginMethodHandlesLookup";
 
-    private static final String ORIGIN_EXECUTABLE_CACHED = "net.bytebuddy.test.precompiled.OriginExecutableWithCache";
+    private static final String ORIGIN_EXECUTABLE = "net.bytebuddy.test.precompiled.v8.OriginExecutable";
+
+    private static final String ORIGIN_EXECUTABLE_CACHED = "net.bytebuddy.test.precompiled.v8.OriginExecutableWithCache";
 
     @Rule
     public MethodRule javaVersionRule = new JavaVersionRule();
@@ -276,6 +278,21 @@ public class MethodDelegationOriginTest {
     @JavaVersionRule.Enforce(7)
     public void testOriginMethodType() throws Throwable {
         Class<?> originMethodType = Class.forName(ORIGIN_METHOD_TYPE);
+        DynamicType.Loaded<Foo> loaded = new ByteBuddy()
+                .subclass(Foo.class)
+                .method(isDeclaredBy(Foo.class))
+                .intercept(MethodDelegation.to(originMethodType))
+                .make()
+                .load(Foo.class.getClassLoader(), ClassLoadingStrategy.Default.WRAPPER);
+        assertThat(loaded.getLoadedAuxiliaryTypes().size(), is(0));
+        Foo instance = loaded.getLoaded().getDeclaredConstructor().newInstance();
+        assertThat(instance.foo(), instanceOf((Class<?>) originMethodType.getDeclaredField(TYPE).get(null)));
+    }
+
+    @Test
+    @JavaVersionRule.Enforce(7)
+    public void testOriginMethodHandlesLookup() throws Throwable {
+        Class<?> originMethodType = Class.forName(ORIGIN_METHOD_HANDLES_LOOKUP);
         DynamicType.Loaded<Foo> loaded = new ByteBuddy()
                 .subclass(Foo.class)
                 .method(isDeclaredBy(Foo.class))

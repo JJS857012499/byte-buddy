@@ -15,7 +15,6 @@
  */
 package net.bytebuddy.implementation.auxiliary;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
@@ -45,6 +44,7 @@ import net.bytebuddy.implementation.bytecode.member.FieldAccess;
 import net.bytebuddy.implementation.bytecode.member.MethodInvocation;
 import net.bytebuddy.implementation.bytecode.member.MethodReturn;
 import net.bytebuddy.implementation.bytecode.member.MethodVariableAccess;
+import net.bytebuddy.utility.RandomString;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
@@ -148,6 +148,13 @@ public class MethodCallProxy implements AuxiliaryType {
     /**
      * {@inheritDoc}
      */
+    public String getSuffix() {
+        return RandomString.hashOf(specialMethodInvocation.getMethodDescription().hashCode()) + (serializableProxy ? "S" : "0");
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     public DynamicType make(String auxiliaryTypeName,
                             ClassFileVersion classFileVersion,
                             MethodAccessorFactory methodAccessorFactory) {
@@ -182,19 +189,18 @@ public class MethodCallProxy implements AuxiliaryType {
         /**
          * The precomputed method graph.
          */
-        private final MethodGraph.Linked methodGraph;
+        private final transient MethodGraph.Linked methodGraph;
 
         /**
          * Creates the precomputed method graph.
          */
-        @SuppressFBWarnings(value = "SE_BAD_FIELD_STORE", justification = "Precomputed method graph is not intended for serialization")
         PrecomputedMethodGraph() {
             LinkedHashMap<MethodDescription.SignatureToken, MethodGraph.Node> nodes = new LinkedHashMap<MethodDescription.SignatureToken, MethodGraph.Node>();
             MethodDescription callMethod = new MethodDescription.Latent(TypeDescription.ForLoadedType.of(Callable.class),
                     "call",
                     Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT,
                     Collections.<TypeVariableToken>emptyList(),
-                    TypeDescription.Generic.OBJECT,
+                    TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class),
                     Collections.<ParameterDescription.Token>emptyList(),
                     Collections.singletonList(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Exception.class)),
                     Collections.<AnnotationDescription>emptyList(),
@@ -205,7 +211,7 @@ public class MethodCallProxy implements AuxiliaryType {
                     "run",
                     Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT,
                     Collections.<TypeVariableToken>emptyList(),
-                    TypeDescription.Generic.VOID,
+                    TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(void.class),
                     Collections.<ParameterDescription.Token>emptyList(),
                     Collections.<TypeDescription.Generic>emptyList(),
                     Collections.<AnnotationDescription>emptyList(),
@@ -266,7 +272,7 @@ public class MethodCallProxy implements AuxiliaryType {
          * Creates the constructor call singleton.
          */
         ConstructorCall() {
-            objectTypeDefaultConstructor = TypeDescription.OBJECT.getDeclaredMethods().filter(isConstructor()).getOnly();
+            objectTypeDefaultConstructor = TypeDescription.ForLoadedType.of(Object.class).getDeclaredMethods().filter(isConstructor()).getOnly();
         }
 
         /**

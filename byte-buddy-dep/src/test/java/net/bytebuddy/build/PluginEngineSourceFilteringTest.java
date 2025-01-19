@@ -1,11 +1,13 @@
 package net.bytebuddy.build;
 
+import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.matcher.ElementMatcher;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import java.util.Arrays;
 import java.util.Iterator;
@@ -19,7 +21,7 @@ import static org.mockito.Mockito.*;
 public class PluginEngineSourceFilteringTest {
 
     @Rule
-    public MockitoRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private Plugin.Engine.Source source;
@@ -79,8 +81,44 @@ public class PluginEngineSourceFilteringTest {
         ClassFileLocator classFileLocator = mock(ClassFileLocator.class);
 
         when(source.read()).thenReturn(origin);
-        when(origin.getClassFileLocator()).thenReturn(classFileLocator);
+        when(origin.toClassFileLocator(null)).thenReturn(classFileLocator);
 
-        assertThat(new Plugin.Engine.Source.Filtering(source, matcher).read().getClassFileLocator(), is(classFileLocator));
+        assertThat(new Plugin.Engine.Source.Filtering(source, matcher).read().toClassFileLocator(null), is(classFileLocator));
+    }
+
+    @Test
+    public void testMultiReleaseFilter() throws Exception {
+        when(source.read()).thenReturn(origin);
+        when(origin.iterator()).thenReturn(Arrays.asList(first, second, third).iterator());
+
+        when(first.getName()).thenReturn("foo/Bar.class");
+        when(second.getName()).thenReturn(ClassFileLocator.META_INF_VERSIONS + "17/foo/Bar.class");
+        when(third.getName()).thenReturn(ClassFileLocator.META_INF_VERSIONS + "11/foo/Bar.class");
+
+        Plugin.Engine.Source.Origin origin = Plugin.Engine.Source.Filtering.dropMultiReleaseClassFilesAbove(source, ClassFileVersion.JAVA_V11).read();
+        Iterator<Plugin.Engine.Source.Element> iterator = origin.iterator();
+        assertThat(iterator.hasNext(), is(true));
+        assertThat(iterator.next(), is(first));
+        assertThat(iterator.hasNext(), is(true));
+        assertThat(iterator.next(), is(third));
+        assertThat(iterator.hasNext(), is(false));
+    }
+
+    @Test
+    public void testFolderFilter() throws Exception {
+        when(source.read()).thenReturn(origin);
+        when(origin.iterator()).thenReturn(Arrays.asList(first, second, third).iterator());
+
+        when(first.getName()).thenReturn("foo/");
+        when(second.getName()).thenReturn("foo/Bar.class");
+        when(third.getName()).thenReturn("foo/Qux.class");
+
+        Plugin.Engine.Source.Origin origin = Plugin.Engine.Source.Filtering.dropFolders(source).read();
+        Iterator<Plugin.Engine.Source.Element> iterator = origin.iterator();
+        assertThat(iterator.hasNext(), is(true));
+        assertThat(iterator.next(), is(second));
+        assertThat(iterator.hasNext(), is(true));
+        assertThat(iterator.next(), is(third));
+        assertThat(iterator.hasNext(), is(false));
     }
 }

@@ -1,14 +1,14 @@
 package net.bytebuddy.build;
 
-import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.test.utility.JavaVersionRule;
 import net.bytebuddy.utility.StreamDrainer;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.MethodRule;
+import org.junit.rules.TemporaryFolder;
 
 import java.io.*;
 import java.util.Collections;
@@ -18,6 +18,7 @@ import java.util.jar.Manifest;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.fail;
 import static org.mockito.Mockito.*;
 
 public class PluginEngineTargetForFolderTest {
@@ -27,18 +28,14 @@ public class PluginEngineTargetForFolderTest {
     @Rule
     public MethodRule javaVersionRule = new JavaVersionRule();
 
+    @Rule
+    public TemporaryFolder temporaryFolder = new TemporaryFolder();
+
     private File folder;
 
     @Before
     public void setUp() throws Exception {
-        folder = File.createTempFile("foo", "bar");
-        assertThat(folder.delete(), is(true));
-        assertThat(folder.mkdir(), is(true));
-    }
-
-    @After
-    public void tearDown() throws Exception {
-        assertThat(folder.delete(), is(true));
+        folder = temporaryFolder.newFolder();
     }
 
     @Test
@@ -46,11 +43,11 @@ public class PluginEngineTargetForFolderTest {
         Plugin.Engine.Target target = new Plugin.Engine.Target.ForFolder(folder);
         Plugin.Engine.Target.Sink sink = target.write(Plugin.Engine.Source.Origin.NO_MANIFEST);
         try {
-            sink.store(Collections.singletonMap(TypeDescription.OBJECT, new byte[]{1, 2, 3}));
+            sink.store(Collections.singletonMap(TypeDescription.ForLoadedType.of(Object.class), new byte[]{1, 2, 3}));
         } finally {
             sink.close();
         }
-        File file = new File(folder, TypeDescription.OBJECT.getInternalName() + ".class");
+        File file = new File(folder, TypeDescription.ForLoadedType.of(Object.class).getInternalName() + ClassFileLocator.CLASS_FILE_EXTENSION);
         assertThat(file.isFile(), is(true));
         InputStream inputStream = new FileInputStream(file);
         try {
@@ -93,7 +90,7 @@ public class PluginEngineTargetForFolderTest {
         Plugin.Engine.Source.Element element = mock(Plugin.Engine.Source.Element.class);
         when(element.getName()).thenReturn(FOO + "/" + BAR);
         when(element.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[]{1, 2, 3}));
-        File original = File.createTempFile("qux", "baz");
+        File original = temporaryFolder.newFile();
         try {
             FileOutputStream outputStream = new FileOutputStream(original);
             try {
@@ -118,6 +115,48 @@ public class PluginEngineTargetForFolderTest {
             }
             assertThat(file.delete(), is(true));
             assertThat(file.getParentFile().delete(), is(true));
+        } finally {
+            assertThat(original.delete(), is(true));
+        }
+    }
+
+    @Test
+    public void testWriteFolder() throws Exception {
+        Plugin.Engine.Target target = new Plugin.Engine.Target.ForFolder(folder);
+        Plugin.Engine.Source.Element element = mock(Plugin.Engine.Source.Element.class);
+        when(element.getName()).thenReturn(FOO + "/" + BAR + "/");
+        when(element.getInputStream()).thenThrow(new AssertionError());
+        File original = temporaryFolder.newFile();
+        try {
+            Plugin.Engine.Target.Sink sink = target.write(null);
+            sink.retain(element);
+            assertThat(new File(folder, FOO + "/" + BAR).isDirectory(), is(true));
+            assertThat(new File(folder, FOO + "/" + BAR).delete(), is(true));
+            assertThat(new File(folder, FOO).isDirectory(), is(true));
+            assertThat(new File(folder, FOO).delete(), is(true));
+        } finally {
+            assertThat(original.delete(), is(true));
+        }
+    }
+
+    @Test
+    public void testWriteFolderCannotReplaceFile() throws Exception {
+        Plugin.Engine.Target target = new Plugin.Engine.Target.ForFolder(folder);
+        assertThat(new File(folder, FOO).createNewFile(), is(true));
+        Plugin.Engine.Source.Element element = mock(Plugin.Engine.Source.Element.class);
+        when(element.getName()).thenReturn(FOO + "/");
+        when(element.getInputStream()).thenThrow(new AssertionError());
+        File original = temporaryFolder.newFile();
+        try {
+            Plugin.Engine.Target.Sink sink = target.write(null);
+            try {
+                sink.retain(element);
+                fail("Expected error on overwritten file");
+            } catch (IllegalStateException exception) {
+                assertThat(exception.getMessage(), is("Cannot create requested directory: " + new File(folder, FOO)));
+            }
+            assertThat(new File(folder, FOO).isFile(), is(true));
+            assertThat(new File(folder, FOO).delete(), is(true));
         } finally {
             assertThat(original.delete(), is(true));
         }

@@ -1,5 +1,6 @@
 package net.bytebuddy.matcher;
 
+import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.description.ByteCodeElement;
 import net.bytebuddy.description.ModifierReviewable;
 import net.bytebuddy.description.NamedElement;
@@ -43,7 +44,7 @@ public class ElementMatchersTest {
 
     private static final String FOO = "foo", BAR = "bar", QUX = "qux";
 
-    private static final String SINGLE_DEFAULT_METHOD = "net.bytebuddy.test.precompiled.SingleDefaultMethodInterface";
+    private static final String SINGLE_DEFAULT_METHOD = "net.bytebuddy.test.precompiled.v8.SingleDefaultMethodInterface";
 
     @Rule
     public MethodRule javaVersionRule = new JavaVersionRule();
@@ -106,8 +107,8 @@ public class ElementMatchersTest {
 
     @Test
     public void testIsType() throws Exception {
-        assertThat(ElementMatchers.is(Object.class).matches(TypeDescription.OBJECT), is(true));
-        assertThat(ElementMatchers.is(String.class).matches(TypeDescription.OBJECT), is(false));
+        assertThat(ElementMatchers.is(Object.class).matches(TypeDescription.ForLoadedType.of(Object.class)), is(true));
+        assertThat(ElementMatchers.is(String.class).matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
     }
 
     @Test
@@ -219,9 +220,9 @@ public class ElementMatchersTest {
 
     @Test
     public void testAnyOfType() throws Exception {
-        assertThat(ElementMatchers.anyOf(Object.class).matches(TypeDescription.OBJECT), is(true));
-        assertThat(ElementMatchers.anyOf(String.class, Object.class).matches(TypeDescription.OBJECT), is(true));
-        assertThat(ElementMatchers.anyOf(String.class).matches(TypeDescription.OBJECT), is(false));
+        assertThat(ElementMatchers.anyOf(Object.class).matches(TypeDescription.ForLoadedType.of(Object.class)), is(true));
+        assertThat(ElementMatchers.anyOf(String.class, Object.class).matches(TypeDescription.ForLoadedType.of(Object.class)), is(true));
+        assertThat(ElementMatchers.anyOf(String.class).matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
     }
 
     @Test
@@ -315,9 +316,9 @@ public class ElementMatchersTest {
 
     @Test
     public void testNoneOfType() throws Exception {
-        assertThat(ElementMatchers.noneOf(Object.class).matches(TypeDescription.OBJECT), is(false));
-        assertThat(ElementMatchers.noneOf(String.class, Object.class).matches(TypeDescription.OBJECT), is(false));
-        assertThat(ElementMatchers.noneOf(String.class).matches(TypeDescription.OBJECT), is(true));
+        assertThat(ElementMatchers.noneOf(Object.class).matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
+        assertThat(ElementMatchers.noneOf(String.class, Object.class).matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
+        assertThat(ElementMatchers.noneOf(String.class).matches(TypeDescription.ForLoadedType.of(Object.class)), is(true));
     }
 
     @Test
@@ -423,17 +424,17 @@ public class ElementMatchersTest {
     public void testIsTypeVariable() throws Exception {
         assertThat(ElementMatchers.isVariable("T").matches(TypeDescription.ForLoadedType.of(GenericDeclaredBy.class).getTypeVariables().getOnly()), is(true));
         assertThat(ElementMatchers.isVariable(FOO).matches(TypeDescription.ForLoadedType.of(GenericDeclaredBy.class).getTypeVariables().getOnly()), is(false));
-        assertThat(ElementMatchers.isVariable(FOO).matches(TypeDescription.OBJECT), is(false));
+        assertThat(ElementMatchers.isVariable(FOO).matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
     }
 
     @Test
     public void testMethodName() throws Exception {
         assertThat(ElementMatchers.hasMethodName(MethodDescription.TYPE_INITIALIZER_INTERNAL_NAME)
-                .matches(new MethodDescription.Latent.TypeInitializer(TypeDescription.OBJECT)), is(true));
+                .matches(new MethodDescription.Latent.TypeInitializer(TypeDescription.ForLoadedType.of(Object.class))), is(true));
         assertThat(ElementMatchers.hasMethodName(MethodDescription.CONSTRUCTOR_INTERNAL_NAME)
-                .matches(TypeDescription.OBJECT.getDeclaredMethods().filter(isConstructor()).getOnly()), is(true));
+                .matches(TypeDescription.ForLoadedType.of(Object.class).getDeclaredMethods().filter(isConstructor()).getOnly()), is(true));
         assertThat(ElementMatchers.hasMethodName("toString")
-                .matches(TypeDescription.OBJECT.getDeclaredMethods().filter(isToString()).getOnly()), is(true));
+                .matches(TypeDescription.ForLoadedType.of(Object.class).getDeclaredMethods().filter(isToString()).getOnly()), is(true));
     }
 
     @Test
@@ -593,7 +594,7 @@ public class ElementMatchersTest {
         assertThat(ElementMatchers.isAnnotatedWith(IsAnnotatedWithAnnotation.class)
                 .matches(TypeDescription.ForLoadedType.of(IsAnnotatedWith.class)), is(true));
         assertThat(ElementMatchers.isAnnotatedWith(IsAnnotatedWithAnnotation.class)
-                .matches(TypeDescription.OBJECT), is(false));
+                .matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
     }
 
     @Test
@@ -932,7 +933,7 @@ public class ElementMatchersTest {
         assertThat(ElementMatchers.isVirtual().matches(new MethodDescription.ForLoadedMethod(IsVirtual.class.getDeclaredMethod("bar"))), is(false));
         assertThat(ElementMatchers.isVirtual().matches(new MethodDescription.ForLoadedMethod(IsVirtual.class.getDeclaredMethod("qux"))), is(true));
         assertThat(ElementMatchers.isVirtual().matches(new MethodDescription.ForLoadedConstructor(IsVirtual.class.getDeclaredConstructor())), is(false));
-        assertThat(ElementMatchers.isVirtual().matches(new MethodDescription.Latent.TypeInitializer(TypeDescription.OBJECT)), is(false));
+        assertThat(ElementMatchers.isVirtual().matches(new MethodDescription.Latent.TypeInitializer(TypeDescription.ForLoadedType.of(Object.class))), is(false));
     }
 
     @Test
@@ -1129,7 +1130,7 @@ public class ElementMatchersTest {
 
     @Test
     public void testHasSignature() throws Exception {
-        MethodDescription.SignatureToken signatureToken = new MethodDescription.SignatureToken("toString", TypeDescription.STRING, Collections.<TypeDescription>emptyList());
+        MethodDescription.SignatureToken signatureToken = new MethodDescription.SignatureToken("toString", TypeDescription.ForLoadedType.of(String.class), Collections.<TypeDescription>emptyList());
         assertThat(ElementMatchers.hasSignature(signatureToken)
                 .matches(new MethodDescription.ForLoadedMethod(Object.class.getDeclaredMethod("toString"))), is(true));
         assertThat(ElementMatchers.hasSignature(signatureToken)
@@ -1138,28 +1139,28 @@ public class ElementMatchersTest {
 
     @Test
     public void testIsSubOrSuperType() throws Exception {
-        assertThat(ElementMatchers.isSubTypeOf(String.class).matches(TypeDescription.OBJECT), is(false));
-        assertThat(ElementMatchers.isSubTypeOf(Object.class).matches(TypeDescription.STRING), is(true));
-        assertThat(ElementMatchers.isSubTypeOf(Serializable.class).matches(TypeDescription.STRING), is(true));
-        assertThat(ElementMatchers.isSuperTypeOf(Object.class).matches(TypeDescription.STRING), is(false));
-        assertThat(ElementMatchers.isSuperTypeOf(String.class).matches(TypeDescription.OBJECT), is(true));
+        assertThat(ElementMatchers.isSubTypeOf(String.class).matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
+        assertThat(ElementMatchers.isSubTypeOf(Object.class).matches(TypeDescription.ForLoadedType.of(String.class)), is(true));
+        assertThat(ElementMatchers.isSubTypeOf(Serializable.class).matches(TypeDescription.ForLoadedType.of(String.class)), is(true));
+        assertThat(ElementMatchers.isSuperTypeOf(Object.class).matches(TypeDescription.ForLoadedType.of(String.class)), is(false));
+        assertThat(ElementMatchers.isSuperTypeOf(String.class).matches(TypeDescription.ForLoadedType.of(Object.class)), is(true));
         assertThat(ElementMatchers.isSuperTypeOf(String.class).matches(TypeDescription.ForLoadedType.of(Serializable.class)), is(true));
     }
 
     @Test
     public void testHasSuperClass() throws Exception {
-        assertThat(ElementMatchers.hasSuperClass(ElementMatchers.is(Object.class)).matches(TypeDescription.STRING), is(true));
-        assertThat(ElementMatchers.hasSuperClass(ElementMatchers.is(String.class)).matches(TypeDescription.OBJECT), is(false));
-        assertThat(ElementMatchers.hasSuperClass(ElementMatchers.is(Serializable.class)).matches(TypeDescription.STRING), is(false));
-        assertThat(ElementMatchers.hasSuperClass(ElementMatchers.is(Serializable.class)).matches(TypeDescription.OBJECT), is(false));
+        assertThat(ElementMatchers.hasSuperClass(ElementMatchers.is(Object.class)).matches(TypeDescription.ForLoadedType.of(String.class)), is(true));
+        assertThat(ElementMatchers.hasSuperClass(ElementMatchers.is(String.class)).matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
+        assertThat(ElementMatchers.hasSuperClass(ElementMatchers.is(Serializable.class)).matches(TypeDescription.ForLoadedType.of(String.class)), is(false));
+        assertThat(ElementMatchers.hasSuperClass(ElementMatchers.is(Serializable.class)).matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
     }
 
     @Test
     public void testHasSuperType() throws Exception {
-        assertThat(ElementMatchers.hasSuperType(ElementMatchers.is(Object.class)).matches(TypeDescription.STRING), is(true));
-        assertThat(ElementMatchers.hasSuperType(ElementMatchers.is(String.class)).matches(TypeDescription.OBJECT), is(false));
-        assertThat(ElementMatchers.hasSuperType(ElementMatchers.is(Serializable.class)).matches(TypeDescription.STRING), is(true));
-        assertThat(ElementMatchers.hasSuperType(ElementMatchers.is(Serializable.class)).matches(TypeDescription.OBJECT), is(false));
+        assertThat(ElementMatchers.hasSuperType(ElementMatchers.is(Object.class)).matches(TypeDescription.ForLoadedType.of(String.class)), is(true));
+        assertThat(ElementMatchers.hasSuperType(ElementMatchers.is(String.class)).matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
+        assertThat(ElementMatchers.hasSuperType(ElementMatchers.is(Serializable.class)).matches(TypeDescription.ForLoadedType.of(String.class)), is(true));
+        assertThat(ElementMatchers.hasSuperType(ElementMatchers.is(Serializable.class)).matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
     }
 
     @Test
@@ -1172,8 +1173,8 @@ public class ElementMatchersTest {
 
     @Test
     public void testTypeSort() throws Exception {
-        assertThat(ElementMatchers.ofSort(TypeDefinition.Sort.NON_GENERIC).matches(TypeDescription.OBJECT), is(true));
-        assertThat(ElementMatchers.ofSort(TypeDefinition.Sort.VARIABLE).matches(TypeDescription.OBJECT), is(false));
+        assertThat(ElementMatchers.ofSort(TypeDefinition.Sort.NON_GENERIC).matches(TypeDescription.ForLoadedType.of(Object.class)), is(true));
+        assertThat(ElementMatchers.ofSort(TypeDefinition.Sort.VARIABLE).matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
     }
 
     @Test
@@ -1181,11 +1182,11 @@ public class ElementMatchersTest {
         assertThat(ElementMatchers.declaresField(ElementMatchers.isAnnotatedWith(OtherAnnotation.class))
                 .matches(TypeDescription.ForLoadedType.of(DeclaresFieldOrMethod.class)), is(true));
         assertThat(ElementMatchers.declaresField(ElementMatchers.isAnnotatedWith(OtherAnnotation.class))
-                .matches(TypeDescription.OBJECT), is(false));
+                .matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
         assertThat(ElementMatchers.declaresMethod(ElementMatchers.isAnnotatedWith(OtherAnnotation.class))
                 .matches(TypeDescription.ForLoadedType.of(DeclaresFieldOrMethod.class)), is(true));
         assertThat(ElementMatchers.declaresMethod(ElementMatchers.isAnnotatedWith(OtherAnnotation.class))
-                .matches(TypeDescription.OBJECT), is(false));
+                .matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
     }
 
     @Test
@@ -1255,22 +1256,40 @@ public class ElementMatchersTest {
 
     @Test
     public void testIsPrimitive() {
-        assertThat(ElementMatchers.isPrimitive().matches(TypeDescription.VOID), is(true));
+        assertThat(ElementMatchers.isPrimitive().matches(TypeDescription.ForLoadedType.of(void.class)), is(true));
         assertThat(ElementMatchers.isPrimitive().matches(TypeDescription.ForLoadedType.of(int.class)), is(true));
-        assertThat(ElementMatchers.isPrimitive().matches(TypeDescription.OBJECT), is(false));
+        assertThat(ElementMatchers.isPrimitive().matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
     }
 
     @Test
     public void testIsArray() {
-        assertThat(ElementMatchers.isArray().matches(TypeDescription.VOID), is(false));
+        assertThat(ElementMatchers.isArray().matches(TypeDescription.ForLoadedType.of(void.class)), is(false));
         assertThat(ElementMatchers.isArray().matches(TypeDescription.ForLoadedType.of(int[].class)), is(true));
-        assertThat(ElementMatchers.isArray().matches(TypeDescription.OBJECT), is(false));
+        assertThat(ElementMatchers.isArray().matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
     }
 
     @Test
     public void testSupportsModules() throws Exception {
         assertThat(ElementMatchers.supportsModules().matches(mock(JavaModule.class)), is(true));
         assertThat(ElementMatchers.supportsModules().matches(null), is(false));
+    }
+
+    @Test
+    public void testClassFileVersionAtLeast() throws Exception {
+        TypeDescription typeDescription = mock(TypeDescription.class);
+        when(typeDescription.getClassFileVersion()).thenReturn(ClassFileVersion.JAVA_V6);
+        assertThat(ElementMatchers.hasClassFileVersionAtLeast(ClassFileVersion.JAVA_V5).matches(typeDescription), is(true));
+        assertThat(ElementMatchers.hasClassFileVersionAtLeast(ClassFileVersion.JAVA_V6).matches(typeDescription), is(true));
+        assertThat(ElementMatchers.hasClassFileVersionAtLeast(ClassFileVersion.JAVA_V7).matches(typeDescription), is(false));
+    }
+
+    @Test
+    public void testClassFileVersionAtMost() throws Exception {
+        TypeDescription typeDescription = mock(TypeDescription.class);
+        when(typeDescription.getClassFileVersion()).thenReturn(ClassFileVersion.JAVA_V6);
+        assertThat(ElementMatchers.hasClassFileVersionAtMost(ClassFileVersion.JAVA_V5).matches(typeDescription), is(false));
+        assertThat(ElementMatchers.hasClassFileVersionAtMost(ClassFileVersion.JAVA_V6).matches(typeDescription), is(true));
+        assertThat(ElementMatchers.hasClassFileVersionAtMost(ClassFileVersion.JAVA_V7).matches(typeDescription), is(true));
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -1416,8 +1435,8 @@ public class ElementMatchersTest {
             return super.toString();
         }
 
-        @Override
-        @SuppressWarnings("deprecation")
+        //@Override
+        @SuppressWarnings({"deprecation", "removal"})
         protected void finalize() throws Throwable {
             super.finalize();
         }

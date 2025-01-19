@@ -1,11 +1,11 @@
 package net.bytebuddy.build;
 
 import net.bytebuddy.description.type.TypeDescription;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import java.io.PrintStream;
 import java.util.Collections;
@@ -20,7 +20,7 @@ public class PluginEngineListenerTest {
     private static final String FOO = "foo", BAR = "bar";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private TypeDescription typeDescription, definingType;
@@ -49,10 +49,10 @@ public class PluginEngineListenerTest {
         Plugin.Engine.Listener.NoOp.INSTANCE.onUnresolved(FOO);
         Plugin.Engine.Listener.NoOp.INSTANCE.onManifest(manifest);
         Plugin.Engine.Listener.NoOp.INSTANCE.onResource(BAR);
-        verifyZeroInteractions(typeDescription);
-        verifyZeroInteractions(definingType);
-        verifyZeroInteractions(plugin);
-        verifyZeroInteractions(throwable);
+        verifyNoMoreInteractions(typeDescription);
+        verifyNoMoreInteractions(definingType);
+        verifyNoMoreInteractions(plugin);
+        verifyNoMoreInteractions(throwable);
     }
 
     @Test
@@ -73,10 +73,10 @@ public class PluginEngineListenerTest {
         listener.onUnresolved(FOO);
         listener.onManifest(manifest);
         listener.onResource(BAR);
-        verifyZeroInteractions(typeDescription);
-        verifyZeroInteractions(definingType);
-        verifyZeroInteractions(plugin);
-        verifyZeroInteractions(throwable);
+        verifyNoMoreInteractions(typeDescription);
+        verifyNoMoreInteractions(definingType);
+        verifyNoMoreInteractions(plugin);
+        verifyNoMoreInteractions(throwable);
     }
 
     @Test
@@ -96,9 +96,9 @@ public class PluginEngineListenerTest {
         listener.onUnresolved(FOO);
         listener.onManifest(manifest);
         listener.onResource(BAR);
-        verifyZeroInteractions(typeDescription);
-        verifyZeroInteractions(definingType);
-        verifyZeroInteractions(plugin);
+        verifyNoMoreInteractions(typeDescription);
+        verifyNoMoreInteractions(definingType);
+        verifyNoMoreInteractions(plugin);
         verify(throwable, times(2)).printStackTrace(printStream);
         verifyNoMoreInteractions(throwable);
         verify(printStream).printf("[Byte Buddy] TRANSFORM %s for %s", typeDescription, plugin);
@@ -140,10 +140,10 @@ public class PluginEngineListenerTest {
         listener.onUnresolved(FOO);
         listener.onManifest(manifest);
         listener.onResource(BAR);
-        verifyZeroInteractions(typeDescription);
-        verifyZeroInteractions(definingType);
-        verifyZeroInteractions(plugin);
-        verifyZeroInteractions(throwable);
+        verifyNoMoreInteractions(typeDescription);
+        verifyNoMoreInteractions(definingType);
+        verifyNoMoreInteractions(plugin);
+        verifyNoMoreInteractions(throwable);
         verify(delegate).onError(typeDescription, plugin, throwable);
         verify(delegate).onError(typeDescription, Collections.singletonList(throwable));
         verify(delegate).onError(Collections.singletonMap(typeDescription, Collections.singletonList(throwable)));
@@ -172,10 +172,10 @@ public class PluginEngineListenerTest {
         listener.onUnresolved(FOO);
         listener.onManifest(manifest);
         listener.onResource(BAR);
-        verifyZeroInteractions(typeDescription);
-        verifyZeroInteractions(definingType);
-        verifyZeroInteractions(plugin);
-        verifyZeroInteractions(throwable);
+        verifyNoMoreInteractions(typeDescription);
+        verifyNoMoreInteractions(definingType);
+        verifyNoMoreInteractions(plugin);
+        verifyNoMoreInteractions(throwable);
         verify(delegate).onTransformation(typeDescription, plugin);
         verify(delegate).onTransformation(typeDescription, Collections.singletonList(plugin));
         verify(delegate).onError(typeDescription, plugin, throwable);
@@ -202,10 +202,10 @@ public class PluginEngineListenerTest {
         listener.onUnresolved(FOO);
         listener.onManifest(manifest);
         listener.onResource(BAR);
-        verifyZeroInteractions(typeDescription);
-        verifyZeroInteractions(definingType);
-        verifyZeroInteractions(plugin);
-        verifyZeroInteractions(throwable);
+        verifyNoMoreInteractions(typeDescription);
+        verifyNoMoreInteractions(definingType);
+        verifyNoMoreInteractions(plugin);
+        verifyNoMoreInteractions(throwable);
         verify(delegate).onError(typeDescription, plugin, throwable);
         verify(delegate).onError(typeDescription, Collections.singletonList(throwable));
         verify(delegate).onError(Collections.singletonMap(typeDescription, Collections.singletonList(throwable)));
@@ -230,10 +230,10 @@ public class PluginEngineListenerTest {
         listener.onUnresolved(FOO);
         listener.onManifest(manifest);
         listener.onResource(BAR);
-        verifyZeroInteractions(typeDescription);
-        verifyZeroInteractions(definingType);
-        verifyZeroInteractions(plugin);
-        verifyZeroInteractions(throwable);
+        verifyNoMoreInteractions(typeDescription);
+        verifyNoMoreInteractions(definingType);
+        verifyNoMoreInteractions(plugin);
+        verifyNoMoreInteractions(throwable);
         verify(delegate).onTransformation(typeDescription, plugin);
         verify(delegate).onTransformation(typeDescription, Collections.singletonList(plugin));
         verify(delegate).onIgnored(typeDescription, plugin);

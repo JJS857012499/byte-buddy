@@ -20,20 +20,25 @@ import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.build.BuildLogger;
 import net.bytebuddy.build.EntryPoint;
 import net.bytebuddy.build.Plugin;
-import net.bytebuddy.build.gradle.api.Internal;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.scaffold.inline.MethodNameTransformer;
+import net.bytebuddy.utility.nullability.MaybeNull;
+import net.bytebuddy.utility.nullability.UnknownNull;
+import org.gradle.api.Action;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Nested;
 import org.gradle.api.tasks.Optional;
-import org.gradle.util.ConfigureUtil;
 
-import javax.annotation.Nullable;
-import java.io.*;
+import java.io.Closeable;
+import java.io.File;
+import java.io.IOException;
+import java.net.MalformedURLException;
 import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.*;
 
 /**
@@ -49,11 +54,13 @@ public abstract class AbstractByteBuddyTask extends DefaultTask {
     /**
      * The entry point to use.
      */
+    @UnknownNull
     private EntryPoint entryPoint;
 
     /**
      * The suffix to use for rebased methods or the empty string if a random suffix should be used.
      */
+    @UnknownNull
     private String suffix;
 
     /**
@@ -82,6 +89,7 @@ public abstract class AbstractByteBuddyTask extends DefaultTask {
      * where each line contains the fully qualified class name. Discovered plugins are not provided with any
      * explicit constructor arguments.
      */
+    @UnknownNull
     private Discovery discovery;
 
     /**
@@ -90,10 +98,18 @@ public abstract class AbstractByteBuddyTask extends DefaultTask {
     private int threads;
 
     /**
-     * Returns the class file version to use for creating auxiliary types or {@code null} if the
+     * The class file version to use for creating auxiliary types or {@code null} if the
      * version is determined implicitly.
      */
+    @MaybeNull
     private ClassFileVersion classFileVersion;
+
+    /**
+     * The class file version to use for resolving multi-release jar files or {@code null} if
+     * {@link #classFileVersion} or the implicit version should be used.
+     */
+    @MaybeNull
+    private ClassFileVersion multiReleaseClassFileVersion;
 
     /**
      * Creates a new abstract Byte Buddy task.
@@ -118,7 +134,24 @@ public abstract class AbstractByteBuddyTask extends DefaultTask {
      * @param closure The closure to configure the transformation.
      */
     public void transformation(Closure<Transformation> closure) {
-        transformations.add(ConfigureUtil.configure(closure, new Transformation()));
+        Transformation transformation = ObjectFactory.newInstance(getProject(), Transformation.class, getProject());
+        transformations.add((Transformation) getProject().configure(transformation == null
+                ? new Transformation(getProject())
+                : transformation, closure));
+    }
+
+    /**
+     * Adds an additional transformation.
+     *
+     * @param action The action to configure the transformation.
+     */
+    public void transformation(Action<Transformation> action) {
+        Transformation transformation = ObjectFactory.newInstance(getProject(), Transformation.class, getProject());
+        if (transformation == null) {
+            transformation = new Transformation(getProject());
+        }
+        action.execute(transformation);
+        transformations.add(transformation);
     }
 
     /**
@@ -198,9 +231,9 @@ public abstract class AbstractByteBuddyTask extends DefaultTask {
     }
 
     /**
-     * Returns {@code true} if a warning should be issued for an empty type set.
+     * Returns {@code true} if this task should fail fast.
      *
-     * @return {@code true} if a warning should be issued for an empty type set.
+     * @return {@code true} if this task should fail fast.
      */
     @Internal
     public boolean isFailFast() {
@@ -208,9 +241,9 @@ public abstract class AbstractByteBuddyTask extends DefaultTask {
     }
 
     /**
-     * Determines if a warning should be issued for an empty type set.
+     * Determines if this task should fail fast.
      *
-     * @param failFast {@code true} if a warning should be issued for an empty type set.
+     * @param failFast {@code true} if this task should fail fast.
      */
     public void setFailFast(boolean failFast) {
         this.failFast = failFast;
@@ -234,7 +267,6 @@ public abstract class AbstractByteBuddyTask extends DefaultTask {
     public void setExtendedParsing(boolean extendedParsing) {
         this.extendedParsing = extendedParsing;
     }
-
 
     /**
      * Determines the discovery for finding plugins on the class path.
@@ -280,7 +312,7 @@ public abstract class AbstractByteBuddyTask extends DefaultTask {
      *
      * @return The class file version to use for creating auxiliary types.
      */
-    @Nullable
+    @MaybeNull
     @Input
     @Optional
     public ClassFileVersion getClassFileVersion() {
@@ -293,8 +325,30 @@ public abstract class AbstractByteBuddyTask extends DefaultTask {
      *
      * @param classFileVersion The class file version to use for creating auxiliary types.
      */
-    public void setClassFileVersion(@Nullable ClassFileVersion classFileVersion) {
+    public void setClassFileVersion(@MaybeNull ClassFileVersion classFileVersion) {
         this.classFileVersion = classFileVersion;
+    }
+
+    /**
+     * Returns the class file version to use for resolving multi-release jar files or {@code null} if the
+     * explicit or implicit class file version of this task should be used.
+     *
+     * @return The class file version to use for resolving multi-release jar files.
+     */
+    @MaybeNull
+    @Input
+    @Optional
+    public ClassFileVersion getMultiReleaseClassFileVersion() {
+        return multiReleaseClassFileVersion;
+    }
+
+    /**
+     * Sets the class file version to use for resolving multi-release jar files.
+     *
+     * @param multiReleaseClassFileVersion The class file version to use for resolving multi-release jar files.
+     */
+    public void setMultiReleaseClassFileVersion(@MaybeNull ClassFileVersion multiReleaseClassFileVersion) {
+        this.multiReleaseClassFileVersion = multiReleaseClassFileVersion;
     }
 
     /**
@@ -319,6 +373,14 @@ public abstract class AbstractByteBuddyTask extends DefaultTask {
     protected abstract Iterable<File> classPath();
 
     /**
+     * Returns the discovery class path or {@code null} if not specified.
+     *
+     * @return The discovery class path or {@code null} if not specified.
+     */
+    @MaybeNull
+    protected abstract Iterable<File> discoverySet();
+
+    /**
      * Applies the transformation from a source to a target.
      *
      * @param source The plugin engine's source.
@@ -329,217 +391,208 @@ public abstract class AbstractByteBuddyTask extends DefaultTask {
         if (source().equals(target())) {
             throw new IllegalStateException("Source and target cannot be equal: " + source());
         }
-        List<Transformation> transformations = new ArrayList<Transformation>(getTransformations());
-        if (discovery.isDiscover(transformations)) {
-            Set<String> undiscoverable = new HashSet<String>();
-            if (discovery.isRecordConfiguration()) {
-                for (Transformation transformation : transformations) {
-                    undiscoverable.add(transformation.getPlugin().getName());
-                }
-            }
-            Enumeration<URL> plugins = getClass().getClassLoader().getResources("META-INF/net.bytebuddy/build.plugins");
-            while (plugins.hasMoreElements()) {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(plugins.nextElement().openStream(), "UTF-8"));
-                try {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        if (undiscoverable.add(line)) {
-                            try {
-                                @SuppressWarnings("unchecked")
-                                Class<? extends Plugin> plugin = (Class<? extends Plugin>) Class.forName(line);
-                                Transformation transformation = new Transformation();
-                                transformation.setPlugin(plugin);
-                                transformations.add(transformation);
-                            } catch (ClassNotFoundException exception) {
-                                throw new IllegalStateException("Discovered plugin is not available: " + line, exception);
-                            }
-                            getLogger().debug("Registered discovered plugin: {}", line);
-                        } else {
-                            getLogger().info("Skipping discovered plugin {} which was previously discovered or registered", line);
-                        }
-                    }
-                } finally {
-                    reader.close();
-                }
-            }
-        }
-        if (transformations.isEmpty()) {
-            getLogger().warn("No transformations are specified or discovered. Skipping plugin application.");
+        ClassFileVersion classFileVersion;
+        if (this.classFileVersion == null) {
+            classFileVersion = ClassFileVersion.ofThisVm();
+            getLogger().warn("Could not locate Java target version, build is JDK dependant: {}", classFileVersion.getJavaVersion());
         } else {
-            getLogger().debug("{} plugins are being applied via configuration and discovery", transformations.size());
+            classFileVersion = this.classFileVersion;
+            getLogger().debug("Java version was configured: {}", classFileVersion.getJavaVersion());
         }
-        List<Plugin.Factory> factories = new ArrayList<Plugin.Factory>(transformations.size());
-        for (Transformation transformation : transformations) {
-            try {
-                factories.add(new Plugin.Factory.UsingReflection(transformation.getPlugin())
-                        .with(transformation.makeArgumentResolvers())
-                        .with(Plugin.Factory.UsingReflection.ArgumentResolver.ForType.of(File.class, source()),
-                                Plugin.Factory.UsingReflection.ArgumentResolver.ForType.of(Logger.class, getLogger()),
-                                Plugin.Factory.UsingReflection.ArgumentResolver.ForType.of(BuildLogger.class, new GradleBuildLogger(getLogger()))));
-                getLogger().info("Resolved plugin: {}", transformation.getPlugin().getName());
-            } catch (Throwable throwable) {
-                throw new IllegalStateException("Cannot resolve plugin: " + transformation.getPlugin().getName(), throwable);
-            }
-        }
-        List<ClassFileLocator> classFileLocators = new ArrayList<ClassFileLocator>();
-        for (File artifact : classPath()) {
-            classFileLocators.add(artifact.isFile()
-                    ? ClassFileLocator.ForJarFile.of(artifact)
-                    : new ClassFileLocator.ForFolder(artifact));
-        }
-        ClassFileLocator classFileLocator = new ClassFileLocator.Compound(classFileLocators);
+        apply(getLogger(),
+                getClass().getClassLoader(),
+                new ArrayList<Transformation>(getTransformations()),
+                getDiscovery(),
+                ClassFileLocator.ForClassLoader.ofPlatformLoader(),
+                classPath(),
+                discoverySet(),
+                getEntryPoint(),
+                classFileVersion,
+                multiReleaseClassFileVersion == null ? classFileVersion : multiReleaseClassFileVersion,
+                Plugin.Factory.UsingReflection.ArgumentResolver.ForType.of(File.class, source()),
+                getSuffix(),
+                getThreads(),
+                isExtendedParsing(),
+                isFailFast(),
+                isFailOnLiveInitializer(),
+                isWarnOnEmptyTypeSet(),
+                source,
+                target);
+    }
+
+    /**
+     * Dispatches a Byte Buddy instrumentation Gradle task.
+     *
+     * @param logger                       The logger to use.
+     * @param rootLoader                   The class loader that is used for searching types and applying plugins.
+     * @param transformations              The transformations to apply.
+     * @param discovery                    The discovery for plugins to use.
+     * @param rootLocator                  The root class file locator.
+     * @param artifacts                    The artifacts to include.
+     * @param discoverySet                 The source set to discover plugins from or {@code null} if no source set is used.
+     * @param entryPoint                   The entry point to use.
+     * @param classFileVersion             The class file version to use.
+     * @param multiReleaseClassFileVersion The class file version to use for resolving multi-release jars.
+     * @param rootLocationResolver         An argument resolver for the root location of this build.
+     * @param suffix                       The suffix to use for rebased methods or an empty string for using a random suffix.
+     * @param threads                      The number of threads to use while instrumenting.
+     * @param extendedParsing              {@code true} if extended parsing should be used.
+     * @param failFast                     {@code true} if the build should fail fast.
+     * @param failOnLiveInitializer        {@code true} if the build should fail upon discovering a live initializer.
+     * @param warnOnEmptyTypeSet           {@code true} if a warning should be logged if no types are instrumented.
+     * @param source                       The source to use for instrumenting.
+     * @param target                       The target to use for instrumenting.
+     * @throws IOException If an I/O error occurs.
+     */
+    public static void apply(Logger logger,
+                             ClassLoader rootLoader,
+                             List<Transformation> transformations,
+                             Discovery discovery,
+                             ClassFileLocator rootLocator,
+                             Iterable<File> artifacts,
+                             @MaybeNull Iterable<File> discoverySet,
+                             EntryPoint entryPoint,
+                             ClassFileVersion classFileVersion,
+                             ClassFileVersion multiReleaseClassFileVersion,
+                             Plugin.Factory.UsingReflection.ArgumentResolver rootLocationResolver,
+                             String suffix,
+                             int threads,
+                             boolean extendedParsing,
+                             boolean failFast,
+                             boolean failOnLiveInitializer,
+                             boolean warnOnEmptyTypeSet,
+                             Plugin.Engine.Source source,
+                             Plugin.Engine.Target target) throws IOException {
         Plugin.Engine.Summary summary;
+        ClassLoader classLoader = ByteBuddySkippingUrlClassLoader.of(rootLoader, discoverySet);
         try {
-            getLogger().info("Processing class files located in in: {}", source());
-            Plugin.Engine pluginEngine;
-            try {
-                ClassFileVersion classFileVersion;
-                if (this.classFileVersion == null) {
-                    classFileVersion = ClassFileVersion.ofThisVm();
-                    getLogger().warn("Could not locate Java target version, build is JDK dependant: {}", classFileVersion.getJavaVersion());
-                } else {
-                    classFileVersion = this.classFileVersion;
-                    getLogger().debug("Java version was configured: {}", classFileVersion.getJavaVersion());
+            if (discovery.isDiscover(transformations)) {
+                Set<String> undiscoverable = new HashSet<String>();
+                if (discovery.isRecordConfiguration()) {
+                    for (Transformation transformation : transformations) {
+                        undiscoverable.add(transformation.toPluginName());
+                    }
                 }
-                pluginEngine = Plugin.Engine.Default.of(getEntryPoint(), classFileVersion, getSuffix().length() == 0
-                        ? MethodNameTransformer.Suffixing.withRandomSuffix()
-                        : new MethodNameTransformer.Suffixing(getSuffix()));
-            } catch (Throwable throwable) {
-                throw new IllegalStateException("Cannot create plugin engine", throwable);
+                for (String name : Plugin.Engine.Default.scan(classLoader)) {
+                    if (undiscoverable.add(name)) {
+                        try {
+                            @SuppressWarnings("unchecked")
+                            Class<? extends Plugin> plugin = (Class<? extends Plugin>) Class.forName(name, false, classLoader);
+                            Transformation transformation = new Transformation();
+                            transformation.setPlugin(plugin);
+                            transformations.add(transformation);
+                        } catch (ClassNotFoundException exception) {
+                            throw new IllegalStateException("Discovered plugin is not available: " + name, exception);
+                        }
+                        logger.debug("Registered discovered plugin: {}", name);
+                    } else {
+                        logger.info("Skipping discovered plugin {} which was previously discovered or registered", name);
+                    }
+                }
             }
+            if (transformations.isEmpty()) {
+                logger.warn("No transformations are specified or discovered. Application will be non-operational.");
+            } else {
+                logger.debug("{} plugins are being applied via configuration and discovery", transformations.size());
+            }
+            List<File> classPath = new ArrayList<File>();
+            for (File file : artifacts) {
+                classPath.add(file);
+            }
+            List<Plugin.Factory> factories = new ArrayList<Plugin.Factory>(transformations.size());
+            for (Transformation transformation : transformations) {
+                try {
+                    factories.add(new Plugin.Factory.UsingReflection(transformation.toPlugin(classLoader))
+                            .with(transformation.makeArgumentResolvers())
+                            .with(rootLocationResolver,
+                                    Plugin.Factory.UsingReflection.ArgumentResolver.ForType.of(Logger.class, logger),
+                                    Plugin.Factory.UsingReflection.ArgumentResolver.ForType.of(org.slf4j.Logger.class, logger),
+                                    Plugin.Factory.UsingReflection.ArgumentResolver.ForType.of(BuildLogger.class, new GradleBuildLogger(logger)),
+                                    Plugin.Factory.UsingReflection.ArgumentResolver.ForType.of(File[].class, classPath.toArray(new File[0]))));
+                    logger.info("Resolved plugin: {}", transformation.toPluginName());
+                } catch (Throwable throwable) {
+                    throw new IllegalStateException("Cannot resolve plugin: " + transformation.toPluginName(), throwable);
+                }
+            }
+            List<ClassFileLocator> classFileLocators = new ArrayList<ClassFileLocator>();
+            classFileLocators.add(rootLocator);
+            for (File artifact : artifacts) {
+                classFileLocators.add(artifact.isFile()
+                        ? ClassFileLocator.ForJarFile.of(artifact, multiReleaseClassFileVersion)
+                        : ClassFileLocator.ForFolder.of(artifact, multiReleaseClassFileVersion));
+            }
+            ClassFileLocator classFileLocator = new ClassFileLocator.Compound(classFileLocators);
             try {
-                summary = pluginEngine
-                        .with(isExtendedParsing()
+                summary = Plugin.Engine.Default.of(entryPoint, classFileVersion, suffix.length() == 0
+                                ? MethodNameTransformer.Suffixing.withRandomSuffix()
+                                : new MethodNameTransformer.Suffixing(suffix))
+                        .with(extendedParsing
                                 ? Plugin.Engine.PoolStrategy.Default.EXTENDED
                                 : Plugin.Engine.PoolStrategy.Default.FAST)
                         .with(classFileLocator)
-                        .with(new TransformationLogger(getLogger()))
-                        .withErrorHandlers(Plugin.Engine.ErrorHandler.Enforcing.ALL_TYPES_RESOLVED, isFailOnLiveInitializer()
+                        .with(multiReleaseClassFileVersion)
+                        .with(new TransformationLogger(logger))
+                        .withErrorHandlers(Plugin.Engine.ErrorHandler.Enforcing.ALL_TYPES_RESOLVED, failOnLiveInitializer
                                 ? Plugin.Engine.ErrorHandler.Enforcing.NO_LIVE_INITIALIZERS
-                                : Plugin.Engine.Listener.NoOp.INSTANCE, isFailFast()
+                                : Plugin.Engine.Listener.NoOp.INSTANCE, failFast
                                 ? Plugin.Engine.ErrorHandler.Failing.FAIL_FAST
                                 : Plugin.Engine.ErrorHandler.Failing.FAIL_LAST)
-                        .with(getThreads() == 0
+                        .with(threads == 0
                                 ? Plugin.Engine.Dispatcher.ForSerialTransformation.Factory.INSTANCE
-                                : new Plugin.Engine.Dispatcher.ForParallelTransformation.WithThrowawayExecutorService.Factory(getThreads()))
+                                : new Plugin.Engine.Dispatcher.ForParallelTransformation.WithThrowawayExecutorService.Factory(threads))
                         .apply(source, target, factories);
-            } catch (Throwable throwable) {
-                throw new IllegalStateException("Failed to transform class files in " + source(), throwable);
+            } finally {
+                classFileLocator.close();
             }
         } finally {
-            classFileLocator.close();
+            if (classLoader instanceof Closeable && classLoader instanceof ByteBuddySkippingUrlClassLoader) {
+                ((Closeable) classLoader).close();
+            }
         }
         if (!summary.getFailed().isEmpty()) {
-            throw new IllegalStateException(summary.getFailed() + " type transformations have failed");
-        } else if (isWarnOnEmptyTypeSet() && summary.getTransformed().isEmpty()) {
-            getLogger().warn("No types were transformed during plugin execution");
+            throw new IllegalStateException(summary.getFailed() + " type transformation(s) have failed");
+        } else if (warnOnEmptyTypeSet && summary.getTransformed().isEmpty()) {
+            logger.warn("No types were transformed during plugin execution");
         } else {
-            getLogger().info("Transformed {} types", summary.getTransformed().size());
+            logger.info("Transformed {} type(s)", summary.getTransformed().size());
         }
     }
 
     /**
-     * A {@link BuildLogger} implementation for a Gradle {@link Logger}.
+     * Deletes a collection of files or a folders recursively.
+     *
+     * @param files The files or folders to delete.
+     * @return {@code true} if any of the files or folders were deleted.
      */
-    protected static class GradleBuildLogger implements BuildLogger {
-
-        /**
-         * The logger to delegate to.
-         */
-        private final Logger logger;
-
-        /**
-         * Creates a new Gradle build logger.
-         *
-         * @param logger The logger to delegate to.
-         */
-        protected GradleBuildLogger(Logger logger) {
-            this.logger = logger;
+    protected static boolean deleteRecursively(Iterable<File> files) {
+        boolean deleted = false;
+        for (File file : files) {
+            deleted = deleteRecursively(file) || deleted;
         }
+        return deleted;
+    }
 
-        /**
-         * {@inheritDoc}
-         */
-        public boolean isDebugEnabled() {
-            return logger.isDebugEnabled();
+    /**
+     * Deletes a file or a folder recursively.
+     *
+     * @param file The file or folder to delete.
+     * @return {@code true} if the file or folders were deleted.
+     */
+    protected static boolean deleteRecursively(File file) {
+        boolean deleted = false;
+        Queue<File> queue = new LinkedList<File>();
+        queue.add(file);
+        while (!queue.isEmpty()) {
+            File current = queue.remove();
+            File[] child = current.listFiles();
+            if (child == null || child.length == 0) {
+                deleted = current.delete() || deleted;
+            } else {
+                queue.addAll(Arrays.asList(child));
+                queue.add(current);
+            }
         }
-
-        /**
-         * {@inheritDoc}
-         */
-        public void debug(String message) {
-            logger.debug(message);
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        public void debug(String message, Throwable throwable) {
-            logger.debug(message, throwable);
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        public boolean isInfoEnabled() {
-            return logger.isInfoEnabled();
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        public void info(String message) {
-            logger.info(message);
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        public void info(String message, Throwable throwable) {
-            logger.info(message, throwable);
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        public boolean isWarnEnabled() {
-            return logger.isWarnEnabled();
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        public void warn(String message) {
-            logger.warn(message);
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        public void warn(String message, Throwable throwable) {
-            logger.warn(message, throwable);
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        public boolean isErrorEnabled() {
-            return logger.isErrorEnabled();
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        public void error(String message) {
-            logger.error(message);
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        public void error(String message, Throwable throwable) {
-            logger.error(message, throwable);
-        }
+        return deleted;
     }
 
     /**
@@ -584,6 +637,59 @@ public abstract class AbstractByteBuddyTask extends DefaultTask {
         @Override
         public void onLiveInitializer(TypeDescription typeDescription, TypeDescription definingType) {
             logger.debug("Discovered live initializer for {} as a result of transforming {}", definingType, typeDescription);
+        }
+    }
+
+    /**
+     * A class loader that resolves a source set while still loading Byte Buddy classes from the Gradle plugin.
+     */
+    protected static class ByteBuddySkippingUrlClassLoader extends URLClassLoader {
+
+        /**
+         * Creates a new class loader that skips Byte Buddy classes.
+         *
+         * @param parent The parent class loader.
+         * @param url    The URLs of the source set.
+         */
+        protected ByteBuddySkippingUrlClassLoader(ClassLoader parent, URL[] url) {
+            super(url, parent);
+        }
+
+        /**
+         * Resolves a class loader.
+         *
+         * @param classLoader  The class loader of the Byte Buddy plugin.
+         * @param discoverySet The source set to discover plugins from or {@code null} if no source set is used.
+         * @return The resolved class loader.
+         */
+        protected static ClassLoader of(ClassLoader classLoader, @MaybeNull Iterable<File> discoverySet) {
+            if (discoverySet == null) {
+                return classLoader;
+            }
+            List<URL> urls = new ArrayList<URL>();
+            for (File file : discoverySet) {
+                try {
+                    urls.add(file.toURI().toURL());
+                } catch (MalformedURLException exception) {
+                    throw new IllegalStateException(exception);
+                }
+            }
+            return urls.isEmpty()
+                    ? classLoader
+                    : new ByteBuddySkippingUrlClassLoader(classLoader, urls.toArray(new URL[0]));
+        }
+
+        @Override
+        protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+            if (name.startsWith("net.bytebuddy.")) {
+                Class<?> type = getParent().loadClass(name);
+                if (resolve) {
+                    resolveClass(type);
+                }
+                return type;
+            } else {
+                return super.loadClass(name, resolve);
+            }
         }
     }
 }

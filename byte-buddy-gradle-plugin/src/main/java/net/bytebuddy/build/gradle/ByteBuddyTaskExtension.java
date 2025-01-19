@@ -15,7 +15,12 @@
  */
 package net.bytebuddy.build.gradle;
 
-import javax.annotation.Nullable;
+import net.bytebuddy.utility.nullability.MaybeNull;
+import net.bytebuddy.utility.nullability.UnknownNull;
+import org.gradle.api.Project;
+import org.gradle.api.file.FileCollection;
+
+import javax.inject.Inject;
 
 /**
  * A Byte Buddy task extension.
@@ -25,7 +30,7 @@ public class ByteBuddyTaskExtension extends AbstractByteBuddyTaskExtension<ByteB
     /**
      * The incremental builder to apply or {@code null} if no incremental build should be applied.
      */
-    @Nullable
+    @MaybeNull
     private IncrementalResolver incrementalResolver;
 
     /**
@@ -34,9 +39,19 @@ public class ByteBuddyTaskExtension extends AbstractByteBuddyTaskExtension<ByteB
     private boolean incrementalClassPath;
 
     /**
-     * Creates a new Byte Buddy task extension.
+     * A set of classes that is used for discovery of plugins.
      */
-    public ByteBuddyTaskExtension() {
+    @MaybeNull
+    private FileCollection discoverySet;
+
+    /**
+     * Creates a new Byte Buddy task extension.
+     *
+     * @param project The current Gradle project.
+     */
+    @Inject
+    public ByteBuddyTaskExtension(@UnknownNull Project project) {
+        super(project);
         incrementalResolver = IncrementalResolver.ForChangedFiles.INSTANCE;
     }
 
@@ -45,7 +60,7 @@ public class ByteBuddyTaskExtension extends AbstractByteBuddyTaskExtension<ByteB
      *
      * @return The incremental builder to apply or {@code null} if no incremental build should be applied.
      */
-    @Nullable
+    @MaybeNull
     public IncrementalResolver getIncrementalResolver() {
         return incrementalResolver;
     }
@@ -55,7 +70,7 @@ public class ByteBuddyTaskExtension extends AbstractByteBuddyTaskExtension<ByteB
      *
      * @param incrementalResolver The incremental builder to apply or {@code null} if no incremental build should be applied.
      */
-    public void setIncrementalResolver(@Nullable IncrementalResolver incrementalResolver) {
+    public void setIncrementalResolver(@MaybeNull IncrementalResolver incrementalResolver) {
         this.incrementalResolver = incrementalResolver;
     }
 
@@ -78,9 +93,39 @@ public class ByteBuddyTaskExtension extends AbstractByteBuddyTaskExtension<ByteB
         this.incrementalClassPath = incrementalClassPath;
     }
 
+    /**
+     * Returns the source set to resolve plugin names from or {@code null} if no such source set is used.
+     *
+     * @return The source set to resolve plugin names from or {@code null} if no such source set is used.
+     */
+    @MaybeNull
+    public FileCollection getDiscoverySet() {
+        return discoverySet;
+    }
+
+    /**
+     * Defines the source set to resolve plugin names from or {@code null} if no such source set is used.
+     *
+     * @param discoverySet The source set to resolve plugin names from or {@code null} if no such source set is used.
+     */
+    public void setDiscoverySet(@MaybeNull FileCollection discoverySet) {
+        this.discoverySet = discoverySet;
+    }
+
+    @Override
+    protected boolean isEmptyDiscovery() {
+        return discoverySet == null || discoverySet.isEmpty();
+    }
+
     @Override
     protected void doConfigure(ByteBuddyTask task) {
         task.setIncrementalResolver(getIncrementalResolver());
+        task.setDiscoverySet(discoverySet);
+    }
+
+    @Override
+    protected void discoverySet(FileCollection fileCollection) {
+        discoverySet = fileCollection;
     }
 
     @Override

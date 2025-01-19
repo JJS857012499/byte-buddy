@@ -17,9 +17,8 @@ package net.bytebuddy.build.maven;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.build.EntryPoint;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.apache.maven.plugin.MojoExecutionException;
-
-import javax.annotation.Nullable;
 
 /**
  * Defines a configuration for a Maven build's type transformation.
@@ -30,18 +29,20 @@ public class Initialization extends CoordinateConfiguration {
     /**
      * The fully-qualified name of the entry point or any constant name of {@link EntryPoint.Default}.
      */
-    @Nullable
+    @MaybeNull
     public String entryPoint;
 
     /**
-     * Creates a default initialization instance.
-     *
-     * @return A default initialization instance.
+     * If validation should be disabled for the entry point.
      */
-    public static Initialization makeDefault() {
-        Initialization initialization = new Initialization();
-        initialization.entryPoint = EntryPoint.Default.REBASE.name();
-        return initialization;
+    public boolean validated;
+
+    /**
+     * Creates a new initialization configuration.
+     */
+    public Initialization() {
+        entryPoint = EntryPoint.Default.REBASE.name();
+        validated = true;
     }
 
     /**
@@ -55,20 +56,25 @@ public class Initialization extends CoordinateConfiguration {
      * @return The resolved entry point.
      * @throws MojoExecutionException If the entry point cannot be created.
      */
-    @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Applies Maven exception wrapper")
+    @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should always be wrapped for clarity.")
     public EntryPoint getEntryPoint(ClassLoaderResolver classLoaderResolver, String groupId, String artifactId, String version, String packaging) throws MojoExecutionException {
         if (entryPoint == null || entryPoint.length() == 0) {
             throw new MojoExecutionException("Entry point name is not defined");
         }
         for (EntryPoint.Default entryPoint : EntryPoint.Default.values()) {
             if (this.entryPoint.equals(entryPoint.name())) {
-                return entryPoint;
+                return validated
+                        ? entryPoint
+                        : new EntryPoint.Unvalidated(entryPoint);
             }
         }
         try {
-            return (EntryPoint) Class.forName(entryPoint, false, classLoaderResolver.resolve(asCoordinate(groupId, artifactId, version, packaging)))
+            EntryPoint entryPoint = (EntryPoint) Class.forName(this.entryPoint, false, classLoaderResolver.resolve(asCoordinate(groupId, artifactId, version, packaging)))
                     .getDeclaredConstructor()
                     .newInstance();
+            return validated
+                    ? entryPoint
+                    : new EntryPoint.Unvalidated(entryPoint);
         } catch (Exception exception) {
             throw new MojoExecutionException("Cannot create entry point: " + entryPoint, exception);
         }

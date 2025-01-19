@@ -15,6 +15,9 @@
  */
 package net.bytebuddy.utility;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import net.bytebuddy.utility.nullability.MaybeNull;
+
 import java.util.Random;
 
 /**
@@ -120,10 +123,10 @@ public class RandomString {
      * Represents a object value as a string hash. This string is not technically random but generates a fixed character
      * sequence based on the hash provided.
      *
-     * @param value The value to represent as a string.
+     * @param value The value to represent as a string or {@code null}.
      * @return A string representing the supplied value as a string.
      */
-    public static String hashOf(Object value) {
+    public static String hashOf(@MaybeNull Object value) {
         return hashOf(value == null
                 ? 0
                 : value.getClass().hashCode() ^ System.identityHashCode(value));
@@ -149,6 +152,7 @@ public class RandomString {
      *
      * @return A random {@link java.lang.String} of the given length for this instance.
      */
+    @SuppressFBWarnings(value = "DMI_RANDOM_USED_ONLY_ONCE", justification = "Random value is used on each invocation.")
     public String nextString() {
         char[] buffer = new char[length];
         for (int index = 0; index < length; index++) {

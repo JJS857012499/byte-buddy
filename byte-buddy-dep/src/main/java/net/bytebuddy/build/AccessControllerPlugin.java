@@ -16,12 +16,12 @@
 package net.bytebuddy.build;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.asm.AsmVisitorWrapper;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.modifier.FieldManifestation;
 import net.bytebuddy.description.modifier.Ownership;
 import net.bytebuddy.description.modifier.Visibility;
+import net.bytebuddy.description.type.TypeDefinition;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
@@ -31,13 +31,17 @@ import net.bytebuddy.implementation.bytecode.StackSize;
 import net.bytebuddy.pool.TypePool;
 import net.bytebuddy.utility.JavaType;
 import net.bytebuddy.utility.OpenedClassReader;
-import org.objectweb.asm.*;
+import net.bytebuddy.utility.nullability.MaybeNull;
+import org.objectweb.asm.Label;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 
-import javax.annotation.Nullable;
 import java.lang.annotation.*;
 import java.security.Permission;
 import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -80,82 +84,82 @@ public class AccessControllerPlugin extends Plugin.ForElementMatcher implements 
     static {
         SIGNATURES = new HashMap<MethodDescription.SignatureToken, MethodDescription.SignatureToken>();
         SIGNATURES.put(new MethodDescription.SignatureToken("doPrivileged",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedAction.class)), new MethodDescription.SignatureToken("doPrivileged",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedAction.class)));
         SIGNATURES.put(new MethodDescription.SignatureToken("doPrivilegedWithCombiner",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedAction.class)), new MethodDescription.SignatureToken("doPrivilegedWithCombiner",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedAction.class)));
         SIGNATURES.put(new MethodDescription.SignatureToken("doPrivileged",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedAction.class),
-                TypeDescription.OBJECT), new MethodDescription.SignatureToken("doPrivileged",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class)), new MethodDescription.SignatureToken("doPrivileged",
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedAction.class),
                 JavaType.ACCESS_CONTROL_CONTEXT.getTypeStub()));
         SIGNATURES.put(new MethodDescription.SignatureToken("doPrivileged",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedAction.class),
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(Permission[].class)), new MethodDescription.SignatureToken("doPrivileged",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedAction.class),
                 JavaType.ACCESS_CONTROL_CONTEXT.getTypeStub(),
                 TypeDescription.ForLoadedType.of(Permission[].class)));
         SIGNATURES.put(new MethodDescription.SignatureToken("doPrivilegedWithCombiner",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedAction.class),
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(Permission[].class)), new MethodDescription.SignatureToken("doPrivilegedWithCombiner",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedAction.class),
                 JavaType.ACCESS_CONTROL_CONTEXT.getTypeStub(),
                 TypeDescription.ForLoadedType.of(Permission[].class)));
         SIGNATURES.put(new MethodDescription.SignatureToken("doPrivileged",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedExceptionAction.class)), new MethodDescription.SignatureToken("doPrivileged",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedExceptionAction.class)));
         SIGNATURES.put(new MethodDescription.SignatureToken("doPrivilegedWithCombiner",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedExceptionAction.class)), new MethodDescription.SignatureToken("doPrivilegedWithCombiner",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedExceptionAction.class)));
         SIGNATURES.put(new MethodDescription.SignatureToken("doPrivileged",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedExceptionAction.class),
-                TypeDescription.OBJECT), new MethodDescription.SignatureToken("doPrivileged",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class)), new MethodDescription.SignatureToken("doPrivileged",
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedExceptionAction.class),
                 JavaType.ACCESS_CONTROL_CONTEXT.getTypeStub()));
         SIGNATURES.put(new MethodDescription.SignatureToken("doPrivileged",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedExceptionAction.class),
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(Permission[].class)), new MethodDescription.SignatureToken("doPrivileged",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedExceptionAction.class),
                 JavaType.ACCESS_CONTROL_CONTEXT.getTypeStub(),
                 TypeDescription.ForLoadedType.of(Permission[].class)));
         SIGNATURES.put(new MethodDescription.SignatureToken("doPrivilegedWithCombiner",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedExceptionAction.class),
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(Permission[].class)), new MethodDescription.SignatureToken("doPrivilegedWithCombiner",
-                TypeDescription.OBJECT,
+                TypeDescription.ForLoadedType.of(Object.class),
                 TypeDescription.ForLoadedType.of(PrivilegedExceptionAction.class),
                 JavaType.ACCESS_CONTROL_CONTEXT.getTypeStub(),
                 TypeDescription.ForLoadedType.of(Permission[].class)));
         SIGNATURES.put(new MethodDescription.SignatureToken("getContext",
-                TypeDescription.OBJECT), new MethodDescription.SignatureToken("getContext",
+                TypeDescription.ForLoadedType.of(Object.class)), new MethodDescription.SignatureToken("getContext",
                 JavaType.ACCESS_CONTROL_CONTEXT.getTypeStub()));
         SIGNATURES.put(new MethodDescription.SignatureToken("checkPermission",
-                TypeDescription.VOID,
+                TypeDescription.ForLoadedType.of(void.class),
                 TypeDescription.ForLoadedType.of(Permission.class)), new MethodDescription.SignatureToken("checkPermission",
-                TypeDescription.VOID,
+                TypeDescription.ForLoadedType.of(void.class),
                 TypeDescription.ForLoadedType.of(Permission.class)));
     }
 
@@ -163,7 +167,7 @@ public class AccessControllerPlugin extends Plugin.ForElementMatcher implements 
      * The property to control if the access controller should be used even
      * if available or {@code null} if such a property should not be available.
      */
-    @Nullable
+    @MaybeNull
     @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
     private final String property;
 
@@ -182,7 +186,7 @@ public class AccessControllerPlugin extends Plugin.ForElementMatcher implements 
      *                 if available or {@code null} if such a property should not be available.
      */
     @UsingReflection.Priority(Integer.MAX_VALUE)
-    public AccessControllerPlugin(@Nullable String property) {
+    public AccessControllerPlugin(@MaybeNull String property) {
         super(declaresMethod(isAnnotatedWith(Enhance.class)));
         this.property = property;
     }
@@ -197,7 +201,7 @@ public class AccessControllerPlugin extends Plugin.ForElementMatcher implements 
     /**
      * {@inheritDoc}
      */
-    @SuppressFBWarnings(value = "SBSC_USE_STRINGBUFFER_CONCATENATION", justification = "Collision is unlikely and buffer overhead not justified")
+    @SuppressFBWarnings(value = "SBSC_USE_STRINGBUFFER_CONCATENATION", justification = "Collision is unlikely and buffer overhead not justified.")
     public DynamicType.Builder<?> apply(DynamicType.Builder<?> builder, TypeDescription typeDescription, ClassFileLocator classFileLocator) {
         String name = NAME;
         while (!typeDescription.getDeclaredFields().filter(named(name)).isEmpty()) {
@@ -271,24 +275,22 @@ public class AccessControllerPlugin extends Plugin.ForElementMatcher implements 
             methodVisitor.visitLabel(end);
             methodVisitor.visitJumpInsn(Opcodes.GOTO, complete);
             methodVisitor.visitLabel(classNotFound);
-            if (implementationContext.getClassFileVersion().isAtLeast(ClassFileVersion.JAVA_V6)) {
-                methodVisitor.visitFrame(Opcodes.F_SAME1, EMPTY.length, EMPTY, 1, new Object[]{Type.getInternalName(ClassNotFoundException.class)});
-            }
+            implementationContext.getFrameGeneration().same1(methodVisitor,
+                    TypeDescription.ForLoadedType.of(ClassNotFoundException.class),
+                    Collections.<TypeDefinition>emptyList());
             methodVisitor.visitInsn(Opcodes.POP);
             methodVisitor.visitInsn(Opcodes.ICONST_0);
             methodVisitor.visitFieldInsn(Opcodes.PUTSTATIC, instrumentedType.getInternalName(), name, Type.getDescriptor(boolean.class));
             methodVisitor.visitJumpInsn(Opcodes.GOTO, complete);
             methodVisitor.visitLabel(securityException);
-            if (implementationContext.getClassFileVersion().isAtLeast(ClassFileVersion.JAVA_V6)) {
-                methodVisitor.visitFrame(Opcodes.F_SAME1, EMPTY.length, EMPTY, 1, new Object[]{Type.getInternalName(SecurityException.class)});
-            }
+            implementationContext.getFrameGeneration().same1(methodVisitor,
+                    TypeDescription.ForLoadedType.of(SecurityException.class),
+                    Collections.<TypeDefinition>emptyList());
             methodVisitor.visitInsn(Opcodes.POP);
             methodVisitor.visitInsn(Opcodes.ICONST_1);
             methodVisitor.visitFieldInsn(Opcodes.PUTSTATIC, instrumentedType.getInternalName(), name, Type.getDescriptor(boolean.class));
             methodVisitor.visitLabel(complete);
-            if (implementationContext.getClassFileVersion().isAtLeast(ClassFileVersion.JAVA_V6)) {
-                methodVisitor.visitFrame(Opcodes.F_SAME, EMPTY.length, EMPTY, EMPTY.length, EMPTY);
-            }
+            implementationContext.getFrameGeneration().same(methodVisitor, Collections.<TypeDefinition>emptyList());
             return new Size(Math.max(3, size), 0);
         }
 
@@ -406,7 +408,7 @@ public class AccessControllerPlugin extends Plugin.ForElementMatcher implements 
                     token,
                     name,
                     instrumentedMethod.isStatic() ? 0 : 1,
-                    (writerFlags & ClassWriter.COMPUTE_FRAMES) == 0 && implementationContext.getClassFileVersion().isAtLeast(ClassFileVersion.JAVA_V6));
+                    implementationContext.getFrameGeneration());
         }
 
         /**
@@ -435,9 +437,9 @@ public class AccessControllerPlugin extends Plugin.ForElementMatcher implements 
             private final int offset;
 
             /**
-             * {@code true} if frames should be added to a method.
+             * Indicates the frame generation mode to apply.
              */
-            private final boolean frames;
+            private final Implementation.Context.FrameGeneration frameGeneration;
 
             /**
              * Creates a new prefixing method visitor.
@@ -447,20 +449,20 @@ public class AccessControllerPlugin extends Plugin.ForElementMatcher implements 
              * @param token            The target signature of the method declared by the JVM access controller.
              * @param name             The name of the field.
              * @param offset           The base offset of the instrumented method.
-             * @param frames           {@code true} if frames should be added to a method.
+             * @param frameGeneration  Indicates the frame generation mode to apply.
              */
             protected PrefixingMethodVisitor(MethodVisitor methodVisitor,
                                              TypeDescription instrumentedType,
                                              MethodDescription.SignatureToken token,
                                              String name,
                                              int offset,
-                                             boolean frames) {
+                                             Implementation.Context.FrameGeneration frameGeneration) {
                 super(OpenedClassReader.ASM_API, methodVisitor);
                 this.instrumentedType = instrumentedType;
                 this.token = token;
                 this.name = name;
                 this.offset = offset;
-                this.frames = frames;
+                this.frameGeneration = frameGeneration;
             }
 
             @Override
@@ -484,9 +486,7 @@ public class AccessControllerPlugin extends Plugin.ForElementMatcher implements 
                         false);
                 mv.visitInsn(Type.getType(token.getReturnType().getDescriptor()).getOpcode(Opcodes.IRETURN));
                 mv.visitLabel(label);
-                if (frames) {
-                    mv.visitFrame(Opcodes.F_SAME, EMPTY.length, EMPTY, EMPTY.length, EMPTY);
-                }
+                frameGeneration.same(mv, token.getParameterTypes());
             }
 
             @Override

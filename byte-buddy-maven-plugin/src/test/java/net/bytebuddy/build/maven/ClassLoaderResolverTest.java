@@ -1,7 +1,7 @@
 package net.bytebuddy.build.maven;
 
-import net.bytebuddy.test.utility.MockitoRule;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
@@ -20,9 +20,10 @@ import org.eclipse.aether.resolution.DependencyResult;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
 import org.mockito.invocation.InvocationOnMock;
+import org.mockito.junit.MockitoJUnit;
 import org.mockito.stubbing.Answer;
 
 import java.io.File;
@@ -37,7 +38,7 @@ public class ClassLoaderResolverTest {
     private static final String FOO = "foo", BAR = "bar", QUX = "qux", BAZ = "baz", JAR = "jar";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private Log log;
@@ -87,7 +88,7 @@ public class ClassLoaderResolverTest {
         classLoaderResolver.resolve(new MavenCoordinate(FOO, BAR, QUX, JAR));
     }
 
-    @Test(expected = MojoExecutionException.class)
+    @Test(expected = MojoFailureException.class)
     public void testResolutionFailure() throws Exception {
         when(repositorySystem.resolveDependencies(eq(repositorySystemSession), any(DependencyRequest.class)))
                 .thenThrow(new DependencyResolutionException(new DependencyResult(new DependencyRequest(root, mock(DependencyFilter.class))), new Throwable()));

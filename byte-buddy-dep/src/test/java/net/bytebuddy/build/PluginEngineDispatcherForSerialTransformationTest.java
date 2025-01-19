@@ -1,21 +1,22 @@
 package net.bytebuddy.build;
 
 import net.bytebuddy.description.type.TypeDescription;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
+import org.mockito.junit.MockitoJUnit;
 import org.mockito.stubbing.Answer;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executor;
 
 import static junit.framework.TestCase.fail;
 import static org.hamcrest.CoreMatchers.instanceOf;
@@ -26,7 +27,7 @@ import static org.mockito.Mockito.*;
 public class PluginEngineDispatcherForSerialTransformationTest {
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private Plugin.Engine.Target.Sink sink;
@@ -114,7 +115,7 @@ public class PluginEngineDispatcherForSerialTransformationTest {
         }
         assertThat(preprocessing, is(true));
         assertThat(processing, is(false));
-        verifyZeroInteractions(materializable);
+        verifyNoMoreInteractions(materializable);
     }
 
     @Test
@@ -131,7 +132,7 @@ public class PluginEngineDispatcherForSerialTransformationTest {
             assertThat(exception, instanceOf(IllegalStateException.class));
         }
         assertThat(processing, is(true));
-        verifyZeroInteractions(materializable);
+        verifyNoMoreInteractions(materializable);
     }
 
     @Test
@@ -170,7 +171,7 @@ public class PluginEngineDispatcherForSerialTransformationTest {
         }
         assertThat(preprocessing, is(true));
         assertThat(processing, is(false));
-        verifyZeroInteractions(materializable);
+        verifyNoMoreInteractions(materializable);
     }
 
     @Test
@@ -187,6 +188,6 @@ public class PluginEngineDispatcherForSerialTransformationTest {
             assertThat(exception, instanceOf(IllegalStateException.class));
         }
         assertThat(processing, is(true));
-        verifyZeroInteractions(materializable);
+        verifyNoMoreInteractions(materializable);
     }
 }

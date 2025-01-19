@@ -12,13 +12,13 @@ import net.bytebuddy.implementation.bind.MethodDelegationBinder;
 import net.bytebuddy.implementation.bytecode.StackManipulation;
 import net.bytebuddy.implementation.bytecode.StackSize;
 import net.bytebuddy.implementation.bytecode.assign.Assigner;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 import org.objectweb.asm.MethodVisitor;
 
 import java.lang.annotation.Annotation;
@@ -35,7 +35,7 @@ public class TargetMethodAnnotationDrivenBinderTest {
     private static final String FOO = "foo", BAR = "bar", BAZ = "baz";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private TargetMethodAnnotationDrivenBinder.ParameterBinder<?> firstParameterBinder, secondParameterBinder;
@@ -142,7 +142,7 @@ public class TargetMethodAnnotationDrivenBinderTest {
 
     @After
     public void tearDown() throws Exception {
-        verifyZeroInteractions(implementationContext);
+        verifyNoMoreInteractions(implementationContext);
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -165,9 +165,9 @@ public class TargetMethodAnnotationDrivenBinderTest {
                 terminationHandler,
                 methodInvoker,
                 assigner).isValid(), is(false));
-        verifyZeroInteractions(assigner);
-        verifyZeroInteractions(implementationTarget);
-        verifyZeroInteractions(sourceMethod);
+        verifyNoMoreInteractions(assigner);
+        verifyNoMoreInteractions(implementationTarget);
+        verifyNoMoreInteractions(sourceMethod);
     }
 
     @Test
@@ -185,9 +185,9 @@ public class TargetMethodAnnotationDrivenBinderTest {
                 terminationHandler,
                 methodInvoker,
                 assigner).isValid(), is(false));
-        verifyZeroInteractions(terminationHandler);
-        verifyZeroInteractions(assigner);
-        verifyZeroInteractions(methodInvoker);
+        verifyNoMoreInteractions(terminationHandler);
+        verifyNoMoreInteractions(assigner);
+        verifyNoMoreInteractions(methodInvoker);
     }
 
     @Test
@@ -207,8 +207,8 @@ public class TargetMethodAnnotationDrivenBinderTest {
                 assigner).isValid(), is(false));
         verify(terminationHandler).resolve(assigner, typing, sourceMethod, targetMethod);
         verifyNoMoreInteractions(terminationHandler);
-        verifyZeroInteractions(assigner);
-        verifyZeroInteractions(methodInvoker);
+        verifyNoMoreInteractions(assigner);
+        verifyNoMoreInteractions(methodInvoker);
     }
 
     @Test
@@ -250,8 +250,8 @@ public class TargetMethodAnnotationDrivenBinderTest {
         when(targetMethod.getDeclaredAnnotations()).thenReturn(new AnnotationList.Empty());
         when(firstParameter.getDeclaredAnnotations()).thenReturn(new AnnotationList.Empty());
         when(secondParameter.getDeclaredAnnotations()).thenReturn(new AnnotationList.Empty());
-        when(firstParameter.getType()).thenReturn(TypeDescription.Generic.OBJECT);
-        when(secondParameter.getType()).thenReturn(TypeDescription.Generic.OBJECT);
+        when(firstParameter.getType()).thenReturn(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class));
+        when(secondParameter.getType()).thenReturn(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class));
         when(sourceMethod.getParameters()).thenReturn(new ParameterList.Explicit(firstParameter, secondParameter));
         MethodDelegationBinder methodDelegationBinder = TargetMethodAnnotationDrivenBinder.of(Collections.<TargetMethodAnnotationDrivenBinder.ParameterBinder<?>>emptyList());
         MethodDelegationBinder.MethodBinding methodBinding = methodDelegationBinder.compile(targetMethod).bind(implementationTarget,
@@ -306,7 +306,7 @@ public class TargetMethodAnnotationDrivenBinderTest {
         StackManipulation.Size size = methodBinding.apply(methodVisitor, implementationContext);
         assertThat(size.getSizeImpact(), is(0));
         assertThat(size.getMaximalSize(), is(0));
-        verifyZeroInteractions(methodVisitor);
+        verifyNoMoreInteractions(methodVisitor);
         verify(targetMethod, atLeast(1)).getDeclaredAnnotations();
         verify(firstParameter, atLeast(1)).getDeclaredAnnotations();
         verify(secondParameter, atLeast(1)).getDeclaredAnnotations();

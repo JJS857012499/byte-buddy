@@ -18,12 +18,14 @@ package net.bytebuddy.build.gradle;
 import groovy.lang.Closure;
 import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.build.EntryPoint;
+import net.bytebuddy.utility.nullability.MaybeNull;
+import net.bytebuddy.utility.nullability.UnknownNull;
 import org.gradle.api.Action;
+import org.gradle.api.JavaVersion;
+import org.gradle.api.Project;
 import org.gradle.api.Task;
-import org.gradle.api.plugins.JavaPluginConvention;
-import org.gradle.util.ConfigureUtil;
+import org.gradle.api.file.FileCollection;
 
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -33,6 +35,11 @@ import java.util.List;
  * @param <T> The type of the task this extension represents.
  */
 public abstract class AbstractByteBuddyTaskExtension<T extends AbstractByteBuddyTask> {
+
+    /**
+     * The current Gradle project.
+     */
+    private final Project project;
 
     /**
      * The transformations to apply.
@@ -108,13 +115,23 @@ public abstract class AbstractByteBuddyTaskExtension<T extends AbstractByteBuddy
      * The class file version to use for creating auxiliary types or {@code null} if the
      * version is determined implicitly.
      */
-    @Nullable
+    @MaybeNull
     private ClassFileVersion classFileVersion;
 
     /**
-     * Creates a new abstract Byte Buddy task extension.
+     * The class file version to use for resolving multi-release jar files or {@code null} if
+     * {@link #classFileVersion} or the implicit version should be used.
      */
-    protected AbstractByteBuddyTaskExtension() {
+    @MaybeNull
+    private ClassFileVersion multiReleaseClassFileVersion;
+
+    /**
+     * Creates a new abstract Byte Buddy task extension.
+     *
+     * @param project The current Gradle project.
+     */
+    protected AbstractByteBuddyTaskExtension(@UnknownNull Project project) {
+        this.project = project;
         transformations = new ArrayList<Transformation>();
         entryPoint = EntryPoint.Default.REBASE;
         suffix = "";
@@ -142,7 +159,25 @@ public abstract class AbstractByteBuddyTaskExtension<T extends AbstractByteBuddy
      * @param closure The closure to configure the transformation.
      */
     public void transformation(Closure<Transformation> closure) {
-        transformations.add(ConfigureUtil.configure(closure, new Transformation()));
+        Transformation transformation = ObjectFactory.newInstance(project, Transformation.class, project);
+        if (transformation == null) {
+            transformation = new Transformation(project);
+        }
+        transformations.add((Transformation) project.configure(transformation, closure));
+    }
+
+    /**
+     * Adds an additional transformation.
+     *
+     * @param action The action to configure the transformation.
+     */
+    public void transformation(Action<Transformation> action) {
+        Transformation transformation = ObjectFactory.newInstance(project, Transformation.class, project);
+        if (transformation == null) {
+            transformation = new Transformation(project);
+        }
+        action.execute(transformation);
+        transformations.add(transformation);
     }
 
     /**
@@ -367,7 +402,7 @@ public abstract class AbstractByteBuddyTaskExtension<T extends AbstractByteBuddy
      *
      * @return The class file version to use for creating auxiliary types.
      */
-    @Nullable
+    @MaybeNull
     public ClassFileVersion getClassFileVersion() {
         return classFileVersion;
     }
@@ -378,22 +413,47 @@ public abstract class AbstractByteBuddyTaskExtension<T extends AbstractByteBuddy
      *
      * @param classFileVersion The class file version to use for creating auxiliary types.
      */
-    public void setClassFileVersion(@Nullable ClassFileVersion classFileVersion) {
+    public void setClassFileVersion(@MaybeNull ClassFileVersion classFileVersion) {
         this.classFileVersion = classFileVersion;
     }
 
     /**
-     * Resolves default properties from the Java plugin convention.
+     * Returns the class file version to use for resolving multi-release jar files or {@code null} if the
+     * explicit or implicit class file version of this task should be used.
      *
-     * @param convention The convention to resolve.
+     * @return The class file version to use for resolving multi-release jar files.
      */
-    protected void resolve(JavaPluginConvention convention) {
+    @MaybeNull
+    public ClassFileVersion getMultiReleaseClassFileVersion() {
+        return multiReleaseClassFileVersion;
+    }
+
+    /**
+     * Sets the class file version to use for resolving multi-release jar files.
+     *
+     * @param multiReleaseClassFileVersion The class file version to use for resolving multi-release jar files.
+     */
+    public void setMultiReleaseClassFileVersion(@MaybeNull ClassFileVersion multiReleaseClassFileVersion) {
+        this.multiReleaseClassFileVersion = multiReleaseClassFileVersion;
+    }
+
+    /**
+     * Resolves default properties and considers the contextual Java version.
+     *
+     * @param version The Java version to resolve as a fallback if no explicit version is set.
+     */
+    protected void resolve(JavaVersion version) {
         if (classFileVersion == null) {
-            classFileVersion = ClassFileVersion.ofJavaVersion(Integer.parseInt(convention
-                    .getTargetCompatibility()
-                    .getMajorVersion()));
+            classFileVersion = ClassFileVersion.ofJavaVersion(Integer.parseInt(version.getMajorVersion()));
         }
     }
+
+    /**
+     * Returns {@code true} if this extension defines an empty discovery.
+     *
+     * @return {@code true} if this extension defines an empty discovery.
+     */
+    protected abstract boolean isEmptyDiscovery();
 
     /**
      * Applies any extension-specific properties.
@@ -418,8 +478,16 @@ public abstract class AbstractByteBuddyTaskExtension<T extends AbstractByteBuddy
         task.setDiscovery(getDiscovery());
         task.setThreads(getThreads());
         task.setClassFileVersion(getClassFileVersion());
+        task.setMultiReleaseClassFileVersion(getMultiReleaseClassFileVersion());
         doConfigure(task);
     }
+
+    /**
+     * Defines the discovery set to use.
+     *
+     * @param fileCollection The file collection that represents the discovery set.
+     */
+    protected abstract void discoverySet(FileCollection fileCollection);
 
     /**
      * Returns the type of the Byte Buddy task.

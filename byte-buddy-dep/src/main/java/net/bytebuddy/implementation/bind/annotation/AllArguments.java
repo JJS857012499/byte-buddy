@@ -49,11 +49,9 @@ import static net.bytebuddy.matcher.ElementMatchers.named;
  * which simply skips non-assignable values instead.
  * </p>
  * <p>
- * <b>Important</b>: Don't confuse this annotation with {@link net.bytebuddy.asm.Advice.AllArguments} annotation. This annotation
- * should be used only in combination with method delegation
- * ({@link net.bytebuddy.implementation.MethodDelegation MethodDelegation.to(...)}).
- * For {@link net.bytebuddy.asm.Advice} ASM visitor use alternative annotation from
- * <code>net.bytebuddy.asm.Advice</code> package.
+ * <b>Important</b>: Don't confuse this annotation with {@link net.bytebuddy.asm.Advice.AllArguments} or
+ * {@link net.bytebuddy.asm.MemberSubstitution.AllArguments}. This annotation should be used with
+ * {@link net.bytebuddy.implementation.MethodDelegation} only.
  * </p>
  *
  * @see net.bytebuddy.implementation.MethodDelegation
@@ -191,7 +189,7 @@ public @interface AllArguments {
                                                                Assigner.Typing typing) {
             TypeDescription.Generic componentType;
             if (target.getType().represents(Object.class)) {
-                componentType = TypeDescription.Generic.OBJECT;
+                componentType = TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class);
             } else if (target.getType().isArray()) {
                 componentType = target.getType().getComponentType();
             } else {

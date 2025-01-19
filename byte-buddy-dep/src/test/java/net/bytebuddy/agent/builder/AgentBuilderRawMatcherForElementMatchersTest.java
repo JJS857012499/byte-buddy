@@ -2,12 +2,12 @@ package net.bytebuddy.agent.builder;
 
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.matcher.ElementMatcher;
-import net.bytebuddy.test.utility.MockitoRule;
 import net.bytebuddy.utility.JavaModule;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import java.security.ProtectionDomain;
 
@@ -18,7 +18,7 @@ import static org.mockito.Mockito.*;
 public class AgentBuilderRawMatcherForElementMatchersTest {
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private ElementMatcher<TypeDescription> typeMatcher;
@@ -48,7 +48,7 @@ public class AgentBuilderRawMatcherForElementMatchersTest {
         verify(moduleMatcher).matches(module);
         verifyNoMoreInteractions(moduleMatcher);
         verifyNoMoreInteractions(classLoaderMatcher);
-        verifyZeroInteractions(typeMatcher);
+        verifyNoMoreInteractions(typeMatcher);
     }
 
     @Test
@@ -60,7 +60,7 @@ public class AgentBuilderRawMatcherForElementMatchersTest {
         verifyNoMoreInteractions(moduleMatcher);
         verify(classLoaderMatcher).matches(classLoader);
         verifyNoMoreInteractions(classLoaderMatcher);
-        verifyZeroInteractions(typeMatcher);
+        verifyNoMoreInteractions(typeMatcher);
     }
 
     @Test
@@ -70,7 +70,7 @@ public class AgentBuilderRawMatcherForElementMatchersTest {
                 .matches(typeDescription, classLoader, module, Object.class, protectionDomain), is(false));
         verify(moduleMatcher).matches(module);
         verifyNoMoreInteractions(moduleMatcher);
-        verifyZeroInteractions(classLoaderMatcher);
+        verifyNoMoreInteractions(classLoaderMatcher);
         verifyNoMoreInteractions(typeMatcher);
     }
 
@@ -98,7 +98,7 @@ public class AgentBuilderRawMatcherForElementMatchersTest {
         verifyNoMoreInteractions(moduleMatcher);
         verify(classLoaderMatcher).matches(classLoader);
         verifyNoMoreInteractions(classLoaderMatcher);
-        verifyZeroInteractions(typeMatcher);
+        verifyNoMoreInteractions(typeMatcher);
     }
 
     @Test
@@ -109,8 +109,8 @@ public class AgentBuilderRawMatcherForElementMatchersTest {
                 .matches(typeDescription, classLoader, module, Object.class, protectionDomain), is(false));
         verify(moduleMatcher).matches(module);
         verifyNoMoreInteractions(moduleMatcher);
-        verifyZeroInteractions(classLoaderMatcher);
-        verifyZeroInteractions(typeMatcher);
+        verifyNoMoreInteractions(classLoaderMatcher);
+        verifyNoMoreInteractions(typeMatcher);
     }
 
     @Test
@@ -120,8 +120,8 @@ public class AgentBuilderRawMatcherForElementMatchersTest {
                 .matches(typeDescription, classLoader, module, Object.class, protectionDomain), is(false));
         verify(moduleMatcher).matches(module);
         verifyNoMoreInteractions(moduleMatcher);
-        verifyZeroInteractions(classLoaderMatcher);
-        verifyZeroInteractions(typeMatcher);
+        verifyNoMoreInteractions(classLoaderMatcher);
+        verifyNoMoreInteractions(typeMatcher);
     }
 
     @Test

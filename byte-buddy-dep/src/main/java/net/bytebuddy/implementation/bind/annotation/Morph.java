@@ -44,6 +44,7 @@ import net.bytebuddy.implementation.bytecode.member.MethodInvocation;
 import net.bytebuddy.implementation.bytecode.member.MethodReturn;
 import net.bytebuddy.implementation.bytecode.member.MethodVariableAccess;
 import net.bytebuddy.matcher.ElementMatchers;
+import net.bytebuddy.utility.RandomString;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
@@ -363,6 +364,13 @@ public @interface Morph {
             /**
              * {@inheritDoc}
              */
+            public String getSuffix() {
+                return RandomString.hashOf(morphingType.hashCode()) + (serializableProxy ? "S" : "0");
+            }
+
+            /**
+             * {@inheritDoc}
+             */
             public DynamicType make(String auxiliaryTypeName,
                                     ClassFileVersion classFileVersion,
                                     MethodAccessorFactory methodAccessorFactory) {
@@ -417,7 +425,7 @@ public @interface Morph {
                  * Creates the constructor call singleton.
                  */
                 StaticFieldConstructor() {
-                    objectTypeDefaultConstructor = TypeDescription.OBJECT.getDeclaredMethods()
+                    objectTypeDefaultConstructor = TypeDescription.ForLoadedType.of(Object.class).getDeclaredMethods()
                             .filter(isConstructor())
                             .getOnly();
                 }
@@ -588,7 +596,7 @@ public @interface Morph {
                             parameterLoading[index] = new StackManipulation.Compound(arrayReference,
                                     IntegerConstant.forValue(index),
                                     ArrayAccess.REFERENCE.load(),
-                                    assigner.assign(TypeDescription.Generic.OBJECT, parameterType, Assigner.Typing.DYNAMIC));
+                                    assigner.assign(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class), parameterType, Assigner.Typing.DYNAMIC));
                             index++;
                         }
                         StackManipulation.Size stackSize = new StackManipulation.Compound(

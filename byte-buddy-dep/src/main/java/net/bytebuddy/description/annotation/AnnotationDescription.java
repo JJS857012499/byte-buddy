@@ -26,11 +26,10 @@ import net.bytebuddy.description.method.MethodList;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.description.type.TypeList;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import net.bytebuddy.utility.privilege.SetAccessibleAction;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.lang.annotation.*;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
@@ -60,7 +59,7 @@ public interface AnnotationDescription {
     /**
      * Indicates a nonexistent annotation in a type-safe manner.
      */
-    @Nonnull(when = When.NEVER)
+    @AlwaysNull
     AnnotationDescription.Loadable<?> UNDEFINED = null;
 
     /**
@@ -111,6 +110,22 @@ public interface AnnotationDescription {
     Set<ElementType> getElementTypes();
 
     /**
+     * Checks if this annotation is supported on the supplied element type.
+     *
+     * @param elementType The element type to check.
+     * @return {@code true} if the supplied element type is supported by this annotation.
+     */
+    boolean isSupportedOn(ElementType elementType);
+
+    /**
+     * Checks if this annotation is supported on the supplied element type.
+     *
+     * @param elementType The element type to check.
+     * @return {@code true} if the supplied element type is supported by this annotation.
+     */
+    boolean isSupportedOn(String elementType);
+
+    /**
      * Checks if this annotation is inherited.
      *
      * @return {@code true} if this annotation is inherited.
@@ -155,7 +170,7 @@ public interface AnnotationDescription {
         LEGACY_VM,
 
         /**
-         * A rendering dispatcher for Java 14 onward.
+         * A rendering dispatcher for Java 14 until Java 18.
          */
         JAVA_14_CAPABLE_VM {
             @Override
@@ -163,6 +178,23 @@ public interface AnnotationDescription {
                 if (count > 1 || !key.equals("value")) {
                     super.appendPrefix(toString, key, count);
                 }
+            }
+        },
+
+        /**
+         * A rendering dispatcher for Java 19 onward.
+         */
+        JAVA_19_CAPABLE_VM {
+            @Override
+            public void appendPrefix(StringBuilder toString, String key, int count) {
+                if (count > 1 || !key.equals("value")) {
+                    super.appendPrefix(toString, key, count);
+                }
+            }
+
+            @Override
+            public void appendType(StringBuilder toString, TypeDescription typeDescription) {
+                toString.append(typeDescription.getCanonicalName());
             }
         };
 
@@ -175,7 +207,10 @@ public interface AnnotationDescription {
          * Initializes the rendering dispatcher.
          */
         static {
-            if (ClassFileVersion.ofThisVm(ClassFileVersion.JAVA_V5).isAtLeast(ClassFileVersion.JAVA_V14)) {
+            ClassFileVersion classFileVersion = ClassFileVersion.ofThisVm(ClassFileVersion.JAVA_V5);
+            if (classFileVersion.isAtLeast(ClassFileVersion.JAVA_V19)) {
+                CURRENT = RenderingDispatcher.JAVA_19_CAPABLE_VM;
+            } else if (classFileVersion.isAtLeast(ClassFileVersion.JAVA_V14)) {
                 CURRENT = RenderingDispatcher.JAVA_14_CAPABLE_VM;
             } else {
                 CURRENT = RenderingDispatcher.LEGACY_VM;
@@ -185,12 +220,22 @@ public interface AnnotationDescription {
         /**
          * Appends the key property prefix to a string builder representing an annotation's string representation.
          *
-         * @param toString The {@link Object#toString()} representation of the annotation being handled.
+         * @param toString The string builder that creates the string representation.
          * @param key      The key's name.
          * @param count    The property count.
          */
         public void appendPrefix(StringBuilder toString, String key, int count) {
             toString.append(key).append('=');
+        }
+
+        /**
+         * Appends the type name of the annotation being rendered.
+         *
+         * @param toString        The string builder that creates the string representation.
+         * @param typeDescription The annotation type being rendered.
+         */
+        public void appendType(StringBuilder toString, TypeDescription typeDescription) {
+            toString.append(typeDescription.getName());
         }
     }
 
@@ -257,7 +302,7 @@ public interface AnnotationDescription {
          * @return A proxy for the annotation type and values.
          */
         @SuppressWarnings("unchecked")
-        public static <S extends Annotation> S of(@Nullable ClassLoader classLoader,
+        public static <S extends Annotation> S of(@MaybeNull ClassLoader classLoader,
                                                   Class<S> annotationType,
                                                   Map<String, ? extends AnnotationValue<?, ?>> values) {
             LinkedHashMap<Method, AnnotationValue.Loaded<?>> loadedValues = new LinkedHashMap<Method, AnnotationValue.Loaded<?>>();
@@ -278,7 +323,7 @@ public interface AnnotationDescription {
         /**
          * {@inheritDoc}
          */
-        public Object invoke(Object proxy, Method method, @Nullable Object[] argument) {
+        public Object invoke(Object proxy, Method method, @MaybeNull Object[] argument) {
             if (method.getDeclaringClass() != annotationType) {
                 if (method.getName().equals(HASH_CODE)) {
                     return hashCodeRepresentation();
@@ -303,7 +348,7 @@ public interface AnnotationDescription {
         protected String toStringRepresentation() {
             StringBuilder toString = new StringBuilder();
             toString.append('@');
-            toString.append(annotationType.getName());
+            RenderingDispatcher.CURRENT.appendType(toString, TypeDescription.ForLoadedType.of(annotationType));
             toString.append('(');
             boolean firstMember = true;
             for (Map.Entry<Method, AnnotationValue.Loaded<?>> entry : values.entrySet()) {
@@ -386,7 +431,7 @@ public interface AnnotationDescription {
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (!(other instanceof AnnotationInvocationHandler)) {
@@ -484,6 +529,37 @@ public interface AnnotationDescription {
         /**
          * {@inheritDoc}
          */
+        public boolean isSupportedOn(ElementType elementType) {
+            return isSupportedOn(elementType.name());
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public boolean isSupportedOn(String elementType) {
+            AnnotationDescription.Loadable<Target> target = getAnnotationType().getDeclaredAnnotations().ofType(Target.class);
+            if (target == null) {
+                if (elementType.equals("TYPE_USE")) {
+                    return true;
+                }
+                for (ElementType candidate : DEFAULT_TARGET) {
+                    if (candidate.name().equals(elementType)) {
+                        return true;
+                    }
+                }
+            } else {
+                for (EnumerationDescription enumerationDescription : target.getValue(TARGET_VALUE).resolve(EnumerationDescription[].class)) {
+                    if (enumerationDescription.getValue().equals(elementType)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
         public boolean isInherited() {
             return getAnnotationType().getDeclaredAnnotations().isAnnotationPresent(Inherited.class);
         }
@@ -506,7 +582,7 @@ public interface AnnotationDescription {
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (!(other instanceof AnnotationDescription)) {
@@ -528,7 +604,9 @@ public interface AnnotationDescription {
         @Override
         public String toString() {
             TypeDescription annotationType = getAnnotationType();
-            StringBuilder toString = new StringBuilder().append('@').append(annotationType.getName()).append('(');
+            StringBuilder toString = new StringBuilder().append('@');
+            RenderingDispatcher.CURRENT.appendType(toString, annotationType);
+            toString.append('(');
             boolean firstMember = true;
             for (MethodDescription.InDefinedShape methodDescription : annotationType.getDeclaredMethods()) {
                 AnnotationValue<?, ?> value = getValue(methodDescription);
@@ -706,7 +784,7 @@ public interface AnnotationDescription {
          * {@inheritDoc}
          */
         @SuppressWarnings({"deprecation", "rawtypes"})
-        @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should always be wrapped for clarity")
+        @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should always be wrapped for clarity.")
         public AnnotationValue<?, ?> getValue(MethodDescription.InDefinedShape property) {
             if (!property.getDeclaringType().represents(annotation.annotationType())) {
                 throw new IllegalArgumentException(property + " does not represent " + annotation.annotationType());

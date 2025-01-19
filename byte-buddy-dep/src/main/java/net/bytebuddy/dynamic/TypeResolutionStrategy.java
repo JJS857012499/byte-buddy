@@ -21,8 +21,8 @@ import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
 import net.bytebuddy.dynamic.scaffold.TypeInitializer;
 import net.bytebuddy.implementation.LoadedTypeInitializer;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -63,7 +63,7 @@ public interface TypeResolutionStrategy {
          * @return A map of all type descriptions mapped to their representation as a loaded class.
          */
         <S extends ClassLoader> Map<TypeDescription, Class<?>> initialize(DynamicType dynamicType,
-                                                                          @Nullable S classLoader,
+                                                                          @MaybeNull S classLoader,
                                                                           ClassLoadingStrategy<? super S> classLoadingStrategy);
     }
 
@@ -96,7 +96,7 @@ public interface TypeResolutionStrategy {
          * {@inheritDoc}
          */
         public <S extends ClassLoader> Map<TypeDescription, Class<?>> initialize(DynamicType dynamicType,
-                                                                                 @Nullable S classLoader,
+                                                                                 @MaybeNull S classLoader,
                                                                                  ClassLoadingStrategy<? super S> classLoadingStrategy) {
             Map<TypeDescription, Class<?>> types = classLoadingStrategy.load(classLoader, dynamicType.getAllTypes());
             for (Map.Entry<TypeDescription, LoadedTypeInitializer> entry : dynamicType.getLoadedTypeInitializers().entrySet()) {
@@ -137,7 +137,7 @@ public interface TypeResolutionStrategy {
         /**
          * {@inheritDoc}
          */
-        @SuppressFBWarnings(value = "DMI_RANDOM_USED_ONLY_ONCE", justification = "Avoid thread-contention")
+        @SuppressFBWarnings(value = "DMI_RANDOM_USED_ONLY_ONCE", justification = "Avoids thread-contention.")
         public TypeResolutionStrategy.Resolved resolve() {
             return new Resolved(nexusAccessor, new Random().nextInt());
         }
@@ -180,7 +180,7 @@ public interface TypeResolutionStrategy {
              * {@inheritDoc}
              */
             public <S extends ClassLoader> Map<TypeDescription, Class<?>> initialize(DynamicType dynamicType,
-                                                                                     @Nullable S classLoader,
+                                                                                     @MaybeNull S classLoader,
                                                                                      ClassLoadingStrategy<? super S> classLoadingStrategy) {
                 Map<TypeDescription, LoadedTypeInitializer> loadedTypeInitializers = new HashMap<TypeDescription, LoadedTypeInitializer>(dynamicType.getLoadedTypeInitializers());
                 TypeDescription instrumentedType = dynamicType.getTypeDescription();
@@ -225,7 +225,7 @@ public interface TypeResolutionStrategy {
          * {@inheritDoc}
          */
         public <S extends ClassLoader> Map<TypeDescription, Class<?>> initialize(DynamicType dynamicType,
-                                                                                 @Nullable S classLoader,
+                                                                                 @MaybeNull S classLoader,
                                                                                  ClassLoadingStrategy<? super S> classLoadingStrategy) {
             return classLoadingStrategy.load(classLoader, dynamicType.getAllTypes());
         }
@@ -259,7 +259,7 @@ public interface TypeResolutionStrategy {
          * {@inheritDoc}
          */
         public <S extends ClassLoader> Map<TypeDescription, Class<?>> initialize(DynamicType dynamicType,
-                                                                                 @Nullable S classLoader,
+                                                                                 @MaybeNull S classLoader,
                                                                                  ClassLoadingStrategy<? super S> classLoadingStrategy) {
             throw new IllegalStateException("Cannot initialize a dynamic type for a disabled type resolution strategy");
         }

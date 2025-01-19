@@ -33,6 +33,21 @@ public class TypePoolDefaultTest {
         typePool.describe("/");
     }
 
+    @Test(expected = IllegalArgumentException.class)
+    public void testArrayNameMustBeDescriptorUnlessPrimitive() throws Exception {
+        typePool.describe("[abc");
+    }
+
+    @Test
+    public void testPrimitiveType() throws Exception {
+        assertThat(typePool.describe("int").resolve().represents(int.class), is(true));
+    }
+
+    @Test
+    public void testPrimitiveTypeArray() throws Exception {
+        assertThat(typePool.describe("[I").resolve().represents(int[].class), is(true));
+    }
+
     @Test(expected = IllegalStateException.class)
     public void testCannotFindClass() throws Exception {
         TypePool.Resolution resolution = typePool.describe("foo");
@@ -70,7 +85,7 @@ public class TypePoolDefaultTest {
         TypePool typePool = TypePool.Default.of(classFileLocator);
         TypePool.Resolution resolution = typePool.describe(String.class.getName());
         assertThat(typePool.describe(String.class.getName()).resolve(), CoreMatchers.is(resolution.resolve()));
-        assertThat(typePool.describe(String.class.getName()).resolve().getSuperClass().asErasure(), CoreMatchers.is(TypeDescription.OBJECT));
+        assertThat(typePool.describe(String.class.getName()).resolve().getSuperClass().asErasure(), CoreMatchers.is(TypeDescription.ForLoadedType.of(Object.class)));
         verify(classFileLocator).locate(String.class.getName());
         verify(classFileLocator).locate(Object.class.getName());
         verifyNoMoreInteractions(classFileLocator);

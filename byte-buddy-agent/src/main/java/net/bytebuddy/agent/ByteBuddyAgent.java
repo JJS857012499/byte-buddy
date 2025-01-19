@@ -16,13 +16,11 @@
 package net.bytebuddy.agent;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import net.bytebuddy.agent.utility.nullability.AlwaysNull;
+import net.bytebuddy.agent.utility.nullability.MaybeNull;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.io.*;
 import java.lang.instrument.Instrumentation;
-import java.lang.management.ManagementFactory;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.MalformedURLException;
@@ -93,30 +91,15 @@ public class ByteBuddyAgent {
     private static final String MANIFEST_VERSION_VALUE = "1.0";
 
     /**
-     * The size of the buffer for copying the agent installer file into another jar.
-     */
-    private static final int BUFFER_SIZE = 1024;
-
-    /**
-     * Convenience indices for reading and writing to the buffer to make the code more readable.
-     */
-    private static final int START_INDEX = 0, END_OF_FILE = -1;
-
-    /**
-     * The status code expected as a result of a successful attachment.
-     */
-    private static final int SUCCESSFUL_ATTACH = 0;
-
-    /**
      * Representation of the bootstrap {@link java.lang.ClassLoader}.
      */
-    @Nonnull(when = When.NEVER)
+    @AlwaysNull
     private static final ClassLoader BOOTSTRAP_CLASS_LOADER = null;
 
     /**
      * Represents a no-op argument for a dynamic agent attachment.
      */
-    @Nonnull(when = When.NEVER)
+    @AlwaysNull
     private static final String WITHOUT_ARGUMENT = null;
 
     /**
@@ -140,6 +123,11 @@ public class ByteBuddyAgent {
     private static final String CLASS_PATH_ARGUMENT = "-cp";
 
     /**
+     * The character that is used to mark the beginning of the argument to the agent.
+     */
+    private static final String AGENT_ARGUMENT_SEPARATOR = "=";
+
+    /**
      * The Java property denoting the Java home directory.
      */
     private static final String JAVA_HOME = "java.home";
@@ -148,28 +136,6 @@ public class ByteBuddyAgent {
      * The Java property denoting the operating system name.
      */
     private static final String OS_NAME = "os.name";
-
-    /**
-     * The name of the method for reading the installer's instrumentation.
-     */
-    private static final String INSTRUMENTATION_METHOD = "getInstrumentation";
-
-    /**
-     * Represents the {@code file} URL protocol.
-     */
-    private static final String FILE_PROTOCOL = "file";
-
-    /**
-     * An indicator variable to express that no instrumentation is available.
-     */
-    @Nonnull(when = When.NEVER)
-    private static final Instrumentation UNAVAILABLE = null;
-
-    /**
-     * Represents a failed attempt to self-resolve a jar file location.
-     */
-    @Nonnull(when = When.NEVER)
-    private static final File CANNOT_SELF_RESOLVE = null;
 
     /**
      * The attachment type evaluator to be used for determining if an attachment requires an external process.
@@ -261,7 +227,7 @@ public class ByteBuddyAgent {
      * @param processId The target process id.
      * @param argument  The argument to provide to the agent.
      */
-    public static void attach(File agentJar, String processId, @Nullable String argument) {
+    public static void attach(File agentJar, String processId, @MaybeNull String argument) {
         attach(agentJar, processId, argument, AttachmentProvider.DEFAULT);
     }
 
@@ -296,7 +262,7 @@ public class ByteBuddyAgent {
      * @param argument           The argument to provide to the agent.
      * @param attachmentProvider The attachment provider to use.
      */
-    public static void attach(File agentJar, String processId, @Nullable String argument, AttachmentProvider attachmentProvider) {
+    public static void attach(File agentJar, String processId, @MaybeNull String argument, AttachmentProvider attachmentProvider) {
         install(attachmentProvider, processId, argument, new AgentProvider.ForExistingAgent(agentJar), false);
     }
 
@@ -331,7 +297,7 @@ public class ByteBuddyAgent {
      * @param processProvider A provider of the target process id.
      * @param argument        The argument to provide to the agent.
      */
-    public static void attach(File agentJar, ProcessProvider processProvider, @Nullable String argument) {
+    public static void attach(File agentJar, ProcessProvider processProvider, @MaybeNull String argument) {
         attach(agentJar, processProvider, argument, AttachmentProvider.DEFAULT);
     }
 
@@ -366,7 +332,7 @@ public class ByteBuddyAgent {
      * @param argument           The argument to provide to the agent.
      * @param attachmentProvider The attachment provider to use.
      */
-    public static void attach(File agentJar, ProcessProvider processProvider, @Nullable String argument, AttachmentProvider attachmentProvider) {
+    public static void attach(File agentJar, ProcessProvider processProvider, @MaybeNull String argument, AttachmentProvider attachmentProvider) {
         install(attachmentProvider, processProvider.resolve(), argument, new AgentProvider.ForExistingAgent(agentJar), false);
     }
 
@@ -401,7 +367,7 @@ public class ByteBuddyAgent {
      * @param processId    The target process id.
      * @param argument     The argument to provide to the agent.
      */
-    public static void attachNative(File agentLibrary, String processId, @Nullable String argument) {
+    public static void attachNative(File agentLibrary, String processId, @MaybeNull String argument) {
         attachNative(agentLibrary, processId, argument, AttachmentProvider.DEFAULT);
     }
 
@@ -436,7 +402,7 @@ public class ByteBuddyAgent {
      * @param argument           The argument to provide to the agent.
      * @param attachmentProvider The attachment provider to use.
      */
-    public static void attachNative(File agentLibrary, String processId, @Nullable String argument, AttachmentProvider attachmentProvider) {
+    public static void attachNative(File agentLibrary, String processId, @MaybeNull String argument, AttachmentProvider attachmentProvider) {
         install(attachmentProvider, processId, argument, new AgentProvider.ForExistingAgent(agentLibrary), true);
     }
 
@@ -471,7 +437,7 @@ public class ByteBuddyAgent {
      * @param processProvider A provider of the target process id.
      * @param argument        The argument to provide to the agent.
      */
-    public static void attachNative(File agentLibrary, ProcessProvider processProvider, @Nullable String argument) {
+    public static void attachNative(File agentLibrary, ProcessProvider processProvider, @MaybeNull String argument) {
         attachNative(agentLibrary, processProvider, argument, AttachmentProvider.DEFAULT);
     }
 
@@ -506,7 +472,7 @@ public class ByteBuddyAgent {
      * @param argument           The argument to provide to the agent.
      * @param attachmentProvider The attachment provider to use.
      */
-    public static void attachNative(File agentLibrary, ProcessProvider processProvider, @Nullable String argument, AttachmentProvider attachmentProvider) {
+    public static void attachNative(File agentLibrary, ProcessProvider processProvider, @MaybeNull String argument, AttachmentProvider attachmentProvider) {
         install(attachmentProvider, processProvider.resolve(), argument, new AgentProvider.ForExistingAgent(agentLibrary), true);
     }
 
@@ -623,7 +589,7 @@ public class ByteBuddyAgent {
      * @param agentProvider      The agent provider for the agent jar or library.
      * @param isNative           {@code true} if the agent is native.
      */
-    private static void install(AttachmentProvider attachmentProvider, String processId, @Nullable String argument, AgentProvider agentProvider, boolean isNative) {
+    private static void install(AttachmentProvider attachmentProvider, String processId, @MaybeNull String argument, AgentProvider agentProvider, boolean isNative) {
         AttachmentProvider.Accessor attachmentAccessor = attachmentProvider.attempt();
         if (!attachmentAccessor.isAvailable()) {
             throw new IllegalStateException("No compatible attachment provider is available");
@@ -652,11 +618,12 @@ public class ByteBuddyAgent {
      * @param argument           The argument to provide to the agent or {@code null} if no argument should be supplied.
      * @throws Exception If an exception occurs during the attachment or the external process fails the attachment.
      */
+    @SuppressFBWarnings(value = "OS_OPEN_STREAM_EXCEPTION_PATH", justification = "Outer stream holds file handle and is closed")
     private static void installExternal(AttachmentProvider.Accessor.ExternalAttachment externalAttachment,
                                         String processId,
                                         File agent,
                                         boolean isNative,
-                                        @Nullable String argument) throws Exception {
+                                        @MaybeNull String argument) throws Exception {
         File selfResolvedJar = trySelfResolve(), attachmentJar = null;
         try {
             if (selfResolvedJar == null) {
@@ -666,40 +633,45 @@ public class ByteBuddyAgent {
                 }
                 try {
                     attachmentJar = File.createTempFile(ATTACHER_FILE_NAME, JAR_FILE_EXTENSION);
-                    JarOutputStream jarOutputStream = new JarOutputStream(new FileOutputStream(attachmentJar));
+                    OutputStream outputStream = new FileOutputStream(attachmentJar);
                     try {
+                        JarOutputStream jarOutputStream = new JarOutputStream(outputStream);
                         jarOutputStream.putNextEntry(new JarEntry(Attacher.class.getName().replace('.', '/') + CLASS_FILE_EXTENSION));
-                        byte[] buffer = new byte[BUFFER_SIZE];
+                        byte[] buffer = new byte[1024 * 8];
                         int index;
-                        while ((index = inputStream.read(buffer)) != END_OF_FILE) {
-                            jarOutputStream.write(buffer, START_INDEX, index);
+                        while ((index = inputStream.read(buffer)) != -1) {
+                            jarOutputStream.write(buffer, 0, index);
                         }
                         jarOutputStream.closeEntry();
-                    } finally {
                         jarOutputStream.close();
+                    } finally {
+                        outputStream.close();
                     }
                 } finally {
                     inputStream.close();
                 }
             }
-            StringBuilder classPath = new StringBuilder().append(quote((selfResolvedJar == null
+            StringBuilder classPath = new StringBuilder().append((selfResolvedJar == null
                     ? attachmentJar
-                    : selfResolvedJar).getCanonicalPath()));
+                    : selfResolvedJar).getCanonicalPath());
             for (File jar : externalAttachment.getClassPath()) {
-                classPath.append(File.pathSeparatorChar).append(quote(jar.getCanonicalPath()));
+                classPath.append(File.pathSeparatorChar).append(jar.getCanonicalPath());
             }
             if (new ProcessBuilder(System.getProperty(JAVA_HOME)
                     + File.separatorChar + "bin"
                     + File.separatorChar + (System.getProperty(OS_NAME, "").toLowerCase(Locale.US).contains("windows") ? "java.exe" : "java"),
+                    "-D" + Attacher.DUMP_PROPERTY + AGENT_ARGUMENT_SEPARATOR + System.getProperty(Attacher.DUMP_PROPERTY, ""),
                     CLASS_PATH_ARGUMENT,
                     classPath.toString(),
                     Attacher.class.getName(),
                     externalAttachment.getVirtualMachineType(),
                     processId,
-                    quote(agent.getAbsolutePath()),
+                    agent.getAbsolutePath(),
                     Boolean.toString(isNative),
-                    argument == null ? "" : ("=" + argument)).start().waitFor() != SUCCESSFUL_ATTACH) {
-                throw new IllegalStateException("Could not self-attach to current VM using external process");
+                    argument == null ? "" : (AGENT_ARGUMENT_SEPARATOR + argument)).start().waitFor() != 0) {
+                throw new IllegalStateException("Could not self-attach to current VM using external process - set a property "
+                        + Attacher.DUMP_PROPERTY
+                        + " to dump the process output to a file at the specified location");
             }
         } finally {
             if (attachmentJar != null) {
@@ -715,45 +687,37 @@ public class ByteBuddyAgent {
      *
      * @return The self-resolved jar file or {@code null} if the jar file cannot be located.
      */
-    @Nullable
-    @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not be rethrown but trigger a fallback")
+    @MaybeNull
+    @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not be rethrown but trigger a fallback.")
     private static File trySelfResolve() {
         try {
             if (Boolean.getBoolean(LATENT_RESOLVE)) {
-                return CANNOT_SELF_RESOLVE;
+                return null;
             }
             ProtectionDomain protectionDomain = Attacher.class.getProtectionDomain();
             if (protectionDomain == null) {
-                return CANNOT_SELF_RESOLVE;
+                return null;
             }
             CodeSource codeSource = protectionDomain.getCodeSource();
             if (codeSource == null) {
-                return CANNOT_SELF_RESOLVE;
+                return null;
             }
             URL location = codeSource.getLocation();
-            if (!location.getProtocol().equals(FILE_PROTOCOL)) {
-                return CANNOT_SELF_RESOLVE;
+            if (!location.getProtocol().equals("file")) {
+                return null;
             }
             try {
-                return new File(location.toURI());
+                File file = new File(location.toURI());
+                if (file.getPath().contains(AGENT_ARGUMENT_SEPARATOR)) {
+                    return null;
+                }
+                return file;
             } catch (URISyntaxException ignored) {
                 return new File(location.getPath());
             }
         } catch (Exception ignored) {
-            return CANNOT_SELF_RESOLVE;
+            return null;
         }
-    }
-
-    /**
-     * Quotes a value if it contains a white space.
-     *
-     * @param value The value to quote.
-     * @return The value being quoted if necessary.
-     */
-    private static String quote(String value) {
-        return value.contains(" ")
-                ? '"' + value + '"'
-                : value;
     }
 
     /**
@@ -762,11 +726,29 @@ public class ByteBuddyAgent {
      *
      * @return The Byte Buddy agent's {@link java.lang.instrument.Instrumentation} instance.
      */
-    @Nullable
-    @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Legal outcome where reflection communicates errors by throwing an exception")
+    @MaybeNull
     private static Instrumentation doGetInstrumentation() {
+        if (!Installer.NAME.equals(Installer.class.getName())) {
+            Instrumentation instrumentation = doGetInstrumentation(Installer.NAME);
+            if (instrumentation != null) {
+                return instrumentation;
+            }
+        }
+        return doGetInstrumentation(Installer.class.getName());
+    }
+
+    /**
+     * Performs the actual lookup of the {@link java.lang.instrument.Instrumentation} from an installed
+     * Byte Buddy agent and returns the instance, or returns {@code null} if not present.
+     *
+     * @param name The name of the {@link Installer} class which might be shaded.
+     * @return The Byte Buddy agent's {@link java.lang.instrument.Instrumentation} instance.
+     */
+    @MaybeNull
+    @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not be rethrown but trigger a fallback.")
+    private static Instrumentation doGetInstrumentation(String name) {
         try {
-            Class<?> installer = Class.forName(Installer.class.getName(), true, ClassLoader.getSystemClassLoader());
+            Class<?> installer = Class.forName(name, true, ClassLoader.getSystemClassLoader());
             try {
                 Class<?> module = Class.forName("java.lang.Module");
                 Method getModule = Class.class.getMethod("getModule");
@@ -777,11 +759,11 @@ public class ByteBuddyAgent {
             } catch (ClassNotFoundException ignored) {
                 /* empty */
             }
-            return (Instrumentation) Class.forName(Installer.class.getName(), true, ClassLoader.getSystemClassLoader())
-                    .getMethod(INSTRUMENTATION_METHOD)
+            return (Instrumentation) Class.forName(name, true, ClassLoader.getSystemClassLoader())
+                    .getMethod("getInstrumentation")
                     .invoke(null);
         } catch (Exception ignored) {
-            return UNAVAILABLE;
+            return null;
         }
     }
 
@@ -968,7 +950,7 @@ public class ByteBuddyAgent {
                  * @param classPath   The class path required to load the virtual machine class.
                  * @return An appropriate accessor.
                  */
-                public static Accessor of(@Nullable ClassLoader classLoader, File... classPath) {
+                public static Accessor of(@MaybeNull ClassLoader classLoader, File... classPath) {
                     try {
                         return new Simple.WithExternalAttachment(Class.forName(VIRTUAL_MACHINE_TYPE_NAME,
                                 false,
@@ -1163,7 +1145,7 @@ public class ByteBuddyAgent {
             /**
              * {@inheritDoc}
              */
-            @SuppressFBWarnings(value = "DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED", justification = "Privilege is explicit user responsibility")
+            @SuppressFBWarnings(value = "DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED", justification = "Assuring privilege is explicit user responsibility.")
             public Accessor attempt() {
                 File toolsJar = new File(System.getProperty(JAVA_HOME_PROPERTY), toolsJarPath);
                 try {
@@ -1194,7 +1176,7 @@ public class ByteBuddyAgent {
             /**
              * {@inheritDoc}
              */
-            @SuppressFBWarnings(value = "DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED", justification = "Privilege is explicit user responsibility")
+            @SuppressFBWarnings(value = "DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED", justification = "Assuring privilege is explicit user responsibility.")
             public Accessor attempt() {
                 String location = System.getProperty(PROPERTY);
                 if (location == null) {
@@ -1326,7 +1308,9 @@ public class ByteBuddyAgent {
             }
 
             /**
-             * A process provider for a legacy VM that reads the process id from its JMX properties.
+             * A process provider for a legacy VM that reads the process id from its JMX properties. This strategy
+             * is only used prior to Java 9 such that the <i>java.management</i> module never is resolved, even if
+             * the module system is used, as the module system was not available in any relevant JVM version.
              */
             protected enum ForLegacyVm implements ProcessProvider {
 
@@ -1338,8 +1322,15 @@ public class ByteBuddyAgent {
                 /**
                  * {@inheritDoc}
                  */
+                @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not be rethrown but trigger a fallback.")
                 public String resolve() {
-                    String runtimeName = ManagementFactory.getRuntimeMXBean().getName();
+                    String runtimeName;
+                    try {
+                        Method method = Class.forName("java.lang.management.ManagementFactory").getMethod("getRuntimeMXBean");
+                        runtimeName = (String) method.getReturnType().getMethod("getName").invoke(method.invoke(null));
+                    } catch (Exception exception) {
+                        throw new IllegalStateException("Failed to access VM name via management factory", exception);
+                    }
                     int processIdIndex = runtimeName.indexOf('@');
                     if (processIdIndex == -1) {
                         throw new IllegalStateException("Cannot extract process id from runtime management bean");
@@ -1381,7 +1372,7 @@ public class ByteBuddyAgent {
                  *
                  * @return A dispatcher for the current VM.
                  */
-                @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not be rethrown but trigger a fallback")
+                @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not be rethrown but trigger a fallback.")
                 public static ProcessProvider make() {
                     try {
                         return new ForJava9CapableVm(Class.forName("java.lang.ProcessHandle").getMethod("current"),
@@ -1440,25 +1431,26 @@ public class ByteBuddyAgent {
              * to avoid the creation of a temporary jar file which can remain undeleted on Windows operating systems where the agent
              * is linked by a class loader such that {@link File#deleteOnExit()} does not have an effect.
              *
+             * @param installer The installer class to attempt to resolve which might be a shaded version of the class.
              * @return This jar file's location or {@code null} if this jar file's location is inaccessible.
              * @throws IOException If an I/O exception occurs.
              */
-            @Nullable
-            private static File trySelfResolve() throws IOException {
-                ProtectionDomain protectionDomain = Installer.class.getProtectionDomain();
+            @MaybeNull
+            private static File trySelfResolve(Class<?> installer) throws IOException {
+                ProtectionDomain protectionDomain = installer.getProtectionDomain();
                 if (Boolean.getBoolean(LATENT_RESOLVE)) {
-                    return CANNOT_SELF_RESOLVE;
+                    return null;
                 }
                 if (protectionDomain == null) {
-                    return CANNOT_SELF_RESOLVE;
+                    return null;
                 }
                 CodeSource codeSource = protectionDomain.getCodeSource();
                 if (codeSource == null) {
-                    return CANNOT_SELF_RESOLVE;
+                    return null;
                 }
                 URL location = codeSource.getLocation();
-                if (!location.getProtocol().equals(FILE_PROTOCOL)) {
-                    return CANNOT_SELF_RESOLVE;
+                if (!location.getProtocol().equals("file")) {
+                    return null;
                 }
                 File agentJar;
                 try {
@@ -1467,29 +1459,32 @@ public class ByteBuddyAgent {
                     agentJar = new File(location.getPath());
                 }
                 if (!agentJar.isFile() || !agentJar.canRead()) {
-                    return CANNOT_SELF_RESOLVE;
+                    return null;
                 }
                 // It is necessary to check the manifest of the containing file as this code can be shaded into another artifact.
-                JarInputStream jarInputStream = new JarInputStream(new FileInputStream(agentJar));
+                Manifest manifest;
+                InputStream inputStream = new FileInputStream(agentJar);
                 try {
-                    Manifest manifest = jarInputStream.getManifest();
-                    if (manifest == null) {
-                        return CANNOT_SELF_RESOLVE;
-                    }
-                    Attributes attributes = manifest.getMainAttributes();
-                    if (attributes == null) {
-                        return CANNOT_SELF_RESOLVE;
-                    }
-                    if (Installer.class.getName().equals(attributes.getValue(AGENT_CLASS_PROPERTY))
-                            && Boolean.parseBoolean(attributes.getValue(CAN_REDEFINE_CLASSES_PROPERTY))
-                            && Boolean.parseBoolean(attributes.getValue(CAN_RETRANSFORM_CLASSES_PROPERTY))
-                            && Boolean.parseBoolean(attributes.getValue(CAN_SET_NATIVE_METHOD_PREFIX))) {
-                        return agentJar;
-                    } else {
-                        return CANNOT_SELF_RESOLVE;
-                    }
-                } finally {
+                    JarInputStream jarInputStream = new JarInputStream(inputStream);
+                    manifest = jarInputStream.getManifest();
                     jarInputStream.close();
+                } finally {
+                    inputStream.close();
+                }
+                if (manifest == null) {
+                    return null;
+                }
+                Attributes attributes = manifest.getMainAttributes();
+                if (attributes == null) {
+                    return null;
+                }
+                if (installer.getName().equals(attributes.getValue(AGENT_CLASS_PROPERTY))
+                        && Boolean.parseBoolean(attributes.getValue(CAN_REDEFINE_CLASSES_PROPERTY))
+                        && Boolean.parseBoolean(attributes.getValue(CAN_RETRANSFORM_CLASSES_PROPERTY))
+                        && Boolean.parseBoolean(attributes.getValue(CAN_SET_NATIVE_METHOD_PREFIX))) {
+                    return agentJar;
+                } else {
+                    return null;
                 }
             }
 
@@ -1499,6 +1494,7 @@ public class ByteBuddyAgent {
              * @return The agent jar file.
              * @throws IOException If an I/O exception occurs.
              */
+            @SuppressFBWarnings(value = "OS_OPEN_STREAM_EXCEPTION_PATH", justification = "Outer stream holds file handle and is closed")
             private static File createJarFile() throws IOException {
                 InputStream inputStream = Installer.class.getResourceAsStream('/' + Installer.class.getName().replace('.', '/') + CLASS_FILE_EXTENSION);
                 if (inputStream == null) {
@@ -1513,17 +1509,19 @@ public class ByteBuddyAgent {
                     manifest.getMainAttributes().put(new Attributes.Name(CAN_REDEFINE_CLASSES_PROPERTY), Boolean.TRUE.toString());
                     manifest.getMainAttributes().put(new Attributes.Name(CAN_RETRANSFORM_CLASSES_PROPERTY), Boolean.TRUE.toString());
                     manifest.getMainAttributes().put(new Attributes.Name(CAN_SET_NATIVE_METHOD_PREFIX), Boolean.TRUE.toString());
-                    JarOutputStream jarOutputStream = new JarOutputStream(new FileOutputStream(agentJar), manifest);
+                    OutputStream outputStream = new FileOutputStream(agentJar);
                     try {
+                        JarOutputStream jarOutputStream = new JarOutputStream(outputStream, manifest);
                         jarOutputStream.putNextEntry(new JarEntry(Installer.class.getName().replace('.', '/') + CLASS_FILE_EXTENSION));
-                        byte[] buffer = new byte[BUFFER_SIZE];
+                        byte[] buffer = new byte[1024 * 8];
                         int index;
-                        while ((index = inputStream.read(buffer)) != END_OF_FILE) {
-                            jarOutputStream.write(buffer, START_INDEX, index);
+                        while ((index = inputStream.read(buffer)) != -1) {
+                            jarOutputStream.write(buffer, 0, index);
                         }
                         jarOutputStream.closeEntry();
-                    } finally {
                         jarOutputStream.close();
+                    } finally {
+                        outputStream.close();
                     }
                     return agentJar;
                 } finally {
@@ -1534,15 +1532,29 @@ public class ByteBuddyAgent {
             /**
              * {@inheritDoc}
              */
+            @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not be rethrown but trigger a fallback.")
             public File resolve() throws IOException {
                 try {
-                    File agentJar = trySelfResolve();
-                    return agentJar == null
-                            ? createJarFile()
-                            : agentJar;
+                    if (!Installer.class.getName().equals(Installer.NAME)) {
+                        try {
+                            File resolved = trySelfResolve(Class.forName(Installer.NAME,
+                                    false,
+                                    ClassLoader.getSystemClassLoader()));
+                            if (resolved != null) {
+                                return resolved;
+                            }
+                        } catch (ClassNotFoundException ignored) {
+                            /* do nothing */
+                        }
+                    }
+                    File resolved = trySelfResolve(Installer.class);
+                    if (resolved != null) {
+                        return resolved;
+                    }
                 } catch (Exception ignored) {
-                    return createJarFile();
+                    /* do nothing */
                 }
+                return createJarFile();
             }
         }
 
@@ -1605,7 +1617,7 @@ public class ByteBuddyAgent {
             /**
              * {@inheritDoc}
              */
-            @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not be rethrown but trigger a fallback")
+            @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not be rethrown but trigger a fallback.")
             public AttachmentTypeEvaluator run() {
                 try {
                     if (Boolean.getBoolean(JDK_ALLOW_SELF_ATTACH)) {

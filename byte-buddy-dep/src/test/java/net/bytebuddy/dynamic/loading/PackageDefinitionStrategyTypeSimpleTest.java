@@ -6,8 +6,11 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.MethodRule;
+import org.junit.rules.TemporaryFolder;
 
+import java.io.Closeable;
 import java.io.File;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.jar.Attributes;
@@ -23,13 +26,16 @@ public class PackageDefinitionStrategyTypeSimpleTest {
     @Rule
     public MethodRule integrationRule = new IntegrationRule();
 
+    @Rule
+    public TemporaryFolder temporaryFolder = new TemporaryFolder();
+
     private PackageDefinitionStrategy.Definition definition;
 
     private URL sealBase;
 
     @Before
     public void setUp() throws Exception {
-        sealBase = new URL("file://foo");
+        sealBase = URI.create("file://foo").toURL();
         definition = new PackageDefinitionStrategy.Definition.Simple(FOO, BAR, QUX, BAZ, FOO + BAR, QUX + BAZ, sealBase);
     }
 
@@ -87,16 +93,22 @@ public class PackageDefinitionStrategyTypeSimpleTest {
 
     @Test
     public void testNonSealedIsCompatibleToSealed() throws Exception {
-        File file = File.createTempFile(FOO, BAR);
+        File file = temporaryFolder.newFile();
         try {
             Manifest manifest = new Manifest();
             manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
             manifest.getMainAttributes().put(Attributes.Name.SEALED, Boolean.TRUE.toString());
             URL url = new ByteBuddy().subclass(Object.class).name("foo.Bar").make().toJar(file, manifest).toURI().toURL();
             ClassLoader classLoader = new URLClassLoader(new URL[]{url}, null);
-            Package definedPackage = classLoader.loadClass("foo.Bar").getPackage();
-            assertThat(new PackageDefinitionStrategy.Definition.Simple(FOO, BAR, QUX, BAZ, FOO + BAR, QUX + BAZ, null)
-                    .isCompatibleTo(definedPackage), is(false));
+            try {
+                Package definedPackage = classLoader.loadClass("foo.Bar").getPackage();
+                assertThat(new PackageDefinitionStrategy.Definition.Simple(FOO, BAR, QUX, BAZ, FOO + BAR, QUX + BAZ, null)
+                        .isCompatibleTo(definedPackage), is(false));
+            } finally {
+                if (classLoader instanceof Closeable) {
+                    ((Closeable) classLoader).close();
+                }
+            }
         } finally {
             file.deleteOnExit();
         }
@@ -104,16 +116,22 @@ public class PackageDefinitionStrategyTypeSimpleTest {
 
     @Test
     public void testSealedIsCompatibleToSealed() throws Exception {
-        File file = File.createTempFile(FOO, BAR);
+        File file = temporaryFolder.newFile();
         try {
             Manifest manifest = new Manifest();
             manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
             manifest.getMainAttributes().put(Attributes.Name.SEALED, Boolean.TRUE.toString());
             URL url = new ByteBuddy().subclass(Object.class).name("foo.Bar").make().toJar(file, manifest).toURI().toURL();
             ClassLoader classLoader = new URLClassLoader(new URL[]{url}, null);
-            Package definedPackage = classLoader.loadClass("foo.Bar").getPackage();
-            assertThat(new PackageDefinitionStrategy.Definition.Simple(FOO, BAR, QUX, BAZ, FOO + BAR, QUX + BAZ, url)
-                    .isCompatibleTo(definedPackage), is(true));
+            try {
+                Package definedPackage = classLoader.loadClass("foo.Bar").getPackage();
+                assertThat(new PackageDefinitionStrategy.Definition.Simple(FOO, BAR, QUX, BAZ, FOO + BAR, QUX + BAZ, url)
+                        .isCompatibleTo(definedPackage), is(true));
+            } finally {
+                if (classLoader instanceof Closeable) {
+                    ((Closeable) classLoader).close();
+                }
+            }
         } finally {
             file.deleteOnExit();
         }

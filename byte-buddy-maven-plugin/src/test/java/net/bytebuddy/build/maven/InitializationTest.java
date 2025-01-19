@@ -7,12 +7,12 @@ import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.dynamic.scaffold.inline.MethodNameTransformer;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -23,7 +23,7 @@ public class InitializationTest {
     private static final String FOO = "foo", BAR = "bar", QUX = "qux", BAZ = "baz", JAR = "jar";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private ClassLoaderResolver classLoaderResolver;
@@ -46,7 +46,7 @@ public class InitializationTest {
         Initialization initialization = new Initialization();
         initialization.entryPoint = EntryPoint.Default.REBASE.name();
         assertThat(initialization.getEntryPoint(classLoaderResolver, BAR, QUX, BAZ, JAR), is((EntryPoint) EntryPoint.Default.REBASE));
-        verifyZeroInteractions(classLoaderResolver);
+        verifyNoMoreInteractions(classLoaderResolver);
     }
 
     @Test
@@ -54,7 +54,7 @@ public class InitializationTest {
         Initialization initialization = new Initialization();
         initialization.entryPoint = EntryPoint.Default.REDEFINE.name();
         assertThat(initialization.getEntryPoint(classLoaderResolver, BAR, QUX, BAZ, JAR), is((EntryPoint) EntryPoint.Default.REDEFINE));
-        verifyZeroInteractions(classLoaderResolver);
+        verifyNoMoreInteractions(classLoaderResolver);
     }
 
     @Test
@@ -62,7 +62,7 @@ public class InitializationTest {
         Initialization initialization = new Initialization();
         initialization.entryPoint = EntryPoint.Default.REDEFINE_LOCAL.name();
         assertThat(initialization.getEntryPoint(classLoaderResolver, BAR, QUX, BAZ, JAR), is((EntryPoint) EntryPoint.Default.REDEFINE_LOCAL));
-        verifyZeroInteractions(classLoaderResolver);
+        verifyNoMoreInteractions(classLoaderResolver);
     }
 
     @Test
@@ -70,7 +70,7 @@ public class InitializationTest {
         Initialization initialization = new Initialization();
         initialization.entryPoint = EntryPoint.Default.DECORATE.name();
         assertThat(initialization.getEntryPoint(classLoaderResolver, BAR, QUX, BAZ, JAR), is((EntryPoint) EntryPoint.Default.DECORATE));
-        verifyZeroInteractions(classLoaderResolver);
+        verifyNoMoreInteractions(classLoaderResolver);
     }
 
     @Test
@@ -92,21 +92,24 @@ public class InitializationTest {
     }
 
     @Test(expected = MojoExecutionException.class)
+    public void testNull() throws Exception {
+        Initialization initialization = new Initialization();
+        initialization.entryPoint = null;
+        initialization.getEntryPoint(classLoaderResolver, BAR, QUX, BAZ, JAR);
+    }
+
+    @Test(expected = MojoExecutionException.class)
     public void testEmpty() throws Exception {
         Initialization initialization = new Initialization();
         initialization.entryPoint = "";
         initialization.getEntryPoint(classLoaderResolver, BAR, QUX, BAZ, JAR);
     }
 
-    @Test(expected = MojoExecutionException.class)
-    public void testNull() throws Exception {
-        new Initialization().getEntryPoint(classLoaderResolver, BAR, QUX, BAZ, JAR);
-    }
-
     @Test
     public void testDefault() throws Exception {
-        Initialization initialization = Initialization.makeDefault();
+        Initialization initialization = new Initialization();
         assertThat(initialization.entryPoint, is(EntryPoint.Default.REBASE.name()));
+        assertThat(initialization.validated, is(true));
         assertThat(initialization.groupId, nullValue(String.class));
         assertThat(initialization.artifactId, nullValue(String.class));
         assertThat(initialization.version, nullValue(String.class));
@@ -128,6 +131,8 @@ public class InitializationTest {
     }
 
     public static class Foo implements EntryPoint {
+
+        private static final long serialVersionUID = 1L;
 
         public ByteBuddy byteBuddy(ClassFileVersion classFileVersion) {
             throw new AssertionError();

@@ -24,9 +24,8 @@ import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.Implementation;
 import net.bytebuddy.pool.TypePool;
 import net.bytebuddy.utility.OpenedClassReader;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.objectweb.asm.*;
-
-import javax.annotation.Nullable;
 
 /**
  * <p>
@@ -97,14 +96,14 @@ public enum TypeConstantAdjustment implements AsmVisitorWrapper {
         }
 
         @Override
-        public void visit(int version, int modifiers, String name, @Nullable String signature, @Nullable String superClassName, @Nullable String[] interfaceName) {
+        public void visit(int version, int modifiers, String name, @MaybeNull String signature, @MaybeNull String superClassName, @MaybeNull String[] interfaceName) {
             supportsTypeConstants = ClassFileVersion.ofMinorMajor(version).isAtLeast(ClassFileVersion.JAVA_V5);
             super.visit(version, modifiers, name, signature, superClassName, interfaceName);
         }
 
         @Override
-        @Nullable
-        public MethodVisitor visitMethod(int modifiers, String name, String descriptor, @Nullable String signature, @Nullable String[] exception) {
+        @MaybeNull
+        public MethodVisitor visitMethod(int modifiers, String name, String descriptor, @MaybeNull String signature, @MaybeNull String[] exception) {
             MethodVisitor methodVisitor = super.visitMethod(modifiers, name, descriptor, signature, exception);
             return supportsTypeConstants || methodVisitor == null
                     ? methodVisitor
@@ -141,7 +140,7 @@ public enum TypeConstantAdjustment implements AsmVisitorWrapper {
             }
 
             @Override
-            @SuppressFBWarnings(value = "SF_SWITCH_NO_DEFAULT", justification = "Fall through to default case is intentional")
+            @SuppressFBWarnings(value = "SF_SWITCH_NO_DEFAULT", justification = "Fall through to default case is intentional.")
             public void visitLdcInsn(Object value) {
                 if (value instanceof Type) {
                     Type type = (Type) value;

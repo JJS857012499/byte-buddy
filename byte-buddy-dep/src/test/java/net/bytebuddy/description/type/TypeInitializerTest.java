@@ -5,11 +5,11 @@ import net.bytebuddy.dynamic.scaffold.TypeInitializer;
 import net.bytebuddy.dynamic.scaffold.TypeWriter;
 import net.bytebuddy.implementation.Implementation;
 import net.bytebuddy.implementation.bytecode.ByteCodeAppender;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 import org.objectweb.asm.MethodVisitor;
 
 import static net.bytebuddy.test.utility.FieldByFieldComparison.hasPrototype;
@@ -20,7 +20,7 @@ import static org.mockito.Mockito.*;
 public class TypeInitializerTest {
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private TypeWriter.MethodPool.Record record, expanded;
@@ -52,7 +52,7 @@ public class TypeInitializerTest {
         ByteCodeAppender.Size size = TypeInitializer.None.INSTANCE.apply(methodVisitor, implementationContext, methodDescription);
         assertThat(size.getOperandStackSize(), is(0));
         assertThat(size.getLocalVariableSize(), is(0));
-        verifyZeroInteractions(methodDescription);
+        verifyNoMoreInteractions(methodDescription);
     }
 
     @Test
@@ -72,8 +72,8 @@ public class TypeInitializerTest {
         assertThat(typeInitializer.isDefined(), is(true));
         typeInitializer.apply(methodVisitor, implementationContext, methodDescription);
         verify(byteCodeAppender).apply(methodVisitor, implementationContext, methodDescription);
-        verifyZeroInteractions(byteCodeAppender);
-        verifyZeroInteractions(implementationContext);
+        verifyNoMoreInteractions(byteCodeAppender);
+        verifyNoMoreInteractions(implementationContext);
     }
 
     @Test

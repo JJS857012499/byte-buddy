@@ -4,13 +4,13 @@ import net.bytebuddy.description.annotation.AnnotationDescription;
 import net.bytebuddy.description.annotation.AnnotationList;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.description.type.TypeList;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import static net.bytebuddy.test.utility.FieldByFieldComparison.matchesPrototype;
 import static org.hamcrest.CoreMatchers.is;
@@ -24,7 +24,7 @@ public class AnnotationAppenderForTypeAnnotationsTest {
     private static final int BAR = 42;
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private AnnotationAppender annotationAppender, result;
@@ -59,8 +59,8 @@ public class AnnotationAppenderForTypeAnnotationsTest {
     @After
     @SuppressWarnings("unchecked")
     public void tearDown() throws Exception {
-        verifyZeroInteractions(annotationDescription);
-        verifyZeroInteractions(annotationValueFilter);
+        verifyNoMoreInteractions(annotationDescription);
+        verifyNoMoreInteractions(annotationValueFilter);
     }
 
     @Test
@@ -85,7 +85,7 @@ public class AnnotationAppenderForTypeAnnotationsTest {
     @Test
     public void testWildcardLowerBound() throws Exception {
         when(typeDescription.getLowerBounds()).thenReturn(new TypeList.Generic.Explicit(second));
-        when(typeDescription.getUpperBounds()).thenReturn(new TypeList.Generic.Explicit(TypeDescription.Generic.OBJECT));
+        when(typeDescription.getUpperBounds()).thenReturn(new TypeList.Generic.Explicit(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)));
         assertThat(visitor.onWildcard(typeDescription), is(result));
         verify(annotationAppender).append(annotationDescription, annotationValueFilter, BAR, FOO);
         verifyNoMoreInteractions(annotationAppender);

@@ -24,6 +24,7 @@ import net.bytebuddy.description.type.TypeDefinition;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.FilterableList;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.objectweb.asm.Opcodes;
 
 import java.util.*;
@@ -415,7 +416,7 @@ public interface MethodGraph {
     /**
      * A compiler to produce a {@link MethodGraph} from a given type.
      */
-    @SuppressFBWarnings(value = "IC_SUPERCLASS_USES_SUBCLASS_DURING_INITIALIZATION", justification = "Safe initialization is implied")
+    @SuppressFBWarnings(value = "IC_SUPERCLASS_USES_SUBCLASS_DURING_INITIALIZATION", justification = "Safe initialization is implied.")
     interface Compiler {
 
         /**
@@ -559,6 +560,11 @@ public interface MethodGraph {
             private final TypeDescription.Generic.Visitor<? extends TypeDescription.Generic> visitor;
 
             /**
+             * A matcher to filter methods from the graph.
+             */
+            private final ElementMatcher<? super MethodDescription> matcher;
+
+            /**
              * Creates a new default method graph compiler.
              *
              * @param harmonizer The harmonizer to be used.
@@ -566,9 +572,22 @@ public interface MethodGraph {
              * @param visitor    A visitor to apply to all type descriptions before analyzing their methods or resolving super types.
              */
             protected Default(Harmonizer<T> harmonizer, Merger merger, TypeDescription.Generic.Visitor<? extends TypeDescription.Generic> visitor) {
+                this(harmonizer, merger, visitor, any());
+            }
+
+            /**
+             * Creates a new default method graph compiler.
+             *
+             * @param harmonizer The harmonizer to be used.
+             * @param merger     The merger to be used.
+             * @param visitor    A visitor to apply to all type descriptions before analyzing their methods or resolving super types.
+             * @param matcher    A matcher to filter methods from the graph.
+             */
+            public Default(Harmonizer<T> harmonizer, Merger merger, TypeDescription.Generic.Visitor<? extends TypeDescription.Generic> visitor, ElementMatcher<? super MethodDescription> matcher) {
                 this.harmonizer = harmonizer;
                 this.merger = merger;
                 this.visitor = visitor;
+                this.matcher = matcher;
             }
 
             /**
@@ -581,6 +600,19 @@ public interface MethodGraph {
              */
             public static <S> Compiler of(Harmonizer<S> harmonizer, Merger merger) {
                 return new Default<S>(harmonizer, merger, TypeDescription.Generic.Visitor.Reifying.INITIATING);
+            }
+
+            /**
+             * Creates a default compiler using the given harmonizer and merger. All raw types are reified before analyzing their properties.
+             *
+             * @param harmonizer The harmonizer to be used for creating tokens that uniquely identify a method hierarchy.
+             * @param merger     The merger to be used for identifying a method to represent an ambiguous method resolution.
+             * @param matcher    A matcher to filter methods from the graph.
+             * @param <S>        The type of the harmonizer token.
+             * @return A default compiler for the given harmonizer and merger.
+             */
+            public static <S> Compiler of(Harmonizer<S> harmonizer, Merger merger, ElementMatcher<? super MethodDescription> matcher) {
+                return new Default<S>(harmonizer, merger, TypeDescription.Generic.Visitor.Reifying.INITIATING, matcher);
             }
 
             /**
@@ -633,7 +665,7 @@ public interface MethodGraph {
              */
             public MethodGraph.Linked compile(TypeDefinition typeDefinition, TypeDescription viewPoint) {
                 Map<TypeDefinition, Key.Store<T>> snapshots = new HashMap<TypeDefinition, Key.Store<T>>();
-                Key.Store<?> rootStore = doAnalyze(typeDefinition, snapshots, isVirtual().and(isVisibleTo(viewPoint)));
+                Key.Store<?> rootStore = doAnalyze(typeDefinition, snapshots, isVirtual().and(isVisibleTo(viewPoint)).and(matcher));
                 TypeDescription.Generic superClass = typeDefinition.getSuperClass();
                 List<TypeDescription.Generic> interfaceTypes = typeDefinition.getInterfaces();
                 Map<TypeDescription, MethodGraph> interfaceGraphs = new HashMap<TypeDescription, MethodGraph>();
@@ -689,7 +721,7 @@ public interface MethodGraph {
              * @param relevanceMatcher A matcher for filtering methods that should be included in the graph.
              * @return A key store describing the provided type.
              */
-            protected Key.Store<T> analyzeNullable(TypeDescription.Generic typeDescription,
+            protected Key.Store<T> analyzeNullable(@MaybeNull TypeDescription.Generic typeDescription,
                                                    Map<TypeDefinition, Key.Store<T>> snapshots,
                                                    ElementMatcher<? super MethodDescription> relevanceMatcher) {
                 return typeDescription == null
@@ -780,7 +812,7 @@ public interface MethodGraph {
                         }
 
                         @Override
-                        public boolean equals(Object other) {
+                        public boolean equals(@MaybeNull Object other) {
                             return this == other || other instanceof Token && typeToken.getParameterTypes().equals(((Token) other).typeToken.getParameterTypes());
                         }
 
@@ -839,7 +871,7 @@ public interface MethodGraph {
                         }
 
                         @Override
-                        public boolean equals(Object other) {
+                        public boolean equals(@MaybeNull Object other) {
                             if (this == other) {
                                 return true;
                             } else if (!(other instanceof Token)) {
@@ -955,7 +987,7 @@ public interface MethodGraph {
                 }
 
                 @Override
-                public boolean equals(Object other) {
+                public boolean equals(@MaybeNull Object other) {
                     if (this == other) {
                         return true;
                     } else if (!(other instanceof Key)) {
@@ -1379,7 +1411,7 @@ public interface MethodGraph {
                             }
 
                             @Override
-                            public boolean equals(Object other) {
+                            public boolean equals(@MaybeNull Object other) {
                                 if (this == other) {
                                     return true;
                                 } else if (other == null || getClass() != other.getClass()) {

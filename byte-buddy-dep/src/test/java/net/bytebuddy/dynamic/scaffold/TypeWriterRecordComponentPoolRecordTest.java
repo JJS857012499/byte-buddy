@@ -2,22 +2,20 @@ package net.bytebuddy.dynamic.scaffold;
 
 import net.bytebuddy.description.annotation.AnnotationDescription;
 import net.bytebuddy.description.annotation.AnnotationList;
-import net.bytebuddy.description.field.FieldDescription;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.method.MethodList;
 import net.bytebuddy.description.type.RecordComponentDescription;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.attribute.AnnotationValueFilter;
 import net.bytebuddy.implementation.attribute.RecordComponentAttributeAppender;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassVisitor;
-import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.RecordComponentVisitor;
 
 import java.lang.annotation.RetentionPolicy;
@@ -31,7 +29,7 @@ public class TypeWriterRecordComponentPoolRecordTest {
     private static final String FOO = "foo", BAR = "bar", QUX = "qux", BAZ = "baz";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private RecordComponentAttributeAppender recordComponentAttributeAppender;
@@ -67,7 +65,7 @@ public class TypeWriterRecordComponentPoolRecordTest {
         when(recordComponentDescription.getDescriptor()).thenReturn(BAR);
         when(recordComponentDescription.getGenericSignature()).thenReturn(QUX);
         when(recordComponentDescription.getDeclaredAnnotations()).thenReturn(new AnnotationList.Explicit(annotationDescription));
-        when(recordComponentDescription.getType()).thenReturn(TypeDescription.Generic.OBJECT);
+        when(recordComponentDescription.getType()).thenReturn(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class));
         when(classVisitor.visitRecordComponent(FOO, BAR, QUX)).thenReturn(recordComponentVisitor);
         when(classVisitor.visitRecordComponent(FOO, BAR, QUX)).thenReturn(recordComponentVisitor);
         when(annotationValueFilterFactory.on(recordComponentDescription)).thenReturn(valueFilter);
@@ -103,7 +101,7 @@ public class TypeWriterRecordComponentPoolRecordTest {
         record.apply(recordComponentVisitor, annotationValueFilterFactory);
         verify(recordComponentAttributeAppender).apply(recordComponentVisitor, recordComponentDescription, valueFilter);
         verifyNoMoreInteractions(recordComponentAttributeAppender);
-        verifyZeroInteractions(recordComponentVisitor);
+        verifyNoMoreInteractions(recordComponentVisitor);
     }
 
     @Test

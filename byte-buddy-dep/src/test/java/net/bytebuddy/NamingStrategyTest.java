@@ -1,12 +1,12 @@
 package net.bytebuddy;
 
 import net.bytebuddy.description.type.TypeDescription;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
@@ -19,7 +19,7 @@ public class NamingStrategyTest {
     private static final String FOO = "foo", BAR = "bar", JAVA_QUX = "java.qux";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private NamingStrategy.Suffixing.BaseNameResolver baseNameResolver;
@@ -53,7 +53,7 @@ public class NamingStrategyTest {
         assertThat(namingStrategy.subclass(typeDescription), equalTo(BAR + "." + JAVA_QUX + "$" + FOO));
         verify(typeDescription).asErasure();
         verifyNoMoreInteractions(typeDescription);
-        verifyZeroInteractions(rawTypeDescription);
+        verifyNoMoreInteractions(rawTypeDescription);
         verify(baseNameResolver).resolve(rawTypeDescription);
         verifyNoMoreInteractions(baseNameResolver);
     }
@@ -65,7 +65,7 @@ public class NamingStrategyTest {
         assertThat(namingStrategy.subclass(typeDescription), equalTo(JAVA_QUX + "$" + FOO));
         verify(typeDescription).asErasure();
         verifyNoMoreInteractions(typeDescription);
-        verifyZeroInteractions(rawTypeDescription);
+        verifyNoMoreInteractions(rawTypeDescription);
         verify(baseNameResolver).resolve(rawTypeDescription);
         verifyNoMoreInteractions(baseNameResolver);
     }
@@ -106,7 +106,7 @@ public class NamingStrategyTest {
         assertThat(namingStrategy.subclass(typeDescription), startsWith(BAR + "." + JAVA_QUX + "$" + FOO + "$"));
         verify(typeDescription).asErasure();
         verifyNoMoreInteractions(typeDescription);
-        verifyZeroInteractions(rawTypeDescription);
+        verifyNoMoreInteractions(rawTypeDescription);
         verify(baseNameResolver).resolve(rawTypeDescription);
         verifyNoMoreInteractions(baseNameResolver);
     }
@@ -118,7 +118,7 @@ public class NamingStrategyTest {
         assertThat(namingStrategy.subclass(typeDescription), startsWith(JAVA_QUX + "$" + FOO + "$"));
         verify(typeDescription).asErasure();
         verifyNoMoreInteractions(typeDescription);
-        verifyZeroInteractions(rawTypeDescription);
+        verifyNoMoreInteractions(rawTypeDescription);
         verify(baseNameResolver).resolve(rawTypeDescription);
         verifyNoMoreInteractions(baseNameResolver);
     }

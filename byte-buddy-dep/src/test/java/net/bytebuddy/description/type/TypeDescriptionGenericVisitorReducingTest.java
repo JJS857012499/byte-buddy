@@ -1,12 +1,12 @@
 package net.bytebuddy.description.type;
 
 import net.bytebuddy.dynamic.TargetType;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import java.util.Collections;
 
@@ -20,7 +20,7 @@ public class TypeDescriptionGenericVisitorReducingTest {
     private static final String FOO = "foo", BAR = "bar";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private TypeDescription.Generic typeDescription, bound, genericTypeDescription;
@@ -64,7 +64,7 @@ public class TypeDescriptionGenericVisitorReducingTest {
         when(typeDescription.asErasure()).thenReturn(rawTypeDescription);
         when(typeDescription.getSymbol()).thenReturn(FOO);
         when(typeVariableToken.getSymbol()).thenReturn(BAR);
-        when(declaringType.findVariable(FOO)).thenReturn(typeDescription);
+        when(declaringType.findExpectedVariable(FOO)).thenReturn(typeDescription);
         when(rawTypeDescription.getSort()).thenReturn(TypeDefinition.Sort.PARAMETERIZED);
         when(rawTypeDescription.getDescriptor()).thenReturn(BAR);
         assertThat(visitor.onGenericArray(typeDescription), not(rawTypeDescription));
@@ -132,14 +132,14 @@ public class TypeDescriptionGenericVisitorReducingTest {
     public void testTypeVariableContextDeclared() throws Exception {
         when(typeDescription.getSymbol()).thenReturn(FOO);
         when(typeVariableToken.getSymbol()).thenReturn(BAR);
-        when(declaringType.findVariable(FOO)).thenReturn(genericTypeDescription);
+        when(declaringType.findExpectedVariable(FOO)).thenReturn(genericTypeDescription);
         when(genericTypeDescription.asErasure()).thenReturn(rawTypeDescription);
         assertThat(visitor.onTypeVariable(typeDescription), is(rawTypeDescription));
         verify(typeDescription, times(2)).getSymbol();
         verifyNoMoreInteractions(typeDescription);
         verify(typeVariableToken).getSymbol();
         verifyNoMoreInteractions(typeVariableToken);
-        verify(declaringType).findVariable(FOO);
+        verify(declaringType).findExpectedVariable(FOO);
         verifyNoMoreInteractions(declaringType);
     }
 
@@ -149,7 +149,7 @@ public class TypeDescriptionGenericVisitorReducingTest {
         assertThat(visitor.onParameterizedType(TargetType.DESCRIPTION.asGenericType()), is(declaringType));
         assertThat(visitor.onNonGenericType(TargetType.DESCRIPTION.asGenericType()), is(declaringType));
         when(typeDescription.getSymbol()).thenReturn(BAR);
-        when(declaringType.findVariable(BAR)).thenReturn(TargetType.DESCRIPTION.asGenericType());
+        when(declaringType.findExpectedVariable(BAR)).thenReturn(TargetType.DESCRIPTION.asGenericType());
         assertThat(visitor.onTypeVariable(typeDescription), is(declaringType));
     }
 }

@@ -22,7 +22,6 @@ import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
-import net.bytebuddy.dynamic.TypeResolutionStrategy;
 import net.bytebuddy.dynamic.VisibilityBridgeStrategy;
 import net.bytebuddy.dynamic.scaffold.*;
 import net.bytebuddy.implementation.Implementation;
@@ -32,6 +31,8 @@ import net.bytebuddy.implementation.attribute.TypeAttributeAppender;
 import net.bytebuddy.implementation.auxiliary.AuxiliaryType;
 import net.bytebuddy.matcher.LatentMatcher;
 import net.bytebuddy.pool.TypePool;
+import net.bytebuddy.utility.AsmClassReader;
+import net.bytebuddy.utility.AsmClassWriter;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -64,7 +65,8 @@ public class RebaseDynamicTypeBuilder<T> extends AbstractInliningDynamicTypeBuil
      * @param methodGraphCompiler          The method graph compiler to use.
      * @param typeValidation               Determines if a type should be explicitly validated.
      * @param visibilityBridgeStrategy     The visibility bridge strategy to apply.
-     * @param classWriterStrategy          The class writer strategy to use.
+     * @param classReaderFactory           The class reader factory to use.
+     * @param classWriterFactory           The class writer factory to use.
      * @param ignoredMethods               A matcher for identifying methods that should be excluded from instrumentation.
      * @param originalType                 The original type that is being redefined or rebased.
      * @param classFileLocator             The class file locator for locating the original type's class file.
@@ -79,7 +81,8 @@ public class RebaseDynamicTypeBuilder<T> extends AbstractInliningDynamicTypeBuil
                                     MethodGraph.Compiler methodGraphCompiler,
                                     TypeValidation typeValidation,
                                     VisibilityBridgeStrategy visibilityBridgeStrategy,
-                                    ClassWriterStrategy classWriterStrategy,
+                                    AsmClassReader.Factory classReaderFactory,
+                                    AsmClassWriter.Factory classWriterFactory,
                                     LatentMatcher<? super MethodDescription> ignoredMethods,
                                     TypeDescription originalType,
                                     ClassFileLocator classFileLocator,
@@ -100,7 +103,8 @@ public class RebaseDynamicTypeBuilder<T> extends AbstractInliningDynamicTypeBuil
                 methodGraphCompiler,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods,
                 Collections.<DynamicType>emptyList(),
                 originalType,
@@ -125,7 +129,8 @@ public class RebaseDynamicTypeBuilder<T> extends AbstractInliningDynamicTypeBuil
      * @param methodGraphCompiler          The method graph compiler to use.
      * @param typeValidation               Determines if a type should be explicitly validated.
      * @param visibilityBridgeStrategy     The visibility bridge strategy to apply.
-     * @param classWriterStrategy          The class writer strategy to use.
+     * @param classReaderFactory           The class reader factory to use.
+     * @param classWriterFactory           The class writer factory to use.
      * @param ignoredMethods               A matcher for identifying methods that should be excluded from instrumentation.
      * @param auxiliaryTypes               A list of explicitly required auxiliary types.
      * @param originalType                 The original type that is being redefined or rebased.
@@ -146,7 +151,8 @@ public class RebaseDynamicTypeBuilder<T> extends AbstractInliningDynamicTypeBuil
                                        MethodGraph.Compiler methodGraphCompiler,
                                        TypeValidation typeValidation,
                                        VisibilityBridgeStrategy visibilityBridgeStrategy,
-                                       ClassWriterStrategy classWriterStrategy,
+                                       AsmClassReader.Factory classReaderFactory,
+                                       AsmClassWriter.Factory classWriterFactory,
                                        LatentMatcher<? super MethodDescription> ignoredMethods,
                                        List<? extends DynamicType> auxiliaryTypes,
                                        TypeDescription originalType,
@@ -166,7 +172,8 @@ public class RebaseDynamicTypeBuilder<T> extends AbstractInliningDynamicTypeBuil
                 methodGraphCompiler,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods,
                 auxiliaryTypes,
                 originalType,
@@ -189,7 +196,8 @@ public class RebaseDynamicTypeBuilder<T> extends AbstractInliningDynamicTypeBuil
                                                  MethodGraph.Compiler methodGraphCompiler,
                                                  TypeValidation typeValidation,
                                                  VisibilityBridgeStrategy visibilityBridgeStrategy,
-                                                 ClassWriterStrategy classWriterStrategy,
+                                                 AsmClassReader.Factory classReaderFactory,
+                                                 AsmClassWriter.Factory classWriterFactory,
                                                  LatentMatcher<? super MethodDescription> ignoredMethods,
                                                  List<? extends DynamicType> auxiliaryTypes) {
         return new RebaseDynamicTypeBuilder<T>(instrumentedType,
@@ -206,7 +214,8 @@ public class RebaseDynamicTypeBuilder<T> extends AbstractInliningDynamicTypeBuil
                 methodGraphCompiler,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods,
                 auxiliaryTypes,
                 originalType,
@@ -217,7 +226,7 @@ public class RebaseDynamicTypeBuilder<T> extends AbstractInliningDynamicTypeBuil
     /**
      * {@inheritDoc}
      */
-    public DynamicType.Unloaded<T> make(TypeResolutionStrategy typeResolutionStrategy, TypePool typePool) {
+    protected TypeWriter<T> toTypeWriter(TypePool typePool) {
         MethodRegistry.Prepared methodRegistry = this.methodRegistry.prepare(instrumentedType,
                 methodGraphCompiler,
                 typeValidation,
@@ -243,10 +252,11 @@ public class RebaseDynamicTypeBuilder<T> extends AbstractInliningDynamicTypeBuil
                 auxiliaryTypeNamingStrategy,
                 implementationContextFactory,
                 typeValidation,
-                classWriterStrategy,
-                typePool,
+                classReaderFactory,
+                classWriterFactory,
+                TypePool.Explicit.wrap(instrumentedType, auxiliaryTypes, typePool),
                 originalType,
                 classFileLocator,
-                methodRebaseResolver).make(typeResolutionStrategy.resolve());
+                methodRebaseResolver);
     }
 }

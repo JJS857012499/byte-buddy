@@ -16,8 +16,7 @@
 package net.bytebuddy.build.maven;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-
-import javax.annotation.Nullable;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
 /**
  * An configuration of a Maven coordinate.
@@ -28,25 +27,25 @@ public class CoordinateConfiguration {
     /**
      * The group id of the project containing the plugin type or {@code null} if the current project's group id should be used.
      */
-    @Nullable
+    @MaybeNull
     protected String groupId;
 
     /**
      * The artifact id of the project containing the plugin type or {@code null} if the current project's artifact id should be used.
      */
-    @Nullable
+    @MaybeNull
     protected String artifactId;
 
     /**
      * The version of the project containing the plugin type or {@code null} if the current project's version should be used.
      */
-    @Nullable
+    @MaybeNull
     protected String version;
 
     /**
      * The version of the project containing the plugin type or {@code null} if the current project's packaging should be used.
      */
-    @Nullable
+    @MaybeNull
     protected String packaging;
 
     /**
@@ -106,7 +105,7 @@ public class CoordinateConfiguration {
      * @param packaging  The current project's packaging
      * @return The resolved Maven coordinate.
      */
-    public MavenCoordinate asCoordinate(String groupId, String artifactId, String version, String packaging) {
+    protected MavenCoordinate asCoordinate(String groupId, String artifactId, String version, String packaging) {
         return new MavenCoordinate(getGroupId(groupId), getArtifactId(artifactId), getVersion(version), getPackaging(packaging));
     }
 }

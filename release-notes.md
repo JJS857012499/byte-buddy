@@ -1,6 +1,328 @@
 Byte Buddy release notes
 ------------------------
 
+### 19. January 2025: version 1.16.1
+
+- Correct reflective activation of Class File API.
+- Reject array descriptors that are not well-formed in `TypePool`.
+
+### 17. January 2025: version 1.16.0
+
+- Allow for erasure of types of bootstrapped methods in `Advice` within instrumented class.
+- Rework `Advice` post-processing to allow for erasure of bootstrapped methods.
+- Fix missing application of hashCode/equals plugin for Java 8 code.
+- Include support for JDK Class File API.
+- Allow `Plugin.Engine` to retain folders.
+
+### 15. December 2024: version 1.15.11
+
+- Avoid dependency of `CachedReturnPlugin` on precompiled class files.
+- Add `NOP` instruction when `Advice` is used on `void` methods as those might be empty which results on a frame being written to the same offset, causing an exception.
+- Allow `Plugin.Engine` to link files instead of copying.
+- Adjust validator code to avoid compiler bug that was reported by multiple users.
+- Allow injection of class path as `File[]` to `Plugin` constructors.
+- Allow for configuring variants when using the Android Gradle plugin.
+
+### 4. November 2024: version 1.15.10
+
+- Fix Java 8 patterns for multi-release jars to avoid that inner classes are excluded.
+
+### 3. November 2024: version 1.15.9
+
+- Additional release after time out during previous Gradle plugin release.
+
+### 1. November 2024: version 1.15.8
+
+- Extend `ClassInjector` API to support lazy resolution of class files.
+- Extend `DynamicType` API to support lazy resolution of auxiliary types.
+- Extend `AgentBuilder.Transformer.ForAdvice` to support injection of new classes by their name.
+
+### 23. October 2024: version 1.15.7
+
+- Additional release after time out during previous Gradle plugin release.
+
+### 21. October 2024: version 1.15.6
+
+- Add ConstructorResolver to Super annotation for MethodDelegation to allow for dynamic constructor resolution.
+- Add Java 8 versions of shaded ASM to allow for faster class file validation and CDS support.
+
+### 17. October 2024: version 1.15.5
+
+- Publish Byte Buddy and Byte Buddy agent artifacts as multi-release jars to support CDS and faster validation.
+
+### 9. October 2024: version 1.15.4
+
+- Add non-experimental support for Java 24.
+
+### 26. September 2024: version 1.15.3
+
+- Treat multi-release class files that are newer than the supported version as regular resources.
+- Allow overriding the multi-release class file version from Maven and Gradle plugin.
+- Correctly resolve multi-release class files in Android.
+
+### 25. September 2024: version 1.15.2
+
+- Add support for multi-release JAR files in `ClassFileLocator`s and `Plugin.Engine.Default`.
+- Add Gradle task for transforming multiple jar files with `ByteBuddyJarsTask`.
+- Avoid validation of `JarFile` when extracting individual entries.
+- Rework discovery in `ByteBuddyMojo`.
+
+### 29. August 2024: version 1.15.1
+
+- Revert default `EntryPoint` for Android Gradle plugin to use `DECORATE` unless explicitly specified due to many generic type errors in Kotlin classes. 
+
+### 23. August 2024: version 1.15.0
+
+- Introduce `AsmClassWriter` and `AsmClassReader` abstractions that allow for plugging different implementations of readers and writers.
+- Add configuration extension to the Android Gradle plugin and make it behave like regular Gradle plugin with standard configuration.
+- Throw `TypeNotPresentException` upon discovering undeclared type variables as it was recently fixed on the JVM. 
+
+### 16. August 2024: version 1.14.19
+
+- Add Maven Mojo for transforming jars and for transforming dependencies folder.
+- Better error handling for unresolved type variables.
+- Allow loading arguments of the instrumented method in `MemberSubstitution`.
+- Fix checks for method visibility.
+
+### 8. August 2024: version 1.14.18
+
+- Avoid verification error if constructor advice meats dropped implicit *this* frame and throw exception during instrumentation instead.
+- Add support to resolve `ByteBuddyAgent` from non-obfuscated name if obfuscation is used.
+- Make sure `CircularityLock` implementations never load classes during locking.
+- Offer use of *istat* if *stat* command is not available for emulated attachment.
+- Avoid locking entire class loader when child-first class loader loads shadowed class and parallel class loading is supported.
+
+### 29. May 2024: version 1.14.17
+
+- Avoid crashing of Android plugin when there are duplicate files for licenses or license notices.
+
+### 22. May 2024: version 1.14.16
+
+- Update ASM and introduce support for Java 23.
+
+### 8. May 2024: version 1.14.15
+
+- Allow attaching from root on J9.
+
+### 23. April 2024: version 1.14.14
+
+- Adjust type validation to accept additional names that are legal in the class file format.
+- Fix dynamic attach on Windows when a service user is active.
+- Avoid failure when using Android's strict mode.
+
+### 28. March 2024: version 1.14.13
+
+- Avoid resolving type variables when generic type processing is disabled.
+- Improve error message for Byte Buddy agent external attach.
+- Fix build for modular jars when using later version than Java 8.
+
+### 16. February 2024: version 1.14.12
+
+- Pin proxy class file version to avoid implicit changes when using Graal native image.
+- Add support for Java 23.
+- Add missing `@MaybeNull` annotation.
+
+### 21. December 2023: version 1.14.11
+
+- Adjusts Gradle plugin to support Gradle 8.4 without warnings.
+- Avoid blurry exception on build plugin for fail fast.
+
+### 16. October 2023: version 1.14.10
+
+- Add lazy facade to default `TypePool` in `AgentBuilder` to avoid parsing of types ignored by name.
+- Avoid module info classes in Android plugin.
+
+### 9. October 2023: version 1.14.9
+
+- Update ASM to version 9.6
+- Support Android plugin to support APG version 7.4
+
+### 15. September 2023: version 1.14.8
+
+- Correctly read versions from class file that would use both bytes.
+- Fix Byte Buddy Gradle plugin for Gradle 8.3+.
+- Correct field and static method access on subtypes in `MemberSubstitution`.
+- Support APK 7.4+ versions in Byte Buddy Gradle for Android plugin.
+
+### 28. August 2023: version 1.14.7
+
+- Correctly read minor version from class file.
+- Catch type resolution errors when applying `Plugin.Engine`.
+
+### 15. August 2023: version 1.14.6
+
+- Add `PatchMode.SUBSTITUTE` and `ResettableClassFileTransformer.Substitutable` for in-order patching.
+- Allow for explicit specification og differential matcher when patching an `AgentBuilder`.
+- Add platform loader to locator for build plugins.
+- Correctly resolve accessors for fields with capitalized first letter.
+- Make jars for Android read-only as newer versions require it.
+
+### 1. June 2023: version 1.14.5
+
+- Avoid use of location if agent argument separator is contained.
+- Allow failure of member substitution if no element is separated.
+- Allow retry in case of parallel class injection.
+
+### 11. April 2023: version 1.14.4
+
+- Include instrumented type and auxiliary types in `TypePool` that is passed to `TypeWriter`.
+
+### 13. March 2023: version 1.14.3
+
+- Make `MethodGraph.Compiler` failsafe when processing incomplete methods.
+- Update ASM.
+
+### 13. March 2023: version 1.14.2
+
+- Fix offset mapping for local variable array remapping in `Advice`.
+- Add possibility to specify an index for `skipOn` and `repeatOn` which resolves the checked value from a returned array.
+
+### 7. March 2023: version 1.14.1
+
+- Add *extended* scope for Maven Byte Buddy plugin to include all non-test-dependencies.
+
+### 18. February 2023: version 1.14.0
+
+- Add `Step.Factory.ForDelegation` in `MemberSubstitution` that allows for delegation similar to `MethodDelegation` but in-code.
+- Add handlers for `MethodDelegation` and `Advice` that leverage method handles for field access and self-invocation.
+- Add `Step.Factory` for type assignment that allows casting the return value from a previous step to another type.
+- Avoid usage of `URL` class loader as it is deprecated, and use newer method if available.
+
+### 13. February 2023: version 1.13.0
+
+- Complete `MemberSubstitution` API which now retains the original instruction for invocation.
+- Allow excluding methods from a `MethodGraph.Compiler` using an `ElementMatcher`.
+- Add a filtering `ClassFileLocator`.
+- Add a matcher for a type's `ClassFileVersion`.
+- Unify resolution of constant values by introducing a `ConstantValue` API.
+- Do not exclude `ToThrown` assignment on `void` methods.
+- Allow constructors as target in `MemberSubstitution`. 
+
+### 5. February 2023: version 1.12.23
+
+- Allow using `ClassFileLocator` to `AgentBuilder` to append boot-injected types.
+- Add `RenamingPlugin` that allows for migration of names using the build plugin.
+- Add wrapper method to `ForAdvice` transformation to allow for easier wrapping.
+- Fix Gradle plugin *raw* folder and improve detection of unused configurations.
+- Add additional default `Step`s to `MemberSubstitution` to reduce need for custom bytecode generation.
+
+### 12. January 2023: version 1.12.22
+
+- Support `MethodHandle` and `MethodType` in `Advice.Origin` annotation.
+- Support `MethodHandles.Lookup` in `Origin` and `Advice.Origin` annotations.
+- Use modern API for Gradle Android API, if available, to avoid now failing cast.
+
+### 5. January 2023: version 1.12.21
+
+- Create a Gradle source set for each JVM build automatically to reduce boilerplate.
+- Fix Gradle plugin class loading to use correct class loader.
+- Use updated release plugin to avoid outdated timestamp in jar.
+
+### 15. December 2022: version 1.12.20
+
+- Avoid stack overflow error when type variable cannot be resolve during error message generation.
+- Allow dumping error message to file when remote attach fails.
+
+### 17. November 2022: version 1.12.19
+
+- Avoid possible lock through circular class loading of `TypeDescription` subtypes.
+- Avoid access error when using unsafe API on Java 17 with an active security manager.
+- Close URL class loader used in Gradle plugin.
+
+### 11. October 2022: version 1.12.18
+
+- Allow writing to field from enter `Advice` in constructor, as byte code allows it.
+- Refactor Android plugin processor to avoid skipping local classes.
+- Improve staleness filter for Maven plugin.
+- Fix incorrect resolution of custom bound *invokedynamic* values in `Advice`.
+
+### 21. September 2022: version 1.12.17
+
+- Use decorating `EntryPoint` in Android Gradle plugin.
+- Introduce `PatchMode` on `AgentBuilder` patching to allow for control over overlap.
+
+### 8. September 2022: version 1.12.16
+
+- Fix Gradle release script to publish plugin.
+
+### 8. September 2022: version 1.12.15
+
+- Introduce `ClassVisitorFactory` which allows to translate to and from class wrappers in a different ASM namespace.
+- Allow builders to change to `ClassVisitors`.
+- Add support for Android instrumentation from Gradle plugin.
+
+### 22. August 2022: version 1.12.14
+
+- Add `wrap` method to `DynamicType.Builder` that allows for the representation of a dynamic type via a `ClassVisitor`.
+- Add `ClassVisitorFactory` that allows to translate between Byte Buddy's, the original, or other shaded representations of ASM.
+- Fix visibility check for types in the default package.
+- Return correct value for types in the default package.
+
+### 1. August 2022: version 1.12.13
+
+- Avoid duplicate application of Byte Buddy Maven plugin.
+- Allow for class path discovery of `Plugin`s when using Maven.
+- Fix build cache when using Byte Buddy Gradle plugin.
+- Allow `Plugin`s to define new types prior to transformation.
+
+### 25. June 2022: version 1.12.12
+
+- Use correct annotation in Byte Buddy Gradle plugin.
+- Correctly resolve generified anonymous/local types that are declared within a method.
+
+### 22. June 2022: version 1.12.11
+
+- Remove use of thread-local to guarantee Loom compatibility.
+- Allow usage of *byte-buddy-parent* as BOM for imports.
+- Add convenience for Maven to disable type validation on entry point.
+- Allow Gradle plugin to consume *pluginName* property and *discoverySet* to only load plugins in the plugin class loader.
+
+### 1. May 2022: version 1.12.10
+
+- Correctly resolve temporary folder, if custom folder is set, on Linux during emulated attach.
+- Attempt guessing if Graal automatic configuration agent for native image is run.
+- Avoid hard-coded dependencies to classes of *java.management* module.
+- Do not include OSGi info in Byte Buddy source module.
+
+### 7. April 2022: version 1.12.9
+
+- Add support for Java 19.
+- Add basic support for Graal native image.
+- Add option for strongly referenced cache keys.
+- Reduce access requirements for fields from `Advice`.
+
+### 10. February 2022: version 1.12.8
+
+- Make `Step` type in `MemberSubstitution` public as intended.
+- Add factory that uses `ArrayDeque` instead of `LinkedList` if the used JVM supports it (Java 6+).
+- Fix resolution of internal names for arrays in `TypeReferenceAdjustment`.
+
+### 15. January 2022: version 1.12.7
+
+- Adjust warm-up API to return warmed-up byte code.
+- Check *release* property in Byte Buddy Maven plugin.
+- Propagate exception from Byte Buddy's class file transformer to improve wrapping behavior.
+- Avoid loading of `ElementType` when checking compatibility as the current VM might not provide all constants.
+- Allow for disabling stack adjustment as it might not always be possible.
+- Make stack adjustment more robust when *goto* targets contain stack values.
+
+### 20. December 2021: version 1.12.6
+
+- Mark argument for `equals` method as `@MaybeNull`.
+- Mark argument for `ElementMatcher` as `@UnknownNull`.
+
+### 16. December 2021: version 1.12.5
+
+- Add alias annotations to avoid compilation warnings for optional findbugs dependency.
+- Adjust `HashCodeEqualsPlugin` to allow for inclusion of custom annotation type on equals method parameter.
+
+### 15. December 2021: version 1.12.4
+
+- Make paths in Gradle plugin relative and therewith cachable.
+- Add explicit check for empty or non-existent source folder to Maven and Gradle plugins.
+- Add support for modules when accessing system class loader for `Nexus` or `Installer`.
+- Add nullability annotations to all type members which are nullable and declare non-nullability the default.
+
 ### 2. December 2021: version 1.12.3
 
 - Move configuration for Java version to extension and avoid implicit configuration during task execution to allow for using a configuration cache.

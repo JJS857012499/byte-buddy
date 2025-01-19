@@ -15,17 +15,17 @@
  */
 package net.bytebuddy.implementation.attribute;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
 import net.bytebuddy.description.annotation.AnnotationDescription;
 import net.bytebuddy.description.enumeration.EnumerationDescription;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.description.type.TypeList;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.objectweb.asm.*;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.lang.reflect.Array;
 import java.util.List;
 
@@ -37,7 +37,7 @@ public interface AnnotationAppender {
     /**
      * A constant for informing ASM over ignoring a given name.
      */
-    @Nonnull(when = When.NEVER)
+    @AlwaysNull
     String NO_NAME = null;
 
     /**
@@ -72,7 +72,7 @@ public interface AnnotationAppender {
          * @param visible                  {@code true} if the annotation is to be visible at runtime.
          * @return An annotation visitor for consuming the specified annotation.
          */
-        @Nullable
+        @MaybeNull
         AnnotationVisitor visit(String annotationTypeDescriptor, boolean visible);
 
         /**
@@ -84,7 +84,7 @@ public interface AnnotationAppender {
          * @param typePath                 The type annotation's type path.
          * @return An annotation visitor for consuming the specified annotation.
          */
-        @Nullable
+        @MaybeNull
         AnnotationVisitor visit(String annotationTypeDescriptor, boolean visible, int typeReference, String typePath);
 
         /**
@@ -110,7 +110,7 @@ public interface AnnotationAppender {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public AnnotationVisitor visit(String annotationTypeDescriptor, boolean visible) {
                 return classVisitor.visitAnnotation(annotationTypeDescriptor, visible);
             }
@@ -118,7 +118,7 @@ public interface AnnotationAppender {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public AnnotationVisitor visit(String annotationTypeDescriptor, boolean visible, int typeReference, String typePath) {
                 return classVisitor.visitTypeAnnotation(typeReference, TypePath.fromString(typePath), annotationTypeDescriptor, visible);
             }
@@ -147,7 +147,7 @@ public interface AnnotationAppender {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public AnnotationVisitor visit(String annotationTypeDescriptor, boolean visible) {
                 return fieldVisitor.visitAnnotation(annotationTypeDescriptor, visible);
             }
@@ -155,7 +155,7 @@ public interface AnnotationAppender {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public AnnotationVisitor visit(String annotationTypeDescriptor, boolean visible, int typeReference, String typePath) {
                 return fieldVisitor.visitTypeAnnotation(typeReference, TypePath.fromString(typePath), annotationTypeDescriptor, visible);
             }
@@ -184,7 +184,7 @@ public interface AnnotationAppender {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public AnnotationVisitor visit(String annotationTypeDescriptor, boolean visible) {
                 return methodVisitor.visitAnnotation(annotationTypeDescriptor, visible);
             }
@@ -192,7 +192,7 @@ public interface AnnotationAppender {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public AnnotationVisitor visit(String annotationTypeDescriptor, boolean visible, int typeReference, String typePath) {
                 return methodVisitor.visitTypeAnnotation(typeReference, TypePath.fromString(typePath), annotationTypeDescriptor, visible);
             }
@@ -228,7 +228,7 @@ public interface AnnotationAppender {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public AnnotationVisitor visit(String annotationTypeDescriptor, boolean visible) {
                 return methodVisitor.visitParameterAnnotation(parameterIndex, annotationTypeDescriptor, visible);
             }
@@ -236,7 +236,7 @@ public interface AnnotationAppender {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public AnnotationVisitor visit(String annotationTypeDescriptor, boolean visible, int typeReference, String typePath) {
                 return methodVisitor.visitTypeAnnotation(typeReference, TypePath.fromString(typePath), annotationTypeDescriptor, visible);
             }
@@ -265,7 +265,7 @@ public interface AnnotationAppender {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public AnnotationVisitor visit(String annotationTypeDescriptor, boolean visible) {
                 return recordComponentVisitor.visitAnnotation(annotationTypeDescriptor, visible);
             }
@@ -273,7 +273,7 @@ public interface AnnotationAppender {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public AnnotationVisitor visit(String annotationTypeDescriptor, boolean visible, int typeReference, String typePath) {
                 return recordComponentVisitor.visitTypeAnnotation(typeReference, TypePath.fromString(typePath), annotationTypeDescriptor, visible);
             }
@@ -322,10 +322,10 @@ public interface AnnotationAppender {
          *
          * @param annotationVisitor The annotation visitor the write process is to be applied on.
          * @param valueType         The type of the annotation.
-         * @param name              The name of the annotation type or {@code null} if no name is available..
+         * @param name              The name of the annotation type or {@code null} if no name is available.
          * @param value             The annotation's value.
          */
-        public static void apply(AnnotationVisitor annotationVisitor, TypeDescription valueType, @Nullable String name, Object value) {
+        public static void apply(AnnotationVisitor annotationVisitor, TypeDescription valueType, @MaybeNull String name, Object value) {
             if (valueType.isArray()) { // The Android emulator reads annotation arrays as annotation types. Therefore, this check needs to come first.
                 AnnotationVisitor arrayVisitor = annotationVisitor.visitArray(name);
                 int length = Array.getLength(value);
@@ -661,6 +661,7 @@ public interface AnnotationAppender {
         /**
          * {@inheritDoc}
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
         public AnnotationAppender onGenericArray(TypeDescription.Generic genericArray) {
             return genericArray.getComponentType().accept(new ForTypeAnnotations(apply(genericArray, typePath),
                     annotationValueFilter,
@@ -720,8 +721,9 @@ public interface AnnotationAppender {
                 typePath = typePath.append(INNER_CLASS_PATH);
             }
             AnnotationAppender annotationAppender = apply(typeDescription, typePath.toString());
-            if (typeDescription.isArray()) {
-                annotationAppender = typeDescription.getComponentType().accept(new ForTypeAnnotations(annotationAppender,
+            TypeDescription.Generic componentType = typeDescription.getComponentType();
+            if (componentType != null) {
+                annotationAppender = componentType.accept(new ForTypeAnnotations(annotationAppender,
                         annotationValueFilter,
                         typeReference,
                         this.typePath + COMPONENT_TYPE_PATH)); // Impossible to be inner class

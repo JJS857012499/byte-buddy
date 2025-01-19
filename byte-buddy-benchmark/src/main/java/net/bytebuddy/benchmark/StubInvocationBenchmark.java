@@ -16,10 +16,10 @@
 package net.bytebuddy.benchmark;
 
 import net.bytebuddy.benchmark.specimen.ExampleInterface;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 
-import javax.annotation.Nullable;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -86,31 +86,31 @@ public class StubInvocationBenchmark {
     /**
      * A casual instance that serves as a baseline.
      */
-    @Nullable
+    @MaybeNull
     private ExampleInterface baselineInstance;
 
     /**
      * An instance created by Byte Buddy for performing benchmarks on.
      */
-    @Nullable
+    @MaybeNull
     private ExampleInterface byteBuddyInstance;
 
     /**
      * An instance created by cglib for performing benchmarks on.
      */
-    @Nullable
+    @MaybeNull
     private ExampleInterface cglibInstance;
 
     /**
      * An instance created by javassist for performing benchmarks on.
      */
-    @Nullable
+    @MaybeNull
     private ExampleInterface javassistInstance;
 
     /**
      * An instance created by the JDK proxy for performing benchmarks on.
      */
-    @Nullable
+    @MaybeNull
     private ExampleInterface jdkProxyInstance;
 
     /**

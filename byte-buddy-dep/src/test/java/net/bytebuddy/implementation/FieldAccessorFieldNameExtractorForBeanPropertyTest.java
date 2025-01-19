@@ -1,11 +1,11 @@
 package net.bytebuddy.implementation;
 
 import net.bytebuddy.description.method.MethodDescription;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -16,7 +16,7 @@ public class FieldAccessorFieldNameExtractorForBeanPropertyTest {
     private static final String FOO = "foo", FOO_CAPITAL = "Foo";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private MethodDescription methodDescription;
@@ -26,6 +26,11 @@ public class FieldAccessorFieldNameExtractorForBeanPropertyTest {
         when(methodDescription.getInternalName()).thenReturn("get" + FOO_CAPITAL);
         assertThat(FieldAccessor.FieldNameExtractor.ForBeanProperty.INSTANCE.resolve(methodDescription), is(FOO));
     }
+    @Test
+    public void testGetterMethodCapitalized() throws Exception {
+        when(methodDescription.getInternalName()).thenReturn("get" + FOO_CAPITAL);
+        assertThat(FieldAccessor.FieldNameExtractor.ForBeanProperty.CAPITALIZED.resolve(methodDescription), is(FOO_CAPITAL));
+    }
 
     @Test
     public void testSetterMethod() throws Exception {
@@ -34,9 +39,21 @@ public class FieldAccessorFieldNameExtractorForBeanPropertyTest {
     }
 
     @Test
+    public void testSetterMethodCapitalized() throws Exception {
+        when(methodDescription.getInternalName()).thenReturn("set" + FOO_CAPITAL);
+        assertThat(FieldAccessor.FieldNameExtractor.ForBeanProperty.CAPITALIZED.resolve(methodDescription), is(FOO_CAPITAL));
+    }
+
+    @Test
     public void testGetterMethodBooleanPrefix() throws Exception {
         when(methodDescription.getInternalName()).thenReturn("is" + FOO_CAPITAL);
         assertThat(FieldAccessor.FieldNameExtractor.ForBeanProperty.INSTANCE.resolve(methodDescription), is(FOO));
+    }
+
+    @Test
+    public void testGetterMethodBooleanPrefixCapitalized() throws Exception {
+        when(methodDescription.getInternalName()).thenReturn("is" + FOO_CAPITAL);
+        assertThat(FieldAccessor.FieldNameExtractor.ForBeanProperty.CAPITALIZED.resolve(methodDescription), is(FOO_CAPITAL));
     }
 
     @Test(expected = IllegalArgumentException.class)

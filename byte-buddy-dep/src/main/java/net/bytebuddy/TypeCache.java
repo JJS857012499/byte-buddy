@@ -18,10 +18,9 @@ package net.bytebuddy;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.build.CachedReturnPlugin;
 import net.bytebuddy.utility.CompoundList;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.SoftReference;
@@ -60,7 +59,7 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
     /**
      * Indicates that a type was not found.
      */
-    @Nonnull(when = When.NEVER)
+    @AlwaysNull
     private static final Class<?> NOT_FOUND = null;
 
     /**
@@ -71,7 +70,14 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
     /**
      * The underlying map containing cached objects.
      */
-    protected final ConcurrentMap<StorageKey, ConcurrentMap<T, Reference<Class<?>>>> cache;
+    protected final ConcurrentMap<StorageKey, ConcurrentMap<T, Object>> cache;
+
+    /**
+     * Creates a new type cache with strong references to the stored types.
+     */
+    public TypeCache() {
+        this(Sort.STRONG);
+    }
 
     /**
      * Creates a new type cache.
@@ -80,28 +86,30 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
      */
     public TypeCache(Sort sort) {
         this.sort = sort;
-        cache = new ConcurrentHashMap<StorageKey, ConcurrentMap<T, Reference<Class<?>>>>();
+        cache = new ConcurrentHashMap<StorageKey, ConcurrentMap<T, Object>>();
     }
 
     /**
      * Finds a stored type or returns {@code null} if no type was stored.
      *
-     * @param classLoader The class loader for which this type is stored.
+     * @param classLoader The class loader for which this type is stored or {@code null} for the bootstrap loader.
      * @param key         The key for the type in question.
      * @return The stored type or {@code null} if no type was stored.
      */
-    @Nullable
-    @SuppressFBWarnings(value = "GC_UNRELATED_TYPES", justification = "Cross-comparison is intended")
-    public Class<?> find(@Nullable ClassLoader classLoader, T key) {
-        ConcurrentMap<T, Reference<Class<?>>> storage = cache.get(new LookupKey(classLoader));
+    @MaybeNull
+    @SuppressFBWarnings(value = "GC_UNRELATED_TYPES", justification = "Cross-comparison is intended.")
+    public Class<?> find(@MaybeNull ClassLoader classLoader, T key) {
+        ConcurrentMap<T, Object> storage = cache.get(new LookupKey(classLoader));
         if (storage == null) {
             return NOT_FOUND;
         } else {
-            Reference<Class<?>> reference = storage.get(key);
-            if (reference == null) {
+            Object value = storage.get(key);
+            if (value == null) {
                 return NOT_FOUND;
+            } else if (value instanceof Reference<?>) {
+                return (Class<?>) ((Reference<?>) value).get();
             } else {
-                return reference.get();
+                return (Class<?>) value;
             }
         }
     }
@@ -109,32 +117,34 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
     /**
      * Inserts a new type into the cache. If a type with the same class loader and key was inserted previously, the cache is not updated.
      *
-     * @param classLoader The class loader for which this type is stored.
+     * @param classLoader The class loader for which this type is stored or {@code null} for the bootstrap loader.
      * @param key         The key for the type in question.
      * @param type        The type to insert of no previous type was stored in the cache.
      * @return The supplied type or a previously submitted type for the same class loader and key combination.
      */
-    @SuppressFBWarnings(value = "GC_UNRELATED_TYPES", justification = "Cross-comparison is intended")
-    public Class<?> insert(@Nullable ClassLoader classLoader, T key, Class<?> type) {
-        ConcurrentMap<T, Reference<Class<?>>> storage = cache.get(new LookupKey(classLoader));
+    @SuppressFBWarnings(value = "GC_UNRELATED_TYPES", justification = "Cross-comparison is intended.")
+    public Class<?> insert(@MaybeNull ClassLoader classLoader, T key, Class<?> type) {
+        ConcurrentMap<T, Object> storage = cache.get(new LookupKey(classLoader));
         if (storage == null) {
-            storage = new ConcurrentHashMap<T, Reference<Class<?>>>();
-            ConcurrentMap<T, Reference<Class<?>>> previous = cache.putIfAbsent(new StorageKey(classLoader, this), storage);
+            storage = new ConcurrentHashMap<T, Object>();
+            ConcurrentMap<T, Object> previous = cache.putIfAbsent(new StorageKey(classLoader, this), storage);
             if (previous != null) {
                 storage = previous;
             }
         }
-        Reference<Class<?>> reference = sort.wrap(type), previous = storage.putIfAbsent(key, reference);
+        Object value = sort.wrap(type), previous = storage.putIfAbsent(key, value);
         while (previous != null) {
-            Class<?> previousType = previous.get();
+            Class<?> previousType = (Class<?>) (previous instanceof Reference<?>
+                    ? ((Reference<?>) previous).get()
+                    : previous);
             if (previousType != null) {
                 return previousType;
             } else if (storage.remove(key, previous)) {
-                previous = storage.putIfAbsent(key, reference);
+                previous = storage.putIfAbsent(key, value);
             } else {
                 previous = storage.get(key);
                 if (previous == null) {
-                    previous = storage.putIfAbsent(key, reference);
+                    previous = storage.putIfAbsent(key, value);
                 }
             }
         }
@@ -144,12 +154,12 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
     /**
      * Finds an existing type or inserts a new one if the previous type was not found.
      *
-     * @param classLoader The class loader for which this type is stored.
+     * @param classLoader The class loader for which this type is stored or {@code null} for the bootstrap loader.
      * @param key         The key for the type in question.
      * @param lazy        A lazy creator for the type to insert of no previous type was stored in the cache.
      * @return The lazily created type or a previously submitted type for the same class loader and key combination.
      */
-    public Class<?> findOrInsert(ClassLoader classLoader, T key, Callable<Class<?>> lazy) {
+    public Class<?> findOrInsert(@MaybeNull ClassLoader classLoader, T key, Callable<Class<?>> lazy) {
         Class<?> type = find(classLoader, key);
         if (type != null) {
             return type;
@@ -165,13 +175,13 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
     /**
      * Finds an existing type or inserts a new one if the previous type was not found.
      *
-     * @param classLoader The class loader for which this type is stored.
+     * @param classLoader The class loader for which this type is stored or {@code null} for the bootstrap loader.
      * @param key         The key for the type in question.
      * @param lazy        A lazy creator for the type to insert of no previous type was stored in the cache.
      * @param monitor     A monitor to lock before creating the lazy type.
      * @return The lazily created type or a previously submitted type for the same class loader and key combination.
      */
-    public Class<?> findOrInsert(@Nullable ClassLoader classLoader, T key, Callable<Class<?>> lazy, Object monitor) {
+    public Class<?> findOrInsert(@MaybeNull ClassLoader classLoader, T key, Callable<Class<?>> lazy, Object monitor) {
         Class<?> type = find(classLoader, key);
         if (type != null) {
             return type;
@@ -222,6 +232,16 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
             protected Reference<Class<?>> wrap(Class<?> type) {
                 return new SoftReference<Class<?>>(type);
             }
+        },
+
+        /**
+         * Creates a cache where cached types are strongly referenced.
+         */
+        STRONG {
+            @Override
+            protected Class<?> wrap(Class<?> type) {
+                return type;
+            }
         };
 
         /**
@@ -230,7 +250,7 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
          * @param type The type to wrap.
          * @return The reference that represents the type.
          */
-        protected abstract Reference<Class<?>> wrap(Class<?> type);
+        protected abstract Object wrap(Class<?> type);
     }
 
     /**
@@ -239,9 +259,9 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
     protected static class LookupKey {
 
         /**
-         * The referenced class loader.
+         * The referenced class loader or {@code null} for the bootstrap loader.
          */
-        @Nullable
+        @MaybeNull
         private final ClassLoader classLoader;
 
         /**
@@ -252,9 +272,9 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
         /**
          * Creates a new lookup key.
          *
-         * @param classLoader The represented class loader.
+         * @param classLoader The represented class loader or {@code null} for the bootstrap loader.
          */
-        protected LookupKey(@Nullable ClassLoader classLoader) {
+        protected LookupKey(@MaybeNull ClassLoader classLoader) {
             this.classLoader = classLoader;
             hashCode = System.identityHashCode(classLoader);
         }
@@ -265,8 +285,8 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
         }
 
         @Override
-        @SuppressFBWarnings(value = "EQ_CHECK_FOR_OPERAND_NOT_COMPATIBLE_WITH_THIS", justification = "Cross-comparison is intended")
-        public boolean equals(Object other) {
+        @SuppressFBWarnings(value = "EQ_CHECK_FOR_OPERAND_NOT_COMPATIBLE_WITH_THIS", justification = "Cross-comparison is intended.")
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (other instanceof LookupKey) {
@@ -293,10 +313,10 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
         /**
          * Creates a new storage key.
          *
-         * @param classLoader    The represented class loader.
+         * @param classLoader    The represented class loader or {@code null} for the bootstrap loader.
          * @param referenceQueue The reference queue to notify upon a garbage collection.
          */
-        protected StorageKey(@Nullable ClassLoader classLoader, ReferenceQueue<? super ClassLoader> referenceQueue) {
+        protected StorageKey(@MaybeNull ClassLoader classLoader, ReferenceQueue<? super ClassLoader> referenceQueue) {
             super(classLoader, referenceQueue);
             hashCode = System.identityHashCode(classLoader);
         }
@@ -307,8 +327,8 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
         }
 
         @Override
-        @SuppressFBWarnings(value = "EQ_CHECK_FOR_OPERAND_NOT_COMPATIBLE_WITH_THIS", justification = "Cross-comparison is intended")
-        public boolean equals(Object other) {
+        @SuppressFBWarnings(value = "EQ_CHECK_FOR_OPERAND_NOT_COMPATIBLE_WITH_THIS", justification = "Cross-comparison is intended.")
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (other instanceof LookupKey) {
@@ -334,6 +354,13 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
     public static class WithInlineExpunction<S> extends TypeCache<S> {
 
         /**
+         * Creates a new type cache with inlined expunction and strong references to the stored types.
+         */
+        public WithInlineExpunction() {
+            this(Sort.STRONG);
+        }
+
+        /**
          * Creates a new type cache with inlined expunction.
          *
          * @param sort The reference type to use for stored types.
@@ -345,7 +372,7 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
         /**
          * {@inheritDoc}
          */
-        public Class<?> find(@Nullable ClassLoader classLoader, S key) {
+        public Class<?> find(@MaybeNull ClassLoader classLoader, S key) {
             try {
                 return super.find(classLoader, key);
             } finally {
@@ -356,7 +383,7 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
         /**
          * {@inheritDoc}
          */
-        public Class<?> insert(@Nullable ClassLoader classLoader, S key, Class<?> type) {
+        public Class<?> insert(@MaybeNull ClassLoader classLoader, S key, Class<?> type) {
             try {
                 return super.insert(classLoader, key, type);
             } finally {
@@ -367,7 +394,7 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
         /**
          * {@inheritDoc}
          */
-        public Class<?> findOrInsert(ClassLoader classLoader, S key, Callable<Class<?>> builder) {
+        public Class<?> findOrInsert(@MaybeNull ClassLoader classLoader, S key, Callable<Class<?>> builder) {
             try {
                 return super.findOrInsert(classLoader, key, builder);
             } finally {
@@ -378,7 +405,7 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
         /**
          * {@inheritDoc}
          */
-        public Class<?> findOrInsert(@Nullable ClassLoader classLoader, S key, Callable<Class<?>> builder, Object monitor) {
+        public Class<?> findOrInsert(@MaybeNull ClassLoader classLoader, S key, Callable<Class<?>> builder, Object monitor) {
             try {
                 return super.findOrInsert(classLoader, key, builder, monitor);
             } finally {
@@ -436,7 +463,7 @@ public class TypeCache<T> extends ReferenceQueue<ClassLoader> {
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (other == null || getClass() != other.getClass()) {

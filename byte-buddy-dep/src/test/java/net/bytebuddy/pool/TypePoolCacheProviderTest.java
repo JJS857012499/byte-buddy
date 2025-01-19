@@ -1,16 +1,17 @@
 package net.bytebuddy.pool;
 
 import net.bytebuddy.matcher.ElementMatchers;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.CoreMatchers.nullValue;
+import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.Mockito.*;
 
@@ -19,7 +20,7 @@ public class TypePoolCacheProviderTest {
     private static final String FOO = "foo", BAR = "bar";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private TypePool.Resolution resolution;
@@ -75,7 +76,7 @@ public class TypePoolCacheProviderTest {
         TypePool.CacheProvider discriminating = new TypePool.CacheProvider.Discriminating(ElementMatchers.<String>is(FOO), matched, unmatched);
         when(matched.register(FOO, resolution)).thenReturn(resolution);
         assertThat(discriminating.register(FOO, resolution), sameInstance(resolution));
-        verifyZeroInteractions(unmatched);
+        verifyNoMoreInteractions(unmatched);
         discriminating.clear();
         verify(matched).clear();
         verify(unmatched).clear();
@@ -87,7 +88,7 @@ public class TypePoolCacheProviderTest {
         TypePool.CacheProvider discriminating = new TypePool.CacheProvider.Discriminating(ElementMatchers.<String>is(BAR), matched, unmatched);
         when(unmatched.register(FOO, resolution)).thenReturn(resolution);
         assertThat(discriminating.register(FOO, resolution), sameInstance(resolution));
-        verifyZeroInteractions(matched);
+        verifyNoMoreInteractions(matched);
         discriminating.clear();
         verify(matched).clear();
         verify(unmatched).clear();

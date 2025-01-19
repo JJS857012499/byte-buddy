@@ -15,9 +15,9 @@
  */
 package net.bytebuddy.build.gradle;
 
-import net.bytebuddy.build.gradle.api.ChangeType;
-import net.bytebuddy.build.gradle.api.FileChange;
-import org.gradle.api.Project;
+import org.gradle.api.logging.Logger;
+import org.gradle.work.ChangeType;
+import org.gradle.work.FileChange;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -31,14 +31,14 @@ public interface IncrementalResolver {
     /**
      * Returns a list of files to transform after an incremental change.
      *
-     * @param project    The current project.
+     * @param logger     A logger for the resolver.
      * @param changes    An iterable of all changes that were found.
      * @param sourceRoot The source directory.
      * @param targetRoot The target directory.
      * @param classPath  The class path available.
      * @return A list of files to include in the transformation.
      */
-    List<File> apply(Project project, Iterable<FileChange> changes, File sourceRoot, File targetRoot, Iterable<File> classPath);
+    List<File> apply(Logger logger, Iterable<FileChange> changes, File sourceRoot, File targetRoot, Iterable<File> classPath);
 
     /**
      * An incremental resolver that retransforms any file that has changed but no other files.
@@ -53,13 +53,13 @@ public interface IncrementalResolver {
         /**
          * {@inheritDoc}
          */
-        public List<File> apply(Project project, Iterable<FileChange> changes, File sourceRoot, File targetRoot, Iterable<File> classPath) {
+        public List<File> apply(Logger logger, Iterable<FileChange> changes, File sourceRoot, File targetRoot, Iterable<File> classPath) {
             List<File> files = new ArrayList<File>();
             for (FileChange change : changes) {
                 if (change.getChangeType() == ChangeType.REMOVED) {
                     File target = new File(targetRoot, sourceRoot.toURI().relativize(change.getFile().toURI()).getPath());
-                    if (project.delete(target)) {
-                        project.getLogger().debug("Deleted removed file {} to prepare incremental build", target);
+                    if (AbstractByteBuddyTask.deleteRecursively(target)) {
+                        logger.debug("Deleted removed file {} to prepare incremental build", target);
                     }
                 } else {
                     files.add(change.getFile());

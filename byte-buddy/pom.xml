@@ -5,7 +5,7 @@
     <parent>
         <groupId>net.bytebuddy</groupId>
         <artifactId>byte-buddy-parent</artifactId>
-        <version>1.12.4-SNAPSHOT</version>
+        <version>1.16.2-SNAPSHOT</version>
     </parent>
 
     <artifactId>byte-buddy</artifactId>
@@ -26,8 +26,10 @@
     -->
 
     <properties>
-        <shade.source>org.objectweb.asm</shade.source>
-        <shade.target>net.bytebuddy.jar.asm</shade.target>
+        <shade.asm.source>org.objectweb.asm</shade.asm.source>
+        <shade.asm.target>net.bytebuddy.jar.asm</shade.asm.target>
+        <shade.asmjdkbridge.source>codes.rafael.asmjdkbridge</shade.asmjdkbridge.source>
+        <shade.asmjdkbridge.target>net.bytebuddy.jar.asmjdkbridge</shade.asmjdkbridge.target>
         <packages.list.external>
             net.bytebuddy,
             net.bytebuddy.agent.builder,
@@ -60,15 +62,18 @@
             net.bytebuddy.matcher,
             net.bytebuddy.pool,
             net.bytebuddy.utility,
+            net.bytebuddy.utility.nullability,
             net.bytebuddy.utility.privilege,
             net.bytebuddy.utility.visitor,
-            ${shade.target},
-            ${shade.target}.signature,
-            ${shade.target}.commons
+            ${shade.asm.target},
+            ${shade.asm.target}.signature,
+            ${shade.asm.target}.commons,
+            ${shade.asmjdkbridge.target}
         </packages.list.external>
         <packages.list.internal>
             net.bytebuddy.utility.dispatcher
         </packages.list.internal>
+        <japicmp.skip>true</japicmp.skip>
     </properties>
 
     <!--
@@ -80,18 +85,17 @@
         <dependency>
             <groupId>${project.groupId}</groupId>
             <artifactId>byte-buddy-dep</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>net.java.dev.jna</groupId>
             <artifactId>jna</artifactId>
-            <version>${jna.version}</version>
+            <version>${version.jna}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>net.java.dev.jna</groupId>
             <artifactId>jna-platform</artifactId>
-            <version>${jna.version}</version>
+            <version>${version.jna}</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>
@@ -104,84 +108,6 @@
             </resource>
         </resources>
         <plugins>
-            <!-- Shade the ASM dependency. -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>${version.plugin.shade}</version>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>shade</goal>
-                        </goals>
-                        <configuration>
-                            <shadedArtifactAttached>false</shadedArtifactAttached>
-                            <createDependencyReducedPom>true</createDependencyReducedPom>
-                            <createSourcesJar>${bytebuddy.extras}</createSourcesJar>
-                            <shadeSourcesContent>true</shadeSourcesContent>
-                            <relocations>
-                                <relocation>
-                                    <pattern>${shade.source}</pattern>
-                                    <shadedPattern>${shade.target}</shadedPattern>
-                                </relocation>
-                            </relocations>
-                            <filters>
-                                <filter>
-                                    <artifact>net.bytebuddy:byte-buddy-dep:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/MANIFEST.MF</exclude>
-                                    </excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>org.ow2.asm:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/MANIFEST.MF</exclude>
-                                        <exclude>**/module-info.class</exclude>
-                                        <exclude>**/LICENSE</exclude>
-                                        <exclude>**/NOTICE</exclude>
-                                    </excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>org.ow2.asm:asm-commons</artifact>
-                                    <includes>
-                                        <include>org/objectweb/asm/commons/AnnotationRemapper.**</include>
-                                        <include>org/objectweb/asm/commons/ClassRemapper.**</include>
-                                        <include>org/objectweb/asm/commons/FieldRemapper.**</include>
-                                        <include>org/objectweb/asm/commons/MethodRemapper.**</include>
-                                        <include>org/objectweb/asm/commons/ModuleHashesAttribute.**</include>
-                                        <include>org/objectweb/asm/commons/ModuleRemapper.**</include>
-                                        <include>org/objectweb/asm/commons/RecordComponentRemapper.**</include>
-                                        <include>org/objectweb/asm/commons/Remapper.**</include>
-                                        <include>org/objectweb/asm/commons/SignatureRemapper.**</include>
-                                        <include>org/objectweb/asm/commons/SimpleRemapper.**</include>
-                                    </includes>
-                                </filter>
-                            </filters>
-                            <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>net.bytebuddy.build.Plugin$Engine$Default</mainClass>
-                                </transformer>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
-                                    <resource>META-INF/LICENSE</resource>
-                                </transformer>
-                            </transformers>
-                        </configuration>
-                    </execution>
-                </executions>
-                <dependencies>
-                    <dependency>
-                        <groupId>org.ow2.asm</groupId>
-                        <artifactId>asm</artifactId>
-                        <version>${version.asm}</version>
-                    </dependency>
-                    <dependency>
-                        <groupId>org.ow2.asm</groupId>
-                        <artifactId>asm-commons</artifactId>
-                        <version>${version.asm}</version>
-                    </dependency>
-                </dependencies>
-            </plugin>
             <!-- Disable pitest as it fails for empty modules -->
             <plugin>
                 <groupId>org.pitest</groupId>
@@ -222,15 +148,15 @@
                         <goals>
                             <goal>manifest</goal>
                         </goals>
+                        <configuration>
+                            <instructions>
+                                <Multi-Release>true</Multi-Release>
+                                <!-- Cannot use wildcards because of use of the shade plugin which imports from 'byte-buddy-dep'. -->
+                                <Export-Package>${packages.list.external}</Export-Package>
+                            </instructions>
+                        </configuration>
                     </execution>
                 </executions>
-                <configuration>
-                    <instructions>
-                        <Multi-Release>true</Multi-Release>
-                        <!-- Cannot use wildcards because of use of the shade plugin which imports from 'byte-buddy-dep'. -->
-                        <Export-Package>${packages.list.external}</Export-Package>
-                    </instructions>
-                </configuration>
             </plugin>
             <!-- Inject a module-info.class file into the shaded jar. -->
             <plugin>
@@ -250,24 +176,42 @@
                         <goals>
                             <goal>inject-module</goal>
                         </goals>
+                        <configuration>
+                            <skip>${modulemaker.skip}</skip>
+                            <name>${project.groupId}</name>
+                            <version>${project.version}</version>
+                            <multirelease>true</multirelease>
+                            <packages>${packages.list.external},${packages.list.internal}</packages>
+                            <exports>${packages.list.external}</exports>
+                            <static-requires>
+                                java.instrument,
+                                java.management,
+                                jdk.unsupported,
+                                net.bytebuddy.agent,
+                                com.sun.jna,
+                                com.sun.jna.platform
+                            </static-requires>
+                            <main-class>net.bytebuddy.build.Plugin$Engine$Default</main-class>
+                        </configuration>
                     </execution>
                 </executions>
-                <configuration>
-                    <name>net.bytebuddy</name>
-                    <version>${project.version}</version>
-                    <multirelease>true</multirelease>
-                    <packages>${packages.list.external},${packages.list.internal}</packages>
-                    <exports>${packages.list.external}</exports>
-                    <static-requires>
-                        java.instrument,
-                        jdk.unsupported,
-                        net.bytebuddy.agent,
-                        com.sun.jna,
-                        com.sun.jna.platform
-                    </static-requires>
-                </configuration>
             </plugin>
         </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>${version.plugin.javadoc}</version>
+                    <configuration>
+                        <includeDependencySources>true</includeDependencySources>
+                        <dependencySourceIncludes>
+                            <dependencySourceInclude>${project.groupId}:byte-buddy-dep</dependencySourceInclude>
+                        </dependencySourceIncludes>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
     </build>
 
     <profiles>
@@ -287,17 +231,265 @@
                             <skipSource>true</skipSource>
                         </configuration>
                     </plugin>
-                    <!-- The shadowed source files of this module need to be included explicitly to create a javadoc artifact.-->
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>shade-current</id>
+            <activation>
+                <jdk>[1.8,)</jdk>
+            </activation>
+            <build>
+                <plugins>
+                    <!-- Shade the ASM dependency. -->
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-javadoc-plugin</artifactId>
-                        <version>${version.plugin.javadoc}</version>
-                        <configuration>
-                            <includeDependencySources>true</includeDependencySources>
-                            <dependencySourceIncludes>
-                                <dependencySourceInclude>${project.groupId}:byte-buddy-dep</dependencySourceInclude>
-                            </dependencySourceIncludes>
-                        </configuration>
+                        <artifactId>maven-shade-plugin</artifactId>
+                        <version>${version.plugin.shade}</version>
+                        <executions>
+                            <execution>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>shade</goal>
+                                </goals>
+                                <configuration>
+                                    <shadedArtifactAttached>false</shadedArtifactAttached>
+                                    <createDependencyReducedPom>true</createDependencyReducedPom>
+                                    <createSourcesJar>${bytebuddy.extras}</createSourcesJar>
+                                    <shadeSourcesContent>true</shadeSourcesContent>
+                                    <relocations>
+                                        <relocation>
+                                            <pattern>${shade.asm.source}</pattern>
+                                            <shadedPattern>${shade.asm.target}</shadedPattern>
+                                        </relocation>
+                                        <relocation>
+                                            <pattern>${shade.asmjdkbridge.source}</pattern>
+                                            <shadedPattern>${shade.asmjdkbridge.target}</shadedPattern>
+                                        </relocation>
+                                        <relocation>
+                                            <pattern>codes/rafael/asmjdkbridge</pattern>
+                                            <shadedPattern>net/bytebuddy/jar/asmjdkbridge</shadedPattern>
+                                            <rawString>true</rawString>
+                                        </relocation>
+                                    </relocations>
+                                    <filters>
+                                        <filter>
+                                            <artifact>net.bytebuddy:byte-buddy-dep:*</artifact>
+                                            <excludes>
+                                                <exclude>META-INF/MANIFEST.MF</exclude>
+                                                <exclude>META-INF/maven/**</exclude>
+                                            </excludes>
+                                        </filter>
+                                        <filter>
+                                            <artifact>org.ow2.asm:*</artifact>
+                                            <excludes>
+                                                <exclude>META-INF/MANIFEST.MF</exclude>
+                                                <exclude>**/module-info.class</exclude>
+                                                <exclude>**/LICENSE</exclude>
+                                                <exclude>**/NOTICE</exclude>
+                                            </excludes>
+                                        </filter>
+                                        <filter>
+                                            <artifact>codes.rafael.asmjdkbridge:*</artifact>
+                                            <includes>
+                                                <include>META-INF/versions/**</include>
+                                            </includes>
+                                            <excludes>
+                                                <exclude>META-INF/MANIFEST.MF</exclude>
+                                                <exclude>**/module-info.class</exclude>
+                                            </excludes>
+                                        </filter>
+                                        <filter>
+                                            <artifact>org.ow2.asm:asm-commons</artifact>
+                                            <includes>
+                                                <include>org/objectweb/asm/commons/AnnotationRemapper.**</include>
+                                                <include>org/objectweb/asm/commons/ClassRemapper.**</include>
+                                                <include>org/objectweb/asm/commons/FieldRemapper.**</include>
+                                                <include>org/objectweb/asm/commons/MethodRemapper.**</include>
+                                                <include>org/objectweb/asm/commons/ModuleHashesAttribute.**</include>
+                                                <include>org/objectweb/asm/commons/ModuleRemapper.**</include>
+                                                <include>org/objectweb/asm/commons/RecordComponentRemapper.**</include>
+                                                <include>org/objectweb/asm/commons/Remapper.**</include>
+                                                <include>org/objectweb/asm/commons/SignatureRemapper.**</include>
+                                                <include>org/objectweb/asm/commons/SimpleRemapper.**</include>
+                                            </includes>
+                                        </filter>
+                                    </filters>
+                                    <transformers>
+                                        <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                            <mainClass>net.bytebuddy.build.Plugin$Engine$Default</mainClass>
+                                        </transformer>
+                                        <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                            <forShade>sources-jar</forShade>
+                                            <manifestEntries />
+                                        </transformer>
+                                        <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                            <resource>META-INF/LICENSE</resource>
+                                        </transformer>
+                                    </transformers>
+                                </configuration>
+                            </execution>
+                        </executions>
+                        <dependencies>
+                            <dependency>
+                                <groupId>org.ow2.asm</groupId>
+                                <artifactId>asm</artifactId>
+                                <version>${version.asm}</version>
+                            </dependency>
+                            <dependency>
+                                <groupId>org.ow2.asm</groupId>
+                                <artifactId>asm-commons</artifactId>
+                                <version>${version.asm}</version>
+                            </dependency>
+                        </dependencies>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>shade-legacy</id>
+            <activation>
+                <jdk>(,1.7]</jdk>
+            </activation>
+            <build>
+                <plugins>
+                    <!-- Shade the ASM dependency. -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-shade-plugin</artifactId>
+                        <version>${version.plugin.shade}</version>
+                        <executions>
+                            <execution>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>shade</goal>
+                                </goals>
+                                <configuration>
+                                    <shadedArtifactAttached>false</shadedArtifactAttached>
+                                    <createDependencyReducedPom>true</createDependencyReducedPom>
+                                    <createSourcesJar>${bytebuddy.extras}</createSourcesJar>
+                                    <shadeSourcesContent>true</shadeSourcesContent>
+                                    <relocations>
+                                        <relocation>
+                                            <pattern>${shade.asm.source}</pattern>
+                                            <shadedPattern>${shade.asm.target}</shadedPattern>
+                                        </relocation>
+                                        <relocation>
+                                            <pattern>${shade.asmjdkbridge.source}</pattern>
+                                            <shadedPattern>${shade.asmjdkbridge.target}</shadedPattern>
+                                        </relocation>
+                                    </relocations>
+                                    <filters>
+                                        <filter>
+                                            <artifact>net.bytebuddy:byte-buddy-dep:*</artifact>
+                                            <excludes>
+                                                <exclude>META-INF/MANIFEST.MF</exclude>
+                                                <exclude>META-INF/maven/**</exclude>
+                                            </excludes>
+                                        </filter>
+                                        <filter>
+                                            <artifact>org.ow2.asm:*</artifact>
+                                            <excludes>
+                                                <exclude>META-INF/MANIFEST.MF</exclude>
+                                                <exclude>**/module-info.class</exclude>
+                                                <exclude>**/LICENSE</exclude>
+                                                <exclude>**/NOTICE</exclude>
+                                            </excludes>
+                                        </filter>
+                                        <filter>
+                                            <artifact>codes.rafael.asmjdkbridge:*</artifact>
+                                            <includes>
+                                                <include>META-INF/versions/**</include>
+                                            </includes>
+                                            <excludes>
+                                                <exclude>META-INF/MANIFEST.MF</exclude>
+                                                <exclude>**/module-info.class</exclude>
+                                            </excludes>
+                                        </filter>
+                                        <filter>
+                                            <artifact>org.ow2.asm:asm-commons</artifact>
+                                            <includes>
+                                                <include>org/objectweb/asm/commons/AnnotationRemapper.**</include>
+                                                <include>org/objectweb/asm/commons/ClassRemapper.**</include>
+                                                <include>org/objectweb/asm/commons/FieldRemapper.**</include>
+                                                <include>org/objectweb/asm/commons/MethodRemapper.**</include>
+                                                <include>org/objectweb/asm/commons/ModuleHashesAttribute.**</include>
+                                                <include>org/objectweb/asm/commons/ModuleRemapper.**</include>
+                                                <include>org/objectweb/asm/commons/RecordComponentRemapper.**</include>
+                                                <include>org/objectweb/asm/commons/Remapper.**</include>
+                                                <include>org/objectweb/asm/commons/SignatureRemapper.**</include>
+                                                <include>org/objectweb/asm/commons/SimpleRemapper.**</include>
+                                            </includes>
+                                        </filter>
+                                    </filters>
+                                    <transformers>
+                                        <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                            <mainClass>net.bytebuddy.build.Plugin$Engine$Default</mainClass>
+                                        </transformer>
+                                        <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                            <resource>META-INF/LICENSE</resource>
+                                        </transformer>
+                                    </transformers>
+                                </configuration>
+                            </execution>
+                        </executions>
+                        <dependencies>
+                            <dependency>
+                                <groupId>org.ow2.asm</groupId>
+                                <artifactId>asm</artifactId>
+                                <version>${version.asm}</version>
+                            </dependency>
+                            <dependency>
+                                <groupId>org.ow2.asm</groupId>
+                                <artifactId>asm-commons</artifactId>
+                                <version>${version.asm}</version>
+                            </dependency>
+                        </dependencies>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>multi-release</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>codes.rafael.bytecodeupdate</groupId>
+                        <artifactId>bytecode-update-maven-plugin</artifactId>
+                        <version>${version.plugin.bytecode-update}</version>
+                        <dependencies>
+                            <dependency>
+                                <groupId>org.ow2.asm</groupId>
+                                <artifactId>asm-commons</artifactId>
+                                <version>${version.asm}</version>
+                            </dependency>
+                        </dependencies>
+                        <executions>
+                            <execution>
+                                <id>multi-release</id>
+                                <goals>
+                                    <goal>update-bytecode</goal>
+                                </goals>
+                                <phase>prepare-package</phase>
+                                <configuration>
+                                    <outputDirectory>${project.build.outputDirectory}/META-INF/versions/9</outputDirectory>
+                                    <oldPackage>${shade.asm.source}</oldPackage>
+                                    <newPackage>${shade.asm.target}</newPackage>
+                                    <artifacts>
+                                        <artifact>org\.ow2\.asm:.*</artifact>
+                                    </artifacts>
+                                    <includes>
+                                        <include>org/objectweb/asm/[a-zA-Z0-9$\.]+</include>
+                                        <include>org/objectweb/asm/signature/[a-zA-Z0-9$\.]+</include>
+                                        <include>org/objectweb/asm/commons/.*Remapper.*</include>
+                                        <include>org/objectweb/asm/commons/ModuleHashesAttribute[a-zA-Z0-9$\.]*.class</include>
+                                    </includes>
+                                </configuration>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>

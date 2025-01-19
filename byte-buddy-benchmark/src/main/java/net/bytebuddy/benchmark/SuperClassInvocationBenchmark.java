@@ -16,10 +16,10 @@
 package net.bytebuddy.benchmark;
 
 import net.bytebuddy.benchmark.specimen.ExampleClass;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 
-import javax.annotation.Nullable;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -86,47 +86,47 @@ public class SuperClassInvocationBenchmark {
     /**
      * A casual instance that serves as a baseline.
      */
-    @Nullable
+    @MaybeNull
     private ExampleClass baselineInstance;
 
     /**
      * An instance created by Byte Buddy for performing benchmarks on. This instance is created by adding
      * auxiliary classes that allow for an invocation of a method from a delegation target.
      */
-    @Nullable
+    @MaybeNull
     private ExampleClass byteBuddyWithProxyInstance;
 
     /**
      * An instance created by Byte Buddy for performing benchmarks on. This instance is created by adding
      * super invocation methods which are exposed via the reflection API.
      */
-    @Nullable
+    @MaybeNull
     private ExampleClass byteBuddyWithAccessorInstance;
 
     /**
      * An instance created by Byte Buddy for performing benchmarks on. This instance is created by a delegation
      * followed by a hard-coded super method call.
      */
-    @Nullable
+    @MaybeNull
     private ExampleClass byteBuddyWithPrefixInstance;
 
     /**
      * An instance created by Byte Buddy for performing benchmarks on. This instance is created by hard-coding
      * a super method invocation into the intercepted method.
      */
-    @Nullable
+    @MaybeNull
     private ExampleClass byteBuddySpecializedInstance;
 
     /**
      * An instance created by cglib for performing benchmarks on.
      */
-    @Nullable
+    @MaybeNull
     private ExampleClass cglibInstance;
 
     /**
      * An instance created by javassist for performing benchmarks on.
      */
-    @Nullable
+    @MaybeNull
     private ExampleClass javassistInstance;
 
     /**

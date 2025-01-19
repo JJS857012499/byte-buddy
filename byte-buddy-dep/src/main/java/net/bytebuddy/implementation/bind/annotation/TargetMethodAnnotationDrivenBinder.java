@@ -18,7 +18,6 @@ package net.bytebuddy.implementation.bind.annotation;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
 import net.bytebuddy.description.annotation.AnnotationDescription;
-import net.bytebuddy.description.enumeration.EnumerationDescription;
 import net.bytebuddy.description.field.FieldDescription;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.method.ParameterDescription;
@@ -28,17 +27,13 @@ import net.bytebuddy.implementation.Implementation;
 import net.bytebuddy.implementation.bind.MethodDelegationBinder;
 import net.bytebuddy.implementation.bytecode.StackManipulation;
 import net.bytebuddy.implementation.bytecode.assign.Assigner;
-import net.bytebuddy.implementation.bytecode.constant.*;
-import net.bytebuddy.implementation.bytecode.member.FieldAccess;
+import net.bytebuddy.implementation.bytecode.constant.DefaultValue;
+import net.bytebuddy.utility.ConstantValue;
 import net.bytebuddy.utility.JavaConstant;
-import net.bytebuddy.utility.JavaType;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nullable;
 import java.lang.annotation.Annotation;
 import java.util.*;
-
-import static net.bytebuddy.matcher.ElementMatchers.isGetter;
-import static net.bytebuddy.matcher.ElementMatchers.isSetter;
 
 /**
  * This {@link net.bytebuddy.implementation.bind.MethodDelegationBinder} binds
@@ -158,7 +153,7 @@ public class TargetMethodAnnotationDrivenBinder implements MethodDelegationBinde
      *
      * @param <T> The {@link java.lang.annotation.Annotation#annotationType()} handled by this parameter binder.
      */
-    @SuppressFBWarnings(value = "IC_SUPERCLASS_USES_SUBCLASS_DURING_INITIALIZATION", justification = "Safe initialization is implied")
+    @SuppressFBWarnings(value = "IC_SUPERCLASS_USES_SUBCLASS_DURING_INITIALIZATION", justification = "Safe initialization is implied.")
     public interface ParameterBinder<T extends Annotation> {
 
         /**
@@ -172,10 +167,16 @@ public class TargetMethodAnnotationDrivenBinder implements MethodDelegationBinde
                 Super.Binder.INSTANCE,
                 Default.Binder.INSTANCE,
                 SuperCall.Binder.INSTANCE,
+                SuperCallHandle.Binder.INSTANCE,
                 DefaultCall.Binder.INSTANCE,
+                DefaultCallHandle.Binder.INSTANCE,
                 SuperMethod.Binder.INSTANCE,
+                SuperMethodHandle.Binder.INSTANCE,
                 DefaultMethod.Binder.INSTANCE,
+                DefaultMethodHandle.Binder.INSTANCE,
                 FieldValue.Binder.INSTANCE,
+                FieldGetterHandle.Binder.INSTANCE,
+                FieldSetterHandle.Binder.INSTANCE,
                 StubValue.Binder.INSTANCE,
                 Empty.Binder.INSTANCE));
 
@@ -236,67 +237,12 @@ public class TargetMethodAnnotationDrivenBinder implements MethodDelegationBinde
                 Object value = bind(annotation, source, target);
                 if (value == null) {
                     return new ParameterBinding.Anonymous(DefaultValue.of(target.getType()));
-                }
-                StackManipulation stackManipulation;
-                TypeDescription suppliedType;
-                if (value instanceof Boolean) {
-                    stackManipulation = IntegerConstant.forValue((Boolean) value);
-                    suppliedType = TypeDescription.ForLoadedType.of(boolean.class);
-                } else if (value instanceof Byte) {
-                    stackManipulation = IntegerConstant.forValue((Byte) value);
-                    suppliedType = TypeDescription.ForLoadedType.of(byte.class);
-                } else if (value instanceof Short) {
-                    stackManipulation = IntegerConstant.forValue((Short) value);
-                    suppliedType = TypeDescription.ForLoadedType.of(short.class);
-                } else if (value instanceof Character) {
-                    stackManipulation = IntegerConstant.forValue((Character) value);
-                    suppliedType = TypeDescription.ForLoadedType.of(char.class);
-                } else if (value instanceof Integer) {
-                    stackManipulation = IntegerConstant.forValue((Integer) value);
-                    suppliedType = TypeDescription.ForLoadedType.of(int.class);
-                } else if (value instanceof Long) {
-                    stackManipulation = LongConstant.forValue((Long) value);
-                    suppliedType = TypeDescription.ForLoadedType.of(long.class);
-                } else if (value instanceof Float) {
-                    stackManipulation = FloatConstant.forValue((Float) value);
-                    suppliedType = TypeDescription.ForLoadedType.of(float.class);
-                } else if (value instanceof Double) {
-                    stackManipulation = DoubleConstant.forValue((Double) value);
-                    suppliedType = TypeDescription.ForLoadedType.of(double.class);
-                } else if (value instanceof String) {
-                    stackManipulation = new TextConstant((String) value);
-                    suppliedType = TypeDescription.STRING;
-                } else if (value instanceof Class) {
-                    stackManipulation = ClassConstant.of(TypeDescription.ForLoadedType.of((Class<?>) value));
-                    suppliedType = TypeDescription.CLASS;
-                } else if (value instanceof TypeDescription) {
-                    stackManipulation = ClassConstant.of((TypeDescription) value);
-                    suppliedType = TypeDescription.CLASS;
-                } else if (value instanceof Enum<?>) {
-                    stackManipulation = FieldAccess.forEnumeration(new EnumerationDescription.ForLoadedEnumeration((Enum<?>) value));
-                    suppliedType = TypeDescription.ForLoadedType.of(((Enum<?>) value).getDeclaringClass());
-                } else if (value instanceof EnumerationDescription) {
-                    stackManipulation = FieldAccess.forEnumeration((EnumerationDescription) value);
-                    suppliedType = ((EnumerationDescription) value).getEnumerationType();
-                } else if (JavaType.METHOD_HANDLE.isInstance(value)) {
-                    stackManipulation = new JavaConstantValue(JavaConstant.MethodHandle.ofLoaded(value));
-                    suppliedType = JavaType.METHOD_HANDLE.getTypeStub();
-                } else if (value instanceof JavaConstant.MethodHandle) {
-                    stackManipulation = new JavaConstantValue((JavaConstant.MethodHandle) value);
-                    suppliedType = JavaType.METHOD_HANDLE.getTypeStub();
-                } else if (JavaType.METHOD_TYPE.isInstance(value)) {
-                    stackManipulation = new JavaConstantValue(JavaConstant.MethodType.ofLoaded(value));
-                    suppliedType = JavaType.METHOD_HANDLE.getTypeStub();
-                } else if (value instanceof JavaConstant) {
-                    stackManipulation = new JavaConstantValue((JavaConstant) value);
-                    suppliedType = ((JavaConstant) value).getTypeDescription();
                 } else {
-                    throw new IllegalStateException("Not able to save in class's constant pool: " + value);
+                    ConstantValue constant = ConstantValue.Simple.wrap(value);
+                    return new ParameterBinding.Anonymous(new StackManipulation.Compound(
+                            constant.toStackManipulation(),
+                            assigner.assign(constant.getTypeDescription().asGenericType(), target.getType(), typing)));
                 }
-                return new ParameterBinding.Anonymous(new StackManipulation.Compound(
-                        stackManipulation,
-                        assigner.assign(suppliedType.asGenericType(), target.getType(), typing)
-                ));
             }
 
             /**
@@ -307,7 +253,7 @@ public class TargetMethodAnnotationDrivenBinder implements MethodDelegationBinde
              * @param target     The parameter for which a value is bound.
              * @return The constant pool value that is bound to this parameter or {@code null} for binding this value.
              */
-            @Nullable
+            @MaybeNull
             protected abstract Object bind(AnnotationDescription.Loadable<S> annotation, MethodDescription source, ParameterDescription target);
 
             /**
@@ -334,7 +280,7 @@ public class TargetMethodAnnotationDrivenBinder implements MethodDelegationBinde
                 /**
                  * The value that is assigned to any annotated parameter.
                  */
-                @Nullable
+                @MaybeNull
                 @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
                 private final Object value;
 
@@ -344,7 +290,7 @@ public class TargetMethodAnnotationDrivenBinder implements MethodDelegationBinde
                  * @param type  The type of the annotation that is bound by this binder.
                  * @param value The value that is assigned to any annotated parameter.
                  */
-                protected OfConstant(Class<U> type, @Nullable Object value) {
+                protected OfConstant(Class<U> type, @MaybeNull Object value) {
                     this.type = type;
                     this.value = value;
                 }
@@ -357,7 +303,7 @@ public class TargetMethodAnnotationDrivenBinder implements MethodDelegationBinde
                  * @param <V>   The bound annotation's type.
                  * @return A parameter binder that binds the given annotation to the supplied value.
                  */
-                public static <V extends Annotation> ParameterBinder<V> of(Class<V> type, @Nullable Object value) {
+                public static <V extends Annotation> ParameterBinder<V> of(Class<V> type, @MaybeNull Object value) {
                     return new OfConstant<V>(type, value);
                 }
 
@@ -368,7 +314,7 @@ public class TargetMethodAnnotationDrivenBinder implements MethodDelegationBinde
                     return type;
                 }
 
-                @Nullable
+                @MaybeNull
                 @Override
                 protected Object bind(AnnotationDescription.Loadable<U> annotation, MethodDescription source, ParameterDescription target) {
                     return value;
@@ -387,25 +333,6 @@ public class TargetMethodAnnotationDrivenBinder implements MethodDelegationBinde
              * Indicates that a name should be extracted from an accessor method.
              */
             protected static final String BEAN_PROPERTY = "";
-
-            /**
-             * Resolves a field locator for a potential accessor method.
-             *
-             * @param fieldLocator      The field locator to use.
-             * @param methodDescription The method description that is the potential accessor.
-             * @return A resolution for a field locator.
-             */
-            private static FieldLocator.Resolution resolveAccessor(FieldLocator fieldLocator, MethodDescription methodDescription) {
-                String fieldName;
-                if (isSetter().matches(methodDescription)) {
-                    fieldName = methodDescription.getInternalName().substring(3);
-                } else if (isGetter().matches(methodDescription)) {
-                    fieldName = methodDescription.getInternalName().substring(methodDescription.getInternalName().startsWith("is") ? 2 : 3);
-                } else {
-                    return FieldLocator.Resolution.Illegal.INSTANCE;
-                }
-                return fieldLocator.locate(Character.toLowerCase(fieldName.charAt(0)) + fieldName.substring(1));
-            }
 
             /**
              * {@inheritDoc}
@@ -427,7 +354,7 @@ public class TargetMethodAnnotationDrivenBinder implements MethodDelegationBinde
                         ? new FieldLocator.ForClassHierarchy(implementationTarget.getInstrumentedType())
                         : new FieldLocator.ForExactType(declaringType(annotation), implementationTarget.getInstrumentedType());
                 FieldLocator.Resolution resolution = fieldName(annotation).equals(BEAN_PROPERTY)
-                        ? resolveAccessor(fieldLocator, source)
+                        ? FieldLocator.Resolution.Simple.ofBeanAccessor(fieldLocator, source)
                         : fieldLocator.locate(fieldName(annotation));
                 return resolution.isResolved() && !(source.isStatic() && !resolution.getField().isStatic())
                         ? bind(resolution.getField(), annotation, source, target, implementationTarget, assigner)
@@ -659,7 +586,7 @@ public class TargetMethodAnnotationDrivenBinder implements MethodDelegationBinde
                     }
 
                     @Override
-                    public boolean equals(Object other) {
+                    public boolean equals(@MaybeNull Object other) {
                         return this == other || other instanceof Argument && parameterIndex == ((Argument) other).value();
                     }
 

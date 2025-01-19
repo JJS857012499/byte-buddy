@@ -31,10 +31,9 @@ import net.bytebuddy.description.type.TypeList;
 import net.bytebuddy.implementation.bytecode.StackSize;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.utility.dispatcher.JavaDispatcher;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.Constructor;
@@ -168,6 +167,7 @@ public interface ParameterDescription extends AnnotationSource,
         /**
          * {@inheritDoc}
          */
+        @CachedReturnPlugin.Enhance("offset")
         public int getOffset() {
             TypeList parameterType = getDeclaringMethod().getParameters().asTypeList().asErasures();
             int offset = getDeclaringMethod().isStatic()
@@ -200,7 +200,7 @@ public interface ParameterDescription extends AnnotationSource,
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (!(other instanceof ParameterDescription)) {
@@ -431,7 +431,7 @@ public interface ParameterDescription extends AnnotationSource,
             /**
              * {@inheritDoc}
              */
-            @SuppressFBWarnings(value = "BC_UNCONFIRMED_CAST", justification = "The implicit field type casting is not understood by Findbugs")
+            @SuppressFBWarnings(value = "BC_UNCONFIRMED_CAST", justification = "The implicit field type casting is not understood by Findbugs.")
             public MethodDescription.InDefinedShape getDeclaringMethod() {
                 return new MethodDescription.ForLoadedMethod(executable);
             }
@@ -439,7 +439,7 @@ public interface ParameterDescription extends AnnotationSource,
             /**
              * {@inheritDoc}
              */
-            @SuppressFBWarnings(value = "BC_UNCONFIRMED_CAST", justification = "The implicit field type casting is not understood by Findbugs")
+            @SuppressFBWarnings(value = "BC_UNCONFIRMED_CAST", justification = "The implicit field type casting is not understood by Findbugs.")
             public TypeDescription.Generic getType() {
                 if (TypeDescription.AbstractBase.RAW_TYPES) {
                     return TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(executable.getParameterTypes()[index]);
@@ -450,7 +450,7 @@ public interface ParameterDescription extends AnnotationSource,
             /**
              * {@inheritDoc}
              */
-            @SuppressFBWarnings(value = "BC_UNCONFIRMED_CAST", justification = "The implicit field type casting is not understood by Findbugs")
+            @SuppressFBWarnings(value = "BC_UNCONFIRMED_CAST", justification = "The implicit field type casting is not understood by Findbugs.")
             public AnnotationList getDeclaredAnnotations() {
                 return new AnnotationList.ForLoadedAnnotations(parameterAnnotationSource.getParameterAnnotations()[index]);
             }
@@ -475,7 +475,7 @@ public interface ParameterDescription extends AnnotationSource,
             /**
              * {@inheritDoc}
              */
-            @SuppressFBWarnings(value = "BC_UNCONFIRMED_CAST", justification = "The implicit field type casting is not understood by Findbugs")
+            @SuppressFBWarnings(value = "BC_UNCONFIRMED_CAST", justification = "The implicit field type casting is not understood by Findbugs.")
             public MethodDescription.InDefinedShape getDeclaringMethod() {
                 return new MethodDescription.ForLoadedConstructor(executable);
             }
@@ -483,7 +483,7 @@ public interface ParameterDescription extends AnnotationSource,
             /**
              * {@inheritDoc}
              */
-            @SuppressFBWarnings(value = "BC_UNCONFIRMED_CAST", justification = "The implicit field type casting is not understood by Findbugs")
+            @SuppressFBWarnings(value = "BC_UNCONFIRMED_CAST", justification = "The implicit field type casting is not understood by Findbugs.")
             public TypeDescription.Generic getType() {
                 if (TypeDescription.AbstractBase.RAW_TYPES) {
                     return TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(executable.getParameterTypes()[index]);
@@ -714,13 +714,13 @@ public interface ParameterDescription extends AnnotationSource,
         /**
          * The name of the parameter or {@code null} if no name is explicitly defined.
          */
-        @Nullable
+        @MaybeNull
         private final String name;
 
         /**
          * The modifiers of the parameter or {@code null} if no modifiers are explicitly defined.
          */
-        @Nullable
+        @MaybeNull
         private final Integer modifiers;
 
         /**
@@ -786,8 +786,8 @@ public interface ParameterDescription extends AnnotationSource,
         public Latent(MethodDescription.InDefinedShape declaringMethod,
                       TypeDescription.Generic parameterType,
                       List<? extends AnnotationDescription> declaredAnnotations,
-                      @Nullable String name,
-                      @Nullable Integer modifiers,
+                      @MaybeNull String name,
+                      @MaybeNull Integer modifiers,
                       int index,
                       int offset) {
             this.declaringMethod = declaringMethod;
@@ -816,7 +816,6 @@ public interface ParameterDescription extends AnnotationSource,
         /**
          * {@inheritDoc}
          */
-        @Nullable
         public int getIndex() {
             return index;
         }
@@ -824,7 +823,6 @@ public interface ParameterDescription extends AnnotationSource,
         /**
          * {@inheritDoc}
          */
-        @Nullable
         public int getOffset() {
             return offset;
         }
@@ -847,18 +845,18 @@ public interface ParameterDescription extends AnnotationSource,
          * {@inheritDoc}
          */
         public String getName() {
-            return isNamed()
-                    ? name
-                    : super.getName();
+            return name == null
+                    ? super.getName()
+                    : name;
         }
 
         /**
          * {@inheritDoc}
          */
         public int getModifiers() {
-            return hasModifiers()
-                    ? modifiers
-                    : super.getModifiers();
+            return modifiers == null
+                    ? super.getModifiers()
+                    : modifiers;
         }
 
         /**
@@ -988,13 +986,13 @@ public interface ParameterDescription extends AnnotationSource,
         /**
          * Indicator for a method parameter without an explicit name.
          */
-        @Nonnull(when = When.NEVER)
+        @AlwaysNull
         public static final String NO_NAME = null;
 
         /**
          * Indicator for a method parameter without explicit modifiers.
          */
-        @Nonnull(when = When.NEVER)
+        @AlwaysNull
         public static final Integer NO_MODIFIERS = null;
 
         /**
@@ -1010,13 +1008,13 @@ public interface ParameterDescription extends AnnotationSource,
         /**
          * The name of the parameter or {@code null} if no explicit name is defined.
          */
-        @Nullable
+        @MaybeNull
         private final String name;
 
         /**
          * The modifiers of the parameter or {@code null} if no explicit modifiers is defined.
          */
-        @Nullable
+        @MaybeNull
         private final Integer modifiers;
 
         /**
@@ -1046,7 +1044,7 @@ public interface ParameterDescription extends AnnotationSource,
          * @param name      The name of the parameter or {@code null} if no explicit name is defined.
          * @param modifiers The modifiers of the parameter or {@code null} if no explicit modifiers is defined.
          */
-        public Token(TypeDescription.Generic type, @Nullable String name, @Nullable Integer modifiers) {
+        public Token(TypeDescription.Generic type, @MaybeNull String name, @MaybeNull Integer modifiers) {
             this(type, Collections.<AnnotationDescription>emptyList(), name, modifiers);
         }
 
@@ -1060,8 +1058,8 @@ public interface ParameterDescription extends AnnotationSource,
          */
         public Token(TypeDescription.Generic type,
                      List<? extends AnnotationDescription> annotations,
-                     @Nullable String name,
-                     @Nullable Integer modifiers) {
+                     @MaybeNull String name,
+                     @MaybeNull Integer modifiers) {
             this.type = type;
             this.annotations = annotations;
             this.name = name;
@@ -1091,7 +1089,7 @@ public interface ParameterDescription extends AnnotationSource,
          *
          * @return The name of the parameter or {@code null} if no explicit name is defined.
          */
-        @Nullable
+        @MaybeNull
         public String getName() {
             return name;
         }
@@ -1101,7 +1099,7 @@ public interface ParameterDescription extends AnnotationSource,
          *
          * @return The modifiers of the parameter or {@code null} if no explicit modifiers is defined.
          */
-        @Nullable
+        @MaybeNull
         public Integer getModifiers() {
             return modifiers;
         }
@@ -1127,7 +1125,7 @@ public interface ParameterDescription extends AnnotationSource,
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (!(other instanceof Token)) {

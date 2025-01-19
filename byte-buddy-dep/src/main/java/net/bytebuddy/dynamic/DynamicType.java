@@ -38,12 +38,15 @@ import net.bytebuddy.implementation.bytecode.ByteCodeAppender;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.LatentMatcher;
 import net.bytebuddy.pool.TypePool;
+import net.bytebuddy.utility.AsmClassReader;
+import net.bytebuddy.utility.AsmClassWriter;
 import net.bytebuddy.utility.CompoundList;
 import net.bytebuddy.utility.FileSystem;
-import net.bytebuddy.utility.GraalImageCode;
+import net.bytebuddy.utility.nullability.MaybeNull;
+import net.bytebuddy.utility.visitor.ContextClassVisitor;
+import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.Opcodes;
 
-import javax.annotation.Nullable;
 import java.io.*;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.*;
@@ -60,7 +63,7 @@ import static net.bytebuddy.matcher.ElementMatchers.*;
  * Note that the {@link TypeDescription}s will represent their
  * unloaded forms and therefore differ from the loaded types, especially with regards to annotations.
  */
-public interface DynamicType {
+public interface DynamicType extends ClassFileLocator {
 
     /**
      * <p>
@@ -82,6 +85,34 @@ public interface DynamicType {
      * @return A byte array of the type's binary representation.
      */
     byte[] getBytes();
+
+    /**
+     * Returns the loaded type initializer of this dynamic type.
+     *
+     * @return The loaded type initializer of this dynamic type.
+     */
+    LoadedTypeInitializer getLoadedTypeInitializer();
+
+    /**
+     * Returns all auxiliary types of this dynamic type.
+     *
+     * @return A list of all auxiliary types of this dynamic type.
+     */
+    List<? extends DynamicType> getAuxiliaries();
+
+    /**
+     * Returns a set of all auxiliary types that are represented by this dynamic type.
+     *
+     * @return A set of all auxiliary types.
+     */
+    Set<TypeDescription> getAuxiliaryTypeDescriptions();
+
+    /**
+     * Returns a set of all types that are represented by this dynamic type.
+     *
+     * @return A set of all represented types.
+     */
+    Set<TypeDescription> getAllTypeDescriptions();
 
     /**
      * <p>
@@ -192,6 +223,11 @@ public interface DynamicType {
     File toJar(File file, Manifest manifest) throws IOException;
 
     /**
+     * {@inheritDoc}
+     */
+    void close();
+
+    /**
      * A builder for creating a dynamic type.
      *
      * @param <T> A loaded type that the built type is guaranteed to be a subclass of.
@@ -282,7 +318,7 @@ public interface DynamicType {
          * consistent among the definitions of connected types.
          * </p>
          *
-         * @return A new builder that is equal to this builder but without any declaration of a a declared or enclosed type.
+         * @return A new builder that is equal to this builder but without any declaration of a declared or enclosed type.
          */
         Builder<T> topLevelType();
 
@@ -972,6 +1008,7 @@ public interface DynamicType {
          * @param matcher The matcher that determines what declared fields are affected by the subsequent specification.
          * @return A builder that allows for changing a field's definition.
          */
+        @SuppressWarnings("overloads")
         FieldDefinition.Valuable<T> field(ElementMatcher<? super FieldDescription> matcher);
 
         /**
@@ -994,6 +1031,7 @@ public interface DynamicType {
          * @param matcher The matcher that determines what declared fields are affected by the subsequent specification.
          * @return A builder that allows for changing a field's definition.
          */
+        @SuppressWarnings("overloads")
         FieldDefinition.Valuable<T> field(LatentMatcher<? super FieldDescription> matcher);
 
         /**
@@ -1010,6 +1048,7 @@ public interface DynamicType {
          * @return A new builder that is equal to this builder but that is excluding any method that is matched by the supplied matcher from
          * instrumentation.
          */
+        @SuppressWarnings("overloads")
         Builder<T> ignoreAlso(ElementMatcher<? super MethodDescription> ignoredMethods);
 
         /**
@@ -1028,6 +1067,7 @@ public interface DynamicType {
          * @return A new builder that is equal to this builder but that is excluding any method that is matched by the supplied matcher from
          * instrumentation.
          */
+        @SuppressWarnings("overloads")
         Builder<T> ignoreAlso(LatentMatcher<? super MethodDescription> ignoredMethods);
 
         /**
@@ -1271,6 +1311,7 @@ public interface DynamicType {
          * @param matcher The matcher that determines what methods or constructors are affected by the subsequent specification.
          * @return A builder that allows for changing a method's or constructor's definition.
          */
+        @SuppressWarnings("overloads")
         MethodDefinition.ImplementationDefinition<T> invokable(ElementMatcher<? super MethodDescription> matcher);
 
         /**
@@ -1303,6 +1344,7 @@ public interface DynamicType {
          * @param matcher The matcher that determines what declared methods or constructors are affected by the subsequent specification.
          * @return A builder that allows for changing a method's or constructor's definition.
          */
+        @SuppressWarnings("overloads")
         MethodDefinition.ImplementationDefinition<T> invokable(LatentMatcher<? super MethodDescription> matcher);
 
         /**
@@ -1371,6 +1413,7 @@ public interface DynamicType {
          * @param matcher The matcher that determines what declared record components are affected by the subsequent specification.
          * @return A builder that allows for changing a record component's definition.
          */
+        @SuppressWarnings("overloads")
         RecordComponentDefinition<T> recordComponent(ElementMatcher<? super RecordComponentDescription> matcher);
 
         /**
@@ -1392,7 +1435,58 @@ public interface DynamicType {
          * @param matcher The matcher that determines what declared record components are affected by the subsequent specification.
          * @return A builder that allows for changing a record component's definition.
          */
+        @SuppressWarnings("overloads")
         RecordComponentDefinition<T> recordComponent(LatentMatcher<? super RecordComponentDescription> matcher);
+
+        /**
+         * Wraps a class visitor with the configuration that is represented by this dynamic type builder, using a
+         * default {@link TypePool}. A wrapper might not apply all features that are normally applied by Byte
+         * Buddy, if those features require control of the class loading life cycle. Neither does a wrapper define
+         * auxiliary types. It is therefore recommended to use {@link Implementation.Context.Disabled}.
+         *
+         * @param classVisitor The class visitor to wrap.
+         * @return A new class visitor that wraps a representation of this dynamic type.
+         */
+        ContextClassVisitor wrap(ClassVisitor classVisitor);
+
+        /**
+         * Wraps a class visitor with the configuration that is represented by this dynamic type builder, using a
+         * default {@link TypePool}. A wrapper might not apply all features that are normally applied by Byte
+         * Buddy, if those features require control of the class loading life cycle. Neither does a wrapper define
+         * auxiliary types. It is therefore recommended to use {@link Implementation.Context.Disabled}.
+         *
+         * @param classVisitor The class visitor to wrap.
+         * @param writerFlags  The ASM writer flags to apply.
+         * @param readerFlags  The ASM reader flags to apply.
+         * @return A new class visitor that wraps a representation of this dynamic type.
+         */
+        ContextClassVisitor wrap(ClassVisitor classVisitor, int writerFlags, int readerFlags);
+
+        /**
+         * Wraps a class visitor with the configuration that is represented by this dynamic type builder. A wrapper
+         * might not apply all features that are normally applied by Byte Buddy, if those features require control of
+         * the class loading life cycle. Neither does a wrapper define auxiliary types.  It is therefore recommended
+         * to use {@link Implementation.Context.Disabled}.
+         *
+         * @param classVisitor The class visitor to wrap.
+         * @param typePool     A type pool that is used for computing stack map frames by the underlying class writer, if required.
+         * @return A new class visitor that wraps a representation of this dynamic type.
+         */
+        ContextClassVisitor wrap(ClassVisitor classVisitor, TypePool typePool);
+
+        /**
+         * Wraps a class visitor with the configuration that is represented by this dynamic type builder. A wrapper
+         * might not apply all features that are normally applied by Byte Buddy, if those features require control
+         * of the class loading life cycle. Neither does a wrapper define auxiliary types.  It is therefore
+         * recommended to use {@link Implementation.Context.Disabled}.
+         *
+         * @param classVisitor The class visitor to wrap.
+         * @param typePool     A type pool that is used for computing stack map frames by the underlying class writer, if required.
+         * @param writerFlags  The ASM writer flags to apply.
+         * @param readerFlags  The ASM reader flags to apply.
+         * @return A new class visitor that wraps a representation of this dynamic type.
+         */
+        ContextClassVisitor wrap(ClassVisitor classVisitor, TypePool typePool, int writerFlags, int readerFlags);
 
         /**
          * <p>
@@ -1617,7 +1711,7 @@ public interface DynamicType {
 
             /**
              * Applies the supplied transformer onto the previously defined or matched field. The transformed
-             * field is written <i>as it is</i> and it not subject to any validations.
+             * field is written <i>as it is</i> and is not subject to any validations.
              *
              * @param transformer The transformer to apply to the previously defined or matched field.
              * @return A new builder that is equal to this builder but with the supplied field transformer
@@ -1830,7 +1924,7 @@ public interface DynamicType {
                             /**
                              * The field's default value or {@code null} if no value is to be defined.
                              */
-                            @Nullable
+                            @MaybeNull
                             @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
                             protected final Object defaultValue;
 
@@ -1843,7 +1937,7 @@ public interface DynamicType {
                              */
                             protected Adapter(FieldAttributeAppender.Factory fieldAttributeAppenderFactory,
                                               Transformer<FieldDescription> transformer,
-                                              @Nullable Object defaultValue) {
+                                              @MaybeNull Object defaultValue) {
                                 this.fieldAttributeAppenderFactory = fieldAttributeAppenderFactory;
                                 this.transformer = transformer;
                                 this.defaultValue = defaultValue;
@@ -1879,7 +1973,7 @@ public interface DynamicType {
                              */
                             protected abstract FieldDefinition.Optional<V> materialize(FieldAttributeAppender.Factory fieldAttributeAppenderFactory,
                                                                                        Transformer<FieldDescription> transformer,
-                                                                                       Object defaultValue);
+                                                                                       @MaybeNull Object defaultValue);
                         }
                     }
                 }
@@ -3336,7 +3430,7 @@ public interface DynamicType {
              * {@inheritDoc}
              */
             public TypeVariableDefinition<S> typeVariable(String symbol) {
-                return typeVariable(symbol, TypeDescription.Generic.OBJECT);
+                return typeVariable(symbol, TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class));
             }
 
             /**
@@ -3650,6 +3744,20 @@ public interface DynamicType {
             /**
              * {@inheritDoc}
              */
+            public ContextClassVisitor wrap(ClassVisitor classVisitor) {
+                return wrap(classVisitor, AsmVisitorWrapper.NO_FLAGS, AsmVisitorWrapper.NO_FLAGS);
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            public ContextClassVisitor wrap(ClassVisitor classVisitor, TypePool typePool) {
+                return wrap(classVisitor, typePool, AsmVisitorWrapper.NO_FLAGS, AsmVisitorWrapper.NO_FLAGS);
+            }
+
+            /**
+             * {@inheritDoc}
+             */
             public Unloaded<S> make(TypePool typePool) {
                 return make(TypeResolutionStrategy.Passive.INSTANCE, typePool);
             }
@@ -3895,6 +4003,20 @@ public interface DynamicType {
                 /**
                  * {@inheritDoc}
                  */
+                public ContextClassVisitor wrap(ClassVisitor classVisitor, int writerFlags, int readerFlags) {
+                    return materialize().wrap(classVisitor, writerFlags, readerFlags);
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public ContextClassVisitor wrap(ClassVisitor classVisitor, TypePool typePool, int writerFlags, int readerFlags) {
+                    return materialize().wrap(classVisitor, typePool, writerFlags, readerFlags);
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
                 public DynamicType.Unloaded<U> make() {
                     return materialize().make();
                 }
@@ -3936,12 +4058,63 @@ public interface DynamicType {
             }
 
             /**
+             * A dynamic type writer that uses a {@link TypeWriter} to create a dynamic type.
+             *
+             * @param <U> A loaded type that the built type is guaranteed to be a subclass of.
+             */
+            public abstract static class UsingTypeWriter<U> extends AbstractBase<U> {
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public ContextClassVisitor wrap(ClassVisitor classVisitor, int writerFlags, int readerFlags) {
+                    return toTypeWriter().wrap(classVisitor, writerFlags, readerFlags);
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public ContextClassVisitor wrap(ClassVisitor classVisitor, TypePool typePool, int writerFlags, int readerFlags) {
+                    return toTypeWriter(typePool).wrap(classVisitor, writerFlags, readerFlags);
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public DynamicType.Unloaded<U> make(TypeResolutionStrategy typeResolutionStrategy) {
+                    return toTypeWriter().make(typeResolutionStrategy.resolve());
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public DynamicType.Unloaded<U> make(TypeResolutionStrategy typeResolutionStrategy, TypePool typePool) {
+                    return toTypeWriter(typePool).make(typeResolutionStrategy.resolve());
+                }
+
+                /**
+                 * Creates a {@link TypeWriter} without an explicitly specified {@link TypePool}.
+                 *
+                 * @return An appropriate {@link TypeWriter}.
+                 */
+                protected abstract TypeWriter<U> toTypeWriter();
+
+                /**
+                 * Creates a {@link TypeWriter} given the specified {@link TypePool}.
+                 *
+                 * @param typePool The {@link TypePool} to use.
+                 * @return An appropriate {@link TypeWriter}.
+                 */
+                protected abstract TypeWriter<U> toTypeWriter(TypePool typePool);
+            }
+
+            /**
              * An adapter implementation of a dynamic type builder.
              *
              * @param <U> A loaded type that the built type is guaranteed to be a subclass of.
              */
             @HashCodeAndEqualsPlugin.Enhance
-            public abstract static class Adapter<U> extends AbstractBase<U> {
+            public abstract static class Adapter<U> extends UsingTypeWriter<U> {
 
                 /**
                  * The instrumented type to be created.
@@ -4014,9 +4187,14 @@ public interface DynamicType {
                 protected final VisibilityBridgeStrategy visibilityBridgeStrategy;
 
                 /**
-                 * The class writer strategy to use.
+                 * The class reader factory to use.
                  */
-                protected final ClassWriterStrategy classWriterStrategy;
+                protected final AsmClassReader.Factory classReaderFactory;
+
+                /**
+                 * The class writer factory to use.
+                 */
+                protected final AsmClassWriter.Factory classWriterFactory;
 
                 /**
                  * A matcher for identifying methods that should be excluded from instrumentation.
@@ -4045,7 +4223,8 @@ public interface DynamicType {
                  * @param methodGraphCompiler          The method graph compiler to use.
                  * @param typeValidation               Determines if a type should be explicitly validated.
                  * @param visibilityBridgeStrategy     The visibility bridge strategy to apply.
-                 * @param classWriterStrategy          The class writer strategy to use.
+                 * @param classReaderFactory           The class reader factory to use.
+                 * @param classWriterFactory           The class writer factory to use.
                  * @param ignoredMethods               A matcher for identifying methods that should be excluded from instrumentation.
                  * @param auxiliaryTypes               A list of explicitly defined auxiliary types.
                  */
@@ -4063,7 +4242,8 @@ public interface DynamicType {
                                   MethodGraph.Compiler methodGraphCompiler,
                                   TypeValidation typeValidation,
                                   VisibilityBridgeStrategy visibilityBridgeStrategy,
-                                  ClassWriterStrategy classWriterStrategy,
+                                  AsmClassReader.Factory classReaderFactory,
+                                  AsmClassWriter.Factory classWriterFactory,
                                   LatentMatcher<? super MethodDescription> ignoredMethods,
                                   List<? extends DynamicType> auxiliaryTypes) {
                     this.instrumentedType = instrumentedType;
@@ -4080,7 +4260,8 @@ public interface DynamicType {
                     this.methodGraphCompiler = methodGraphCompiler;
                     this.typeValidation = typeValidation;
                     this.visibilityBridgeStrategy = visibilityBridgeStrategy;
-                    this.classWriterStrategy = classWriterStrategy;
+                    this.classReaderFactory = classReaderFactory;
+                    this.classWriterFactory = classWriterFactory;
                     this.ignoredMethods = ignoredMethods;
                     this.auxiliaryTypes = auxiliaryTypes;
                 }
@@ -4146,7 +4327,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             new LatentMatcher.Disjunction<MethodDescription>(this.ignoredMethods, ignoredMethods),
                             auxiliaryTypes);
                 }
@@ -4183,7 +4365,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             auxiliaryTypes);
                 }
@@ -4206,7 +4389,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             auxiliaryTypes);
                 }
@@ -4229,7 +4413,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             auxiliaryTypes);
                 }
@@ -4259,7 +4444,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             auxiliaryTypes);
                 }
@@ -4282,7 +4468,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             auxiliaryTypes);
                 }
@@ -4308,7 +4495,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             auxiliaryTypes);
                 }
@@ -4347,7 +4535,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             auxiliaryTypes);
                 }
@@ -4370,7 +4559,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             auxiliaryTypes);
                 }
@@ -4393,7 +4583,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             auxiliaryTypes);
                 }
@@ -4416,7 +4607,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             auxiliaryTypes);
                 }
@@ -4439,7 +4631,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             auxiliaryTypes);
                 }
@@ -4469,7 +4662,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             auxiliaryTypes);
                 }
@@ -4492,7 +4686,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             auxiliaryTypes);
                 }
@@ -4515,7 +4710,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             auxiliaryTypes);
                 }
@@ -4538,7 +4734,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             auxiliaryTypes);
                 }
@@ -4561,7 +4758,8 @@ public interface DynamicType {
                             methodGraphCompiler,
                             typeValidation,
                             visibilityBridgeStrategy,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             ignoredMethods,
                             CompoundList.of(this.auxiliaryTypes, new ArrayList<DynamicType>(auxiliaryTypes)));
                 }
@@ -4590,7 +4788,8 @@ public interface DynamicType {
                  * @param methodGraphCompiler          The method graph compiler to use.
                  * @param typeValidation               The type validation state.
                  * @param visibilityBridgeStrategy     The visibility bridge strategy to apply.
-                 * @param classWriterStrategy          The class writer strategy to use.
+                 * @param classReaderFactory           The class reader factory to use.
+                 * @param classWriterFactory           The class writer factory to use.
                  * @param ignoredMethods               A matcher for identifying methods that should be excluded from instrumentation.
                  * @param auxiliaryTypes               A list of explicitly required auxiliary types.
                  * @return A type builder that represents the supplied arguments.
@@ -4609,7 +4808,8 @@ public interface DynamicType {
                                                           MethodGraph.Compiler methodGraphCompiler,
                                                           TypeValidation typeValidation,
                                                           VisibilityBridgeStrategy visibilityBridgeStrategy,
-                                                          ClassWriterStrategy classWriterStrategy,
+                                                          AsmClassReader.Factory classReaderFactory,
+                                                          AsmClassWriter.Factory classWriterFactory,
                                                           LatentMatcher<? super MethodDescription> ignoredMethods,
                                                           List<? extends DynamicType> auxiliaryTypes);
 
@@ -4654,7 +4854,8 @@ public interface DynamicType {
                                 methodGraphCompiler,
                                 typeValidation,
                                 visibilityBridgeStrategy,
-                                classWriterStrategy,
+                                classReaderFactory,
+                                classWriterFactory,
                                 ignoredMethods,
                                 auxiliaryTypes);
                     }
@@ -4681,7 +4882,8 @@ public interface DynamicType {
                                 methodGraphCompiler,
                                 typeValidation,
                                 visibilityBridgeStrategy,
-                                classWriterStrategy,
+                                classReaderFactory,
+                                classWriterFactory,
                                 ignoredMethods,
                                 auxiliaryTypes);
                     }
@@ -4705,7 +4907,8 @@ public interface DynamicType {
                                 methodGraphCompiler,
                                 typeValidation,
                                 visibilityBridgeStrategy,
-                                classWriterStrategy,
+                                classReaderFactory,
+                                classWriterFactory,
                                 ignoredMethods,
                                 auxiliaryTypes);
                     }
@@ -4752,7 +4955,8 @@ public interface DynamicType {
                                 methodGraphCompiler,
                                 typeValidation,
                                 visibilityBridgeStrategy,
-                                classWriterStrategy,
+                                classReaderFactory,
+                                classWriterFactory,
                                 ignoredMethods,
                                 auxiliaryTypes);
                     }
@@ -4776,7 +4980,8 @@ public interface DynamicType {
                                 methodGraphCompiler,
                                 typeValidation,
                                 visibilityBridgeStrategy,
-                                classWriterStrategy,
+                                classReaderFactory,
+                                classWriterFactory,
                                 ignoredMethods,
                                 auxiliaryTypes);
                     }
@@ -4827,7 +5032,8 @@ public interface DynamicType {
                                 methodGraphCompiler,
                                 typeValidation,
                                 visibilityBridgeStrategy,
-                                classWriterStrategy,
+                                classReaderFactory,
+                                classWriterFactory,
                                 ignoredMethods,
                                 auxiliaryTypes);
                     }
@@ -4866,7 +5072,7 @@ public interface DynamicType {
                      */
                     protected FieldDefinitionAdapter(FieldAttributeAppender.Factory fieldAttributeAppenderFactory,
                                                      Transformer<FieldDescription> transformer,
-                                                     @Nullable Object defaultValue,
+                                                     @MaybeNull Object defaultValue,
                                                      FieldDescription.Token token) {
                         super(fieldAttributeAppenderFactory, transformer, defaultValue);
                         this.token = token;
@@ -4898,7 +5104,8 @@ public interface DynamicType {
                                 methodGraphCompiler,
                                 typeValidation,
                                 visibilityBridgeStrategy,
-                                classWriterStrategy,
+                                classReaderFactory,
+                                classWriterFactory,
                                 ignoredMethods,
                                 auxiliaryTypes);
                     }
@@ -4906,7 +5113,7 @@ public interface DynamicType {
                     @Override
                     protected Optional<U> materialize(FieldAttributeAppender.Factory fieldAttributeAppenderFactory,
                                                       Transformer<FieldDescription> transformer,
-                                                      Object defaultValue) {
+                                                      @MaybeNull Object defaultValue) {
                         return new FieldDefinitionAdapter(fieldAttributeAppenderFactory, transformer, defaultValue, token);
                     }
                 }
@@ -4944,7 +5151,7 @@ public interface DynamicType {
                      */
                     protected FieldMatchAdapter(FieldAttributeAppender.Factory fieldAttributeAppenderFactory,
                                                 Transformer<FieldDescription> transformer,
-                                                @Nullable Object defaultValue,
+                                                @MaybeNull Object defaultValue,
                                                 LatentMatcher<? super FieldDescription> matcher) {
                         super(fieldAttributeAppenderFactory, transformer, defaultValue);
                         this.matcher = matcher;
@@ -4973,7 +5180,8 @@ public interface DynamicType {
                                 methodGraphCompiler,
                                 typeValidation,
                                 visibilityBridgeStrategy,
-                                classWriterStrategy,
+                                classReaderFactory,
+                                classWriterFactory,
                                 ignoredMethods,
                                 auxiliaryTypes);
                     }
@@ -4981,7 +5189,7 @@ public interface DynamicType {
                     @Override
                     protected Optional<U> materialize(FieldAttributeAppender.Factory fieldAttributeAppenderFactory,
                                                       Transformer<FieldDescription> transformer,
-                                                      Object defaultValue) {
+                                                      @MaybeNull Object defaultValue) {
                         return new FieldMatchAdapter(fieldAttributeAppenderFactory, transformer, defaultValue, matcher);
                     }
                 }
@@ -5328,7 +5536,8 @@ public interface DynamicType {
                                     methodGraphCompiler,
                                     typeValidation,
                                     visibilityBridgeStrategy,
-                                    classWriterStrategy,
+                                    classReaderFactory,
+                                    classWriterFactory,
                                     ignoredMethods,
                                     auxiliaryTypes);
                         }
@@ -5464,7 +5673,8 @@ public interface DynamicType {
                                     methodGraphCompiler,
                                     typeValidation,
                                     visibilityBridgeStrategy,
-                                    classWriterStrategy,
+                                    classReaderFactory,
+                                    classWriterFactory,
                                     ignoredMethods,
                                     auxiliaryTypes);
                         }
@@ -5507,7 +5717,8 @@ public interface DynamicType {
                                 methodGraphCompiler,
                                 typeValidation,
                                 visibilityBridgeStrategy,
-                                classWriterStrategy,
+                                classReaderFactory,
+                                classWriterFactory,
                                 ignoredMethods,
                                 auxiliaryTypes);
                     }
@@ -5646,7 +5857,8 @@ public interface DynamicType {
                                 methodGraphCompiler,
                                 typeValidation,
                                 visibilityBridgeStrategy,
-                                classWriterStrategy,
+                                classReaderFactory,
+                                classWriterFactory,
                                 ignoredMethods,
                                 auxiliaryTypes);
                     }
@@ -5737,7 +5949,8 @@ public interface DynamicType {
                                 methodGraphCompiler,
                                 typeValidation,
                                 visibilityBridgeStrategy,
-                                classWriterStrategy,
+                                classReaderFactory,
+                                classWriterFactory,
                                 ignoredMethods,
                                 auxiliaryTypes);
                     }
@@ -5768,7 +5981,7 @@ public interface DynamicType {
          * @param classLoader The class loader to use for this class loading or {@code null} for using the boot loader.
          * @return This dynamic type in its loaded state.
          */
-        Loaded<T> load(@Nullable ClassLoader classLoader);
+        Loaded<T> load(@MaybeNull ClassLoader classLoader);
 
         /**
          * <p>
@@ -5785,7 +5998,7 @@ public interface DynamicType {
          * @return This dynamic type in its loaded state.
          * @see net.bytebuddy.dynamic.loading.ClassLoadingStrategy.Default
          */
-        <S extends ClassLoader> Loaded<T> load(@Nullable S classLoader, ClassLoadingStrategy<? super S> classLoadingStrategy);
+        <S extends ClassLoader> Loaded<T> load(@MaybeNull S classLoader, ClassLoadingStrategy<? super S> classLoadingStrategy);
 
         /**
          * Includes the provided dynamic types as auxiliary types of this instance.
@@ -5840,11 +6053,8 @@ public interface DynamicType {
         Map<TypeDescription, Class<?>> getAllLoaded();
     }
 
-    /**
-     * A default implementation of a dynamic type.
-     */
     @HashCodeAndEqualsPlugin.Enhance
-    class Default implements DynamicType {
+    abstract class AbstractBase implements DynamicType {
 
         /**
          * The file name extension for Java class files.
@@ -5857,69 +6067,54 @@ public interface DynamicType {
         private static final String MANIFEST_VERSION = "1.0";
 
         /**
-         * The size of a writing buffer.
-         */
-        private static final int BUFFER_SIZE = 1024;
-
-        /**
-         * A convenience index for the beginning of an array to improve the readability of the code.
-         */
-        private static final int FROM_BEGINNING = 0;
-
-        /**
-         * A convenience representative of an {@link java.io.InputStream}'s end to improve the readability of the code.
-         */
-        private static final int END_OF_FILE = -1;
-
-        /**
          * A suffix for temporary files.
          */
         private static final String TEMP_SUFFIX = "tmp";
 
         /**
-         * A type description of this dynamic type.
+         * {@inheritDoc}
          */
-        protected final TypeDescription typeDescription;
-
-        /**
-         * The byte array representing this dynamic type.
-         */
-        protected final byte[] binaryRepresentation;
-
-        /**
-         * The loaded type initializer for this dynamic type.
-         */
-        protected final LoadedTypeInitializer loadedTypeInitializer;
-
-        /**
-         * A list of auxiliary types for this dynamic type.
-         */
-        protected final List<? extends DynamicType> auxiliaryTypes;
-
-        /**
-         * Creates a new dynamic type.
-         *
-         * @param typeDescription       A description of this dynamic type.
-         * @param binaryRepresentation  A byte array containing the binary representation of this dynamic type. The array must not be modified.
-         * @param loadedTypeInitializer The loaded type initializer of this dynamic type.
-         * @param auxiliaryTypes        The auxiliary type required for this dynamic type.
-         */
-        @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "The array is not to be modified by contract")
-        public Default(TypeDescription typeDescription,
-                       byte[] binaryRepresentation,
-                       LoadedTypeInitializer loadedTypeInitializer,
-                       List<? extends DynamicType> auxiliaryTypes) {
-            this.typeDescription = typeDescription;
-            this.binaryRepresentation = binaryRepresentation;
-            this.loadedTypeInitializer = loadedTypeInitializer;
-            this.auxiliaryTypes = auxiliaryTypes;
+        public Resolution locate(String name) throws IOException {
+            if (getTypeDescription().getName().equals(name)) {
+                return new Resolution.Explicit(getBytes());
+            }
+            for (DynamicType auxiliaryType : getAuxiliaries()) {
+                Resolution resolution = auxiliaryType.locate(name);
+                if (resolution.isResolved()) {
+                    return resolution;
+                }
+            }
+            return new Resolution.Illegal(name);
         }
 
         /**
          * {@inheritDoc}
          */
-        public TypeDescription getTypeDescription() {
-            return typeDescription;
+        public void close() {
+            /* do nothing */
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public Set<TypeDescription> getAuxiliaryTypeDescriptions() {
+            Set<TypeDescription> types = new LinkedHashSet<TypeDescription>();
+            for (DynamicType auxiliaryType : getAuxiliaries()) {
+                types.addAll(auxiliaryType.getAllTypeDescriptions());
+            }
+            return types;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public Set<TypeDescription> getAllTypeDescriptions() {
+            Set<TypeDescription> types = new LinkedHashSet<TypeDescription>();
+            types.add(getTypeDescription());
+            for (DynamicType auxiliaryType : getAuxiliaries()) {
+                types.addAll(auxiliaryType.getAllTypeDescriptions());
+            }
+            return types;
         }
 
         /**
@@ -5927,8 +6122,8 @@ public interface DynamicType {
          */
         public Map<TypeDescription, byte[]> getAllTypes() {
             Map<TypeDescription, byte[]> allTypes = new LinkedHashMap<TypeDescription, byte[]>();
-            allTypes.put(typeDescription, binaryRepresentation);
-            for (DynamicType auxiliaryType : auxiliaryTypes) {
+            allTypes.put(getTypeDescription(), getBytes());
+            for (DynamicType auxiliaryType : getAuxiliaries()) {
                 allTypes.putAll(auxiliaryType.getAllTypes());
             }
             return allTypes;
@@ -5939,10 +6134,10 @@ public interface DynamicType {
          */
         public Map<TypeDescription, LoadedTypeInitializer> getLoadedTypeInitializers() {
             Map<TypeDescription, LoadedTypeInitializer> classLoadingCallbacks = new HashMap<TypeDescription, LoadedTypeInitializer>();
-            for (DynamicType auxiliaryType : auxiliaryTypes) {
+            for (DynamicType auxiliaryType : getAuxiliaries()) {
                 classLoadingCallbacks.putAll(auxiliaryType.getLoadedTypeInitializers());
             }
-            classLoadingCallbacks.put(typeDescription, loadedTypeInitializer);
+            classLoadingCallbacks.put(getTypeDescription(), getLoadedTypeInitializer());
             return classLoadingCallbacks;
         }
 
@@ -5950,8 +6145,11 @@ public interface DynamicType {
          * {@inheritDoc}
          */
         public boolean hasAliveLoadedTypeInitializers() {
-            for (LoadedTypeInitializer loadedTypeInitializer : getLoadedTypeInitializers().values()) {
-                if (loadedTypeInitializer.isAlive()) {
+            if (getLoadedTypeInitializer().isAlive()) {
+                return true;
+            }
+            for (DynamicType auxiliaryType : getAuxiliaries()) {
+                if (auxiliaryType.hasAliveLoadedTypeInitializers()) {
                     return true;
                 }
             }
@@ -5961,17 +6159,9 @@ public interface DynamicType {
         /**
          * {@inheritDoc}
          */
-        @SuppressFBWarnings(value = "EI_EXPOSE_REP", justification = "The array is not to be modified by contract")
-        public byte[] getBytes() {
-            return binaryRepresentation;
-        }
-
-        /**
-         * {@inheritDoc}
-         */
         public Map<TypeDescription, byte[]> getAuxiliaryTypes() {
             Map<TypeDescription, byte[]> auxiliaryTypes = new HashMap<TypeDescription, byte[]>();
-            for (DynamicType auxiliaryType : this.auxiliaryTypes) {
+            for (DynamicType auxiliaryType : getAuxiliaries()) {
                 auxiliaryTypes.put(auxiliaryType.getTypeDescription(), auxiliaryType.getBytes());
                 auxiliaryTypes.putAll(auxiliaryType.getAuxiliaryTypes());
             }
@@ -5983,18 +6173,18 @@ public interface DynamicType {
          */
         public Map<TypeDescription, File> saveIn(File folder) throws IOException {
             Map<TypeDescription, File> files = new HashMap<TypeDescription, File>();
-            File target = new File(folder, typeDescription.getName().replace('.', File.separatorChar) + CLASS_FILE_EXTENSION);
+            File target = new File(folder, getTypeDescription().getName().replace('.', File.separatorChar) + CLASS_FILE_EXTENSION);
             if (target.getParentFile() != null && !target.getParentFile().isDirectory() && !target.getParentFile().mkdirs()) {
                 throw new IllegalArgumentException("Could not create directory: " + target.getParentFile());
             }
             OutputStream outputStream = new FileOutputStream(target);
             try {
-                outputStream.write(binaryRepresentation);
+                outputStream.write(getBytes());
             } finally {
                 outputStream.close();
             }
-            files.put(typeDescription, target);
-            for (DynamicType auxiliaryType : auxiliaryTypes) {
+            files.put(getTypeDescription(), target);
+            for (DynamicType auxiliaryType : getAuxiliaries()) {
                 files.putAll(auxiliaryType.saveIn(folder));
             }
             return files;
@@ -6025,48 +6215,53 @@ public interface DynamicType {
          * @return The jar file that was written to.
          * @throws IOException If an I/O error occurs.
          */
+        @SuppressFBWarnings(value = "OS_OPEN_STREAM_EXCEPTION_PATH", justification = "Outer stream holds file handle and is closed")
         private File doInject(File sourceJar, File targetJar) throws IOException {
-            JarInputStream inputStream = new JarInputStream(new FileInputStream(sourceJar));
+            InputStream inputStream = new FileInputStream(sourceJar);
             try {
+                JarInputStream jarInputStream = new JarInputStream(inputStream);
                 if (!targetJar.isFile() && !targetJar.createNewFile()) {
                     throw new IllegalArgumentException("Could not create file: " + targetJar);
                 }
-                Manifest manifest = inputStream.getManifest();
-                JarOutputStream outputStream = manifest == null
-                        ? new JarOutputStream(new FileOutputStream(targetJar))
-                        : new JarOutputStream(new FileOutputStream(targetJar), manifest);
+                Manifest manifest = jarInputStream.getManifest();
+                OutputStream outputStream = new FileOutputStream(targetJar);
                 try {
+                    JarOutputStream jarOutputStream = manifest == null
+                            ? new JarOutputStream(outputStream)
+                            : new JarOutputStream(outputStream, manifest);
                     Map<TypeDescription, byte[]> rawAuxiliaryTypes = getAuxiliaryTypes();
                     Map<String, byte[]> files = new HashMap<String, byte[]>();
                     for (Map.Entry<TypeDescription, byte[]> entry : rawAuxiliaryTypes.entrySet()) {
                         files.put(entry.getKey().getInternalName() + CLASS_FILE_EXTENSION, entry.getValue());
                     }
-                    files.put(typeDescription.getInternalName() + CLASS_FILE_EXTENSION, binaryRepresentation);
+                    files.put(getTypeDescription().getInternalName() + CLASS_FILE_EXTENSION, getBytes());
                     JarEntry jarEntry;
-                    while ((jarEntry = inputStream.getNextJarEntry()) != null) {
+                    while ((jarEntry = jarInputStream.getNextJarEntry()) != null) {
                         byte[] replacement = files.remove(jarEntry.getName());
                         if (replacement == null) {
-                            outputStream.putNextEntry(jarEntry);
-                            byte[] buffer = new byte[BUFFER_SIZE];
+                            jarOutputStream.putNextEntry(jarEntry);
+                            byte[] buffer = new byte[1024];
                             int index;
-                            while ((index = inputStream.read(buffer)) != END_OF_FILE) {
-                                outputStream.write(buffer, FROM_BEGINNING, index);
+                            while ((index = jarInputStream.read(buffer)) != -1) {
+                                jarOutputStream.write(buffer, 0, index);
                             }
                         } else {
-                            outputStream.putNextEntry(new JarEntry(jarEntry.getName()));
-                            outputStream.write(replacement);
+                            jarOutputStream.putNextEntry(new JarEntry(jarEntry.getName()));
+                            jarOutputStream.write(replacement);
                         }
-                        inputStream.closeEntry();
-                        outputStream.closeEntry();
+                        jarInputStream.closeEntry();
+                        jarOutputStream.closeEntry();
                     }
                     for (Map.Entry<String, byte[]> entry : files.entrySet()) {
-                        outputStream.putNextEntry(new JarEntry(entry.getKey()));
-                        outputStream.write(entry.getValue());
-                        outputStream.closeEntry();
+                        jarOutputStream.putNextEntry(new JarEntry(entry.getKey()));
+                        jarOutputStream.write(entry.getValue());
+                        jarOutputStream.closeEntry();
                     }
+                    jarOutputStream.close();
                 } finally {
                     outputStream.close();
                 }
+                jarInputStream.close();
             } finally {
                 inputStream.close();
             }
@@ -6085,24 +6280,102 @@ public interface DynamicType {
         /**
          * {@inheritDoc}
          */
+        @SuppressFBWarnings(value = "OS_OPEN_STREAM_EXCEPTION_PATH", justification = "Outer stream holds file handle and is closed")
         public File toJar(File file, Manifest manifest) throws IOException {
             if (!file.isFile() && !file.createNewFile()) {
                 throw new IllegalArgumentException("Could not create file: " + file);
             }
-            JarOutputStream outputStream = new JarOutputStream(new FileOutputStream(file), manifest);
+            OutputStream outputStream = new FileOutputStream(file);
             try {
+                JarOutputStream jarOutputStream = new JarOutputStream(outputStream, manifest);
                 for (Map.Entry<TypeDescription, byte[]> entry : getAuxiliaryTypes().entrySet()) {
-                    outputStream.putNextEntry(new JarEntry(entry.getKey().getInternalName() + CLASS_FILE_EXTENSION));
-                    outputStream.write(entry.getValue());
-                    outputStream.closeEntry();
+                    jarOutputStream.putNextEntry(new JarEntry(entry.getKey().getInternalName() + CLASS_FILE_EXTENSION));
+                    jarOutputStream.write(entry.getValue());
+                    jarOutputStream.closeEntry();
                 }
-                outputStream.putNextEntry(new JarEntry(typeDescription.getInternalName() + CLASS_FILE_EXTENSION));
-                outputStream.write(binaryRepresentation);
-                outputStream.closeEntry();
+                jarOutputStream.putNextEntry(new JarEntry(getTypeDescription().getInternalName() + CLASS_FILE_EXTENSION));
+                jarOutputStream.write(getBytes());
+                jarOutputStream.closeEntry();
+                jarOutputStream.close();
             } finally {
                 outputStream.close();
             }
             return file;
+        }
+    }
+
+    /**
+     * A default implementation of a dynamic type.
+     */
+    @HashCodeAndEqualsPlugin.Enhance
+    class Default extends AbstractBase {
+
+        /**
+         * A type description of this dynamic type.
+         */
+        protected final TypeDescription typeDescription;
+
+        /**
+         * The byte array representing this dynamic type.
+         */
+        protected final byte[] binaryRepresentation;
+
+        /**
+         * The loaded type initializer for this dynamic type.
+         */
+        protected final LoadedTypeInitializer loadedTypeInitializer;
+
+        /**
+         * A list of auxiliary types for this dynamic type.
+         */
+        protected final List<? extends DynamicType> auxiliaryTypes;
+
+        /**
+         * Creates a new dynamic type.
+         *
+         * @param typeDescription       A description of this dynamic type.
+         * @param binaryRepresentation  A byte array containing the binary representation of this dynamic type. The array must not be modified.
+         * @param loadedTypeInitializer The loaded type initializer of this dynamic type.
+         * @param auxiliaryTypes        The auxiliary type required for this dynamic type.
+         */
+        @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "The array is not modified by class contract.")
+        public Default(TypeDescription typeDescription,
+                       byte[] binaryRepresentation,
+                       LoadedTypeInitializer loadedTypeInitializer,
+                       List<? extends DynamicType> auxiliaryTypes) {
+            this.typeDescription = typeDescription;
+            this.binaryRepresentation = binaryRepresentation;
+            this.loadedTypeInitializer = loadedTypeInitializer;
+            this.auxiliaryTypes = auxiliaryTypes;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public TypeDescription getTypeDescription() {
+            return typeDescription;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @SuppressFBWarnings(value = "EI_EXPOSE_REP", justification = "The array is not modified by class contract.")
+        public byte[] getBytes() {
+            return binaryRepresentation;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public LoadedTypeInitializer getLoadedTypeInitializer() {
+            return loadedTypeInitializer;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public List<? extends DynamicType> getAuxiliaries() {
+            return auxiliaryTypes;
         }
 
         /**
@@ -6140,10 +6413,8 @@ public interface DynamicType {
             /**
              * {@inheritDoc}
              */
-            public DynamicType.Loaded<T> load(@Nullable ClassLoader classLoader) {
-                if (GraalImageCode.getCurrent().isNativeImageExecution()) {
-                    return load(classLoader, ClassLoadingStrategy.ForPreloadedTypes.INSTANCE);
-                } else if (classLoader instanceof InjectionClassLoader && !((InjectionClassLoader) classLoader).isSealed()) {
+            public DynamicType.Loaded<T> load(@MaybeNull ClassLoader classLoader) {
+                if (classLoader instanceof InjectionClassLoader && !((InjectionClassLoader) classLoader).isSealed()) {
                     return load((InjectionClassLoader) classLoader, InjectionClassLoader.Strategy.INSTANCE);
                 } else {
                     return load(classLoader, ClassLoadingStrategy.Default.WRAPPER);
@@ -6153,7 +6424,7 @@ public interface DynamicType {
             /**
              * {@inheritDoc}
              */
-            public <S extends ClassLoader> DynamicType.Loaded<T> load(@Nullable S classLoader, ClassLoadingStrategy<? super S> classLoadingStrategy) {
+            public <S extends ClassLoader> DynamicType.Loaded<T> load(@MaybeNull S classLoader, ClassLoadingStrategy<? super S> classLoadingStrategy) {
                 return new Default.Loaded<T>(typeDescription,
                         binaryRepresentation,
                         loadedTypeInitializer,

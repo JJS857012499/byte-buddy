@@ -17,13 +17,13 @@ public abstract class AbstractTypeDescriptionGenericVariableDefiningTest extends
 
     private static final String T = "T", S = "S", U = "U", V = "V", W = "W", X = "X";
 
-    private static final String TYPE_ANNOTATION = "net.bytebuddy.test.precompiled.TypeAnnotation";
+    private static final String TYPE_ANNOTATION = "net.bytebuddy.test.precompiled.v8.TypeAnnotation";
 
-    private static final String TYPE_ANNOTATION_SAMPLES = "net.bytebuddy.test.precompiled.TypeAnnotationSamples";
+    private static final String TYPE_ANNOTATION_SAMPLES = "net.bytebuddy.test.precompiled.v8.TypeAnnotationSamples";
 
-    private static final String RECEIVER_TYPE_SAMPLE = "net.bytebuddy.test.precompiled.ReceiverTypeSample", INNER = "Inner", NESTED = "Nested", GENERIC = "Generic";
+    private static final String RECEIVER_TYPE_SAMPLE = "net.bytebuddy.test.precompiled.v8.ReceiverTypeSample", INNER = "Inner", NESTED = "Nested", GENERIC = "Generic";
 
-    private static final String RECORD_SAMPLE = "net.bytebuddy.test.precompiled.GenericRecordSample";
+    private static final String RECORD_SAMPLE = "net.bytebuddy.test.precompiled.v16.GenericRecordSample";
 
     protected abstract TypeDescription describe(Class<?> type);
 
@@ -40,7 +40,7 @@ public abstract class AbstractTypeDescriptionGenericVariableDefiningTest extends
         assertThat(t.getDeclaredAnnotations().isAnnotationPresent(typeAnnotation), is(true));
         assertThat(t.getDeclaredAnnotations().ofType(typeAnnotation).getValue(value).resolve(Integer.class), is(0));
         assertThat(t.getUpperBounds().size(), is(1));
-        assertThat(t.getUpperBounds().contains(TypeDescription.Generic.OBJECT), is(true));
+        assertThat(t.getUpperBounds().contains(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)), is(true));
     }
 
     @Test
@@ -468,6 +468,6 @@ public abstract class AbstractTypeDescriptionGenericVariableDefiningTest extends
         assertThat(recordType.asErasure().represents(Class.forName(RECORD_SAMPLE)), is(true));
         assertThat(recordType.getRecordComponents().size(), is(1));
         assertThat(recordType.getRecordComponents().get(0).getType().getSort(), is(TypeDefinition.Sort.NON_GENERIC));
-        assertThat(recordType.getRecordComponents().get(0).getType().asErasure(), is(TypeDescription.STRING));
+        assertThat(recordType.getRecordComponents().get(0).getType().asErasure(), is(TypeDescription.ForLoadedType.of(String.class)));
     }
 }

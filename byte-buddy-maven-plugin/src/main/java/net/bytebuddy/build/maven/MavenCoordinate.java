@@ -15,6 +15,7 @@
  */
 package net.bytebuddy.build.maven;
 
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.artifact.DefaultArtifact;
 
@@ -68,7 +69,7 @@ public class MavenCoordinate {
     }
 
     @Override
-    public boolean equals(Object object) {
+    public boolean equals(@MaybeNull Object object) {
         if (this == object) {
             return true;
         }

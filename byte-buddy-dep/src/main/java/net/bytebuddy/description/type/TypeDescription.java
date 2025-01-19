@@ -36,20 +36,20 @@ import net.bytebuddy.dynamic.TargetType;
 import net.bytebuddy.implementation.bytecode.StackSize;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.utility.CompoundList;
+import net.bytebuddy.utility.FieldComparator;
+import net.bytebuddy.utility.GraalImageCode;
 import net.bytebuddy.utility.JavaType;
 import net.bytebuddy.utility.dispatcher.JavaDispatcher;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import net.bytebuddy.utility.privilege.GetSystemPropertyAction;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.signature.SignatureVisitor;
 import org.objectweb.asm.signature.SignatureWriter;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.io.Serializable;
 import java.lang.annotation.Annotation;
-import java.lang.annotation.ElementType;
 import java.lang.reflect.*;
 import java.security.PrivilegedAction;
 import java.util.*;
@@ -64,28 +64,43 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
 
     /**
      * A representation of the {@link java.lang.Object} type.
+     *
+     * @deprecated Use {@link TypeDescription.ForLoadedType#of(Class)} instead.
      */
-    TypeDescription OBJECT = new ForLoadedType(Object.class);
+    @Deprecated
+    TypeDescription OBJECT = LazyProxy.of(Object.class);
 
     /**
      * A representation of the {@link java.lang.String} type.
+     *
+     * @deprecated Use {@link TypeDescription.ForLoadedType#of(Class)} instead.
      */
-    TypeDescription STRING = new ForLoadedType(String.class);
+    @Deprecated
+    TypeDescription STRING = LazyProxy.of(String.class);
 
     /**
      * A representation of the {@link java.lang.Class} type.
+     *
+     * @deprecated Use {@link TypeDescription.ForLoadedType#of(Class)} instead.
      */
-    TypeDescription CLASS = new ForLoadedType(Class.class);
+    @Deprecated
+    TypeDescription CLASS = LazyProxy.of(Class.class);
 
     /**
      * A representation of the {@link java.lang.Throwable} type.
+     *
+     * @deprecated Use {@link TypeDescription.ForLoadedType#of(Class)} instead.
      */
-    TypeDescription THROWABLE = new ForLoadedType(Throwable.class);
+    @Deprecated
+    TypeDescription THROWABLE = LazyProxy.of(Throwable.class);
 
     /**
      * A representation of the {@code void} non-type.
+     *
+     * @deprecated Use {@link TypeDescription.ForLoadedType#of(Class)} instead.
      */
-    TypeDescription VOID = new ForLoadedType(void.class);
+    @Deprecated
+    TypeDescription VOID = LazyProxy.of(void.class);
 
     /**
      * A list of interfaces that are implicitly implemented by any array type.
@@ -96,7 +111,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
      * Represents any undefined property representing a type description that is instead represented as {@code null} in order
      * to resemble the Java reflection API which returns {@code null} and is intuitive to many Java developers.
      */
-    @Nonnull(when = When.NEVER)
+    @AlwaysNull
     TypeDescription UNDEFINED = null;
 
     /**
@@ -189,13 +204,13 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
     /**
      * {@inheritDoc}
      */
-    @Nullable
+    @MaybeNull
     TypeDescription getComponentType();
 
     /**
      * {@inheritDoc}
      */
-    @Nullable
+    @MaybeNull
     TypeDescription getDeclaringType();
 
     /**
@@ -212,7 +227,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
      *
      * @return A description of the enclosing method of this type or {@code null} if there is no such method.
      */
-    @Nullable
+    @MaybeNull
     MethodDescription.InDefinedShape getEnclosingMethod();
 
     /**
@@ -220,7 +235,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
      *
      * @return A description of the enclosing type of this type or {@code null} if there is no such type.
      */
-    @Nullable
+    @MaybeNull
     TypeDescription getEnclosingType();
 
     /**
@@ -243,11 +258,18 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
     String getSimpleName();
 
     /**
+     * Returns a form of a type's simple name which only shortens the package name but not the names of outer classes.
+     *
+     * @return The long form of the simple name of this type.
+     */
+    String getLongSimpleName();
+
+    /**
      * Returns the canonical name of this type if it exists.
      *
      * @return The canonical name of this type. Might be {@code null}.
      */
-    @Nullable
+    @MaybeNull
     String getCanonicalName();
 
     /**
@@ -272,11 +294,13 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
     boolean isMemberType();
 
     /**
-     * Returns the package of the type described by this instance or {@code null} if the described type does not imply a package.
+     * Returns the package of the type described by this instance or {@code null} if the described type
+     * is a primitive type or an array.
      *
-     * @return The package of the type described by this instance or {@code null} if the described type does not imply a package.
+     * @return The package of the type described by this instance or {@code null} if the described type
+     * is a primitive type or an array.
      */
-    @Nullable
+    @MaybeNull
     PackageDescription getPackage();
 
     /**
@@ -372,7 +396,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
      *
      * @return This types default value.
      */
-    @Nullable
+    @MaybeNull
     Object getDefaultValue();
 
     /**
@@ -446,7 +470,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
      *
      * @return This type's class file version or {@code null} if it cannot be resolved.
      */
-    @Nullable
+    @MaybeNull
     ClassFileVersion getClassFileVersion();
 
     /**
@@ -463,29 +487,41 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
 
         /**
          * A representation of the {@link Object} type.
+         *
+         * @deprecated Use {@link OfNonGenericType.ForLoadedType#of(Class)} instead.
          */
-        Generic OBJECT = new OfNonGenericType.ForLoadedType(Object.class);
+        @Deprecated
+        Generic OBJECT = LazyProxy.of(Object.class);
 
         /**
          * A representation of the {@link Class} non-type.
+         *
+         * @deprecated Use {@link OfNonGenericType.ForLoadedType#of(Class)} instead.
          */
-        Generic CLASS = new OfNonGenericType.ForLoadedType(Class.class);
+        @Deprecated
+        Generic CLASS = LazyProxy.of(Class.class);
 
         /**
          * A representation of the {@code void} non-type.
+         *
+         * @deprecated Use {@link OfNonGenericType.ForLoadedType#of(Class)} instead.
          */
-        Generic VOID = new OfNonGenericType.ForLoadedType(void.class);
+        @Deprecated
+        Generic VOID = LazyProxy.of(void.class);
 
         /**
          * A representation of the {@link Annotation} type.
+         *
+         * @deprecated Use {@link OfNonGenericType.ForLoadedType#of(Class)} instead.J
          */
-        Generic ANNOTATION = new OfNonGenericType.ForLoadedType(Annotation.class);
+        @Deprecated
+        Generic ANNOTATION = LazyProxy.of(Annotation.class);
 
         /**
          * Represents any undefined property representing a generic type description that is instead represented as {@code null} in order
          * to resemble the Java reflection API which returns {@code null} and is intuitive to many Java developers.
          */
-        @Nonnull(when = When.NEVER)
+        @AlwaysNull
         Generic UNDEFINED = null;
 
         /**
@@ -550,7 +586,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
          *
          * @return This type's owner type or {@code null} if no owner type exists.
          */
-        @Nullable
+        @MaybeNull
         Generic getOwnerType();
 
         /**
@@ -566,7 +602,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
          * @return The value that is bound to the supplied type variable or {@code null} if the type variable
          * is not bound by this parameterized type.
          */
-        @Nullable
+        @MaybeNull
         Generic findBindingOf(Generic typeVariable);
 
         /**
@@ -590,7 +626,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         Generic getComponentType();
 
         /**
@@ -757,6 +793,68 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             }
 
             /**
+             * A visitor that generalizes all reference types to {@link Object} but retains primitive types. Arrays
+             * are retained as such.
+             */
+            enum Generalizing implements Visitor<Generic> {
+
+                /**
+                 * The singleton instance.
+                 */
+                INSTANCE;
+
+                /**
+                 * {@inheritDoc}
+                 */
+                @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
+                public Generic onGenericArray(Generic genericArray) {
+                    int arity = 0;
+                    do {
+                        arity++;
+                        genericArray = genericArray.getComponentType();
+                    } while (genericArray.isArray());
+                    return ArrayProjection.of(TypeDescription.ForLoadedType.of(Object.class), arity).asGenericType();
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public Generic onWildcard(Generic wildcard) {
+                    throw new IllegalArgumentException("Cannot erase a wildcard type: " + wildcard);
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public Generic onParameterizedType(Generic parameterizedType) {
+                    return TypeDescription.ForLoadedType.of(Object.class).asGenericType();
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public Generic onTypeVariable(Generic typeVariable) {
+                    return TypeDescription.ForLoadedType.of(Object.class).asGenericType();
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
+                public Generic onNonGenericType(Generic typeDescription) {
+                    int arity = 0;
+                    Generic componentType = typeDescription;
+                    while (componentType.isArray()) {
+                        arity++;
+                        componentType = componentType.getComponentType();
+                    }
+                    return componentType.isPrimitive()
+                            ? typeDescription
+                            : ArrayProjection.of(TypeDescription.ForLoadedType.of(Object.class), arity).asGenericType();
+                }
+            }
+
+            /**
              * A visitor that strips all type annotations of all types.
              */
             enum AnnotationStripper implements Visitor<Generic> {
@@ -769,6 +867,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
+                @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
                 public Generic onGenericArray(Generic genericArray) {
                     return new OfGenericArray.Latent(genericArray.getComponentType().accept(this), Empty.INSTANCE);
                 }
@@ -803,6 +902,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
+                @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
                 public Generic onNonGenericType(Generic typeDescription) {
                     return typeDescription.isArray()
                             ? new OfGenericArray.Latent(onNonGenericType(typeDescription.getComponentType()), Empty.INSTANCE)
@@ -954,6 +1054,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                         /**
                          * {@inheritDoc}
                          */
+                        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
                         public Boolean onGenericArray(Generic genericArray) {
                             return typeDescription.isArray()
                                     ? genericArray.getComponentType().accept(new ForNonGenericType(typeDescription.getComponentType()))
@@ -1335,6 +1436,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                         /**
                          * {@inheritDoc}
                          */
+                        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
                         public Boolean onGenericArray(Generic genericArray) {
                             return this.genericArray.getComponentType().accept(Assigner.INSTANCE).isAssignableFrom(genericArray.getComponentType());
                         }
@@ -1363,6 +1465,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                         /**
                          * {@inheritDoc}
                          */
+                        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
                         public Boolean onNonGenericType(Generic typeDescription) {
                             return typeDescription.isArray()
                                     && genericArray.getComponentType().accept(Assigner.INSTANCE).isAssignableFrom(typeDescription.getComponentType());
@@ -1539,33 +1642,14 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                     INSTANCE;
 
                     /**
-                     * The {@link ElementType}'s {@code TYPE_USE} constant.
+                     * The name of the {@code ElementType#TYPE_USE} element.
                      */
-                    @Nullable
-                    private final ElementType typeUse;
+                    private static final String TYPE_USE = "TYPE_USE";
 
                     /**
-                     * The {@link ElementType}'s {@code TYPE_PARAMETER} constant.
+                     * The name of the {@code ElementType#TYPE_PARAMETER} element.
                      */
-                    @Nullable
-                    private final ElementType typeParameter;
-
-                    /**
-                     * Creates a new type annotation validator.
-                     */
-                    ForTypeAnnotations() {
-                        ElementType typeUse, typeParameter;
-                        try {
-                            typeUse = Enum.valueOf(ElementType.class, "TYPE_USE");
-                            typeParameter = Enum.valueOf(ElementType.class, "TYPE_PARAMETER");
-                        } catch (IllegalArgumentException ignored) {
-                            // Setting these values null results in this validator always failing for pre Java-8 VMs.
-                            typeUse = null;
-                            typeParameter = null;
-                        }
-                        this.typeUse = typeUse;
-                        this.typeParameter = typeParameter;
-                    }
+                    private static final String TYPE_PARAMETER = "TYPE_PARAMETER";
 
                     /**
                      * Validates the type annotations on a formal type variable but not on its bounds..
@@ -1576,7 +1660,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                     public static boolean ofFormalTypeVariable(Generic typeVariable) {
                         Set<TypeDescription> annotationTypes = new HashSet<TypeDescription>();
                         for (AnnotationDescription annotationDescription : typeVariable.getDeclaredAnnotations()) {
-                            if (!annotationDescription.getElementTypes().contains(INSTANCE.typeParameter) || !annotationTypes.add(annotationDescription.getAnnotationType())) {
+                            if (!annotationDescription.isSupportedOn(TYPE_PARAMETER) || !annotationTypes.add(annotationDescription.getAnnotationType())) {
                                 return false;
                             }
                         }
@@ -1586,6 +1670,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                     /**
                      * {@inheritDoc}
                      */
+                    @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
                     public Boolean onGenericArray(Generic genericArray) {
                         return isValid(genericArray) && genericArray.getComponentType().accept(this);
                     }
@@ -1632,6 +1717,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                     /**
                      * {@inheritDoc}
                      */
+                    @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
                     public Boolean onNonGenericType(Generic typeDescription) {
                         return isValid(typeDescription) && (!typeDescription.isArray() || typeDescription.getComponentType().accept(this));
                     }
@@ -1645,7 +1731,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                     private boolean isValid(Generic typeDescription) {
                         Set<TypeDescription> annotationTypes = new HashSet<TypeDescription>();
                         for (AnnotationDescription annotationDescription : typeDescription.getDeclaredAnnotations()) {
-                            if (!annotationDescription.getElementTypes().contains(typeUse) || !annotationTypes.add(annotationDescription.getAnnotationType())) {
+                            if (!annotationDescription.isSupportedOn(TYPE_USE) || !annotationTypes.add(annotationDescription.getAnnotationType())) {
                                 return false;
                             }
                         }
@@ -1741,6 +1827,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
+                @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
                 public SignatureVisitor onGenericArray(Generic genericArray) {
                     genericArray.getComponentType().accept(new ForSignatureVisitor(signatureVisitor.visitArrayType()));
                     return signatureVisitor;
@@ -1791,6 +1878,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
+                @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
                 public SignatureVisitor onNonGenericType(Generic typeDescription) {
                     if (typeDescription.isArray()) {
                         typeDescription.getComponentType().accept(new ForSignatureVisitor(signatureVisitor.visitArrayType()));
@@ -1877,9 +1965,14 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  */
                 public Generic onParameterizedType(Generic parameterizedType) {
                     Generic ownerType = parameterizedType.getOwnerType();
-                    List<Generic> typeArguments = new ArrayList<Generic>(parameterizedType.getTypeArguments().size());
-                    for (Generic typeArgument : parameterizedType.getTypeArguments()) {
-                        typeArguments.add(typeArgument.accept(this));
+                    List<Generic> typeArguments;
+                    if (TypeDescription.AbstractBase.RAW_TYPES) {
+                        typeArguments = Collections.<Generic>emptyList();
+                    } else {
+                        typeArguments = new ArrayList<Generic>(parameterizedType.getTypeArguments().size());
+                        for (Generic typeArgument : parameterizedType.getTypeArguments()) {
+                            typeArguments.add(typeArgument.accept(this));
+                        }
                     }
                     return new OfParameterizedType.Latent(parameterizedType.asRawType().accept(this).asErasure(),
                             ownerType == null
@@ -1892,6 +1985,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
+                @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
                 public Generic onGenericArray(Generic genericArray) {
                     return new OfGenericArray.Latent(genericArray.getComponentType().accept(this), genericArray);
                 }
@@ -1906,6 +2000,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
+                @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
                 public Generic onNonGenericType(Generic typeDescription) {
                     return typeDescription.isArray()
                             ? new OfGenericArray.Latent(typeDescription.getComponentType().accept(this), typeDescription)
@@ -1992,6 +2087,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                      * @param fieldDescription The field description to which visited types should be attached to.
                      * @return A substitutor that attaches visited types to the given field's type context.
                      */
+                    @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming declaring type for type member.")
                     public static ForAttachment of(FieldDescription fieldDescription) {
                         return new ForAttachment(fieldDescription.getDeclaringType(), fieldDescription.getDeclaringType().asErasure());
                     }
@@ -2030,12 +2126,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                      * {@inheritDoc}
                      */
                     public Generic onTypeVariable(Generic typeVariable) {
-                        Generic attachedVariable = typeVariableSource.findVariable(typeVariable.getSymbol());
-                        if (attachedVariable == null) {
-                            throw new IllegalArgumentException("Cannot attach undefined variable: " + typeVariable);
-                        } else {
-                            return new OfTypeVariable.WithAnnotationOverlay(attachedVariable, typeVariable);
-                        }
+                        return new OfTypeVariable.WithAnnotationOverlay(typeVariableSource.findExpectedVariable(typeVariable.getSymbol()), typeVariable);
                     }
 
                     @Override
@@ -2382,6 +2473,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
+                @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
                 public TypeDescription onGenericArray(Generic genericArray) {
                     Generic targetType = genericArray;
                     int arity = 0;
@@ -2396,7 +2488,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                             }
                         }
                         return TargetType.resolve(TypeDescription.ArrayProjection.of(
-                                declaringType.findVariable(targetType.getSymbol()).asErasure(),
+                                declaringType.findExpectedVariable(targetType.getSymbol()).asErasure(),
                                 arity), declaringType);
                     } else {
                         return TargetType.resolve(genericArray.asErasure(), declaringType);
@@ -2426,7 +2518,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                             return typeVariableToken.getBounds().get(0).accept(this);
                         }
                     }
-                    return TargetType.resolve(declaringType.findVariable(typeVariable.getSymbol()).asErasure(), declaringType);
+                    return TargetType.resolve(declaringType.findExpectedVariable(typeVariable.getSymbol()).asErasure(), declaringType);
                 }
 
                 /**
@@ -2783,7 +2875,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                     /**
                      * {@inheritDoc}
                      */
-                    @SuppressFBWarnings(value = "BC_VACUOUS_INSTANCEOF", justification = "Cast is required for JVMs before Java 8")
+                    @SuppressFBWarnings(value = "BC_VACUOUS_INSTANCEOF", justification = "Cast is required for JVMs before Java 8.")
                     public AnnotatedElement resolve() {
                         // Older JVMs require this check and cast as the hierarchy was introduced in a later version.
                         return typeVariable instanceof AnnotatedElement
@@ -2913,7 +3005,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                          * @param field The field for which to resolve the annotated type.
                          * @return The field type annotations or {@code null} if this feature is not supported.
                          */
-                        @Nullable
+                        @MaybeNull
                         @JavaDispatcher.Defaults
                         AnnotatedElement getAnnotatedType(Field field);
                     }
@@ -2966,7 +3058,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                          * @param method The executable for which to resolve the annotated return type.
                          * @return The return type annotations or {@code null} if this feature is not supported.
                          */
-                        @Nullable
+                        @MaybeNull
                         @JavaDispatcher.Defaults
                         AnnotatedElement getAnnotatedReturnType(Method method);
                     }
@@ -3537,7 +3629,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                      * @param value The annotated type to resolve.
                      * @return The annotated owner type for the supplied annotated type or {@code null} if this feature is not supported.
                      */
-                    @Nullable
+                    @MaybeNull
                     @JavaDispatcher.Defaults
                     AnnotatedElement getAnnotatedOwnerType(AnnotatedElement value);
                 }
@@ -3579,6 +3671,51 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         }
 
         /**
+         * A lazy proxy for representing a {@link Generic} for a loaded type. This proxy is used to
+         * avoid locks when Byte Buddy is loaded circularly.
+         */
+        @HashCodeAndEqualsPlugin.Enhance
+        class LazyProxy implements InvocationHandler {
+
+            /**
+             * The represented loaded type.
+             */
+            private final Class<?> type;
+
+            /**
+             * Creates a new lazy proxy.
+             *
+             * @param type The represented loaded type.
+             */
+            protected LazyProxy(Class<?> type) {
+                this.type = type;
+            }
+
+            /**
+             * Resolves a lazy proxy for a loaded type as a generic type description.
+             *
+             * @param type The represented loaded type.
+             * @return The lazy proxy.
+             */
+            protected static Generic of(Class<?> type) {
+                return (Generic) Proxy.newProxyInstance(Generic.class.getClassLoader(),
+                        new Class<?>[]{Generic.class},
+                        new LazyProxy(type));
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            public Object invoke(Object proxy, Method method, @MaybeNull Object[] argument) throws Throwable {
+                try {
+                    return method.invoke(OfNonGenericType.ForLoadedType.of(type), argument);
+                } catch (InvocationTargetException exception) {
+                    throw exception.getTargetException();
+                }
+            }
+        }
+
+        /**
          * <p>
          * A raw type representation of a non-generic type. This raw type differs from a raw type in the Java programming language by
          * representing a minimal erasure compared to Java's full erasure. This means that generic types are preserved as long as they
@@ -3600,7 +3737,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public Generic getSuperClass() {
                 TypeDescription erasure = asErasure();
                 Generic superClass = erasure.getSuperClass();
@@ -3765,8 +3902,8 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             }
 
             @Override
-            @SuppressFBWarnings(value = "EQ_CHECK_FOR_OPERAND_NOT_COMPATIBLE_WITH_THIS", justification = "Type check is performed by erasure implementation")
-            public boolean equals(Object other) {
+            @SuppressFBWarnings(value = "EQ_CHECK_FOR_OPERAND_NOT_COMPATIBLE_WITH_THIS", justification = "Type check is performed by erasure implementation.")
+            public boolean equals(@MaybeNull Object other) {
                 return this == other || asErasure().equals(other);
             }
 
@@ -3783,7 +3920,6 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * A cache of generic type descriptions for commonly used types to avoid unnecessary allocations.
                  */
-                @SuppressFBWarnings(value = "MS_MUTABLE_COLLECTION_PKGPROTECT", justification = "This collection is not exposed.")
                 private static final Map<Class<?>, Generic> TYPE_CACHE;
 
                 /*
@@ -3792,6 +3928,9 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 static {
                     TYPE_CACHE = new HashMap<Class<?>, Generic>();
                     TYPE_CACHE.put(TargetType.class, new ForLoadedType(TargetType.class));
+                    TYPE_CACHE.put(Class.class, new ForLoadedType(Class.class));
+                    TYPE_CACHE.put(Throwable.class, new ForLoadedType(Throwable.class));
+                    TYPE_CACHE.put(Annotation.class, new ForLoadedType(Annotation.class));
                     TYPE_CACHE.put(Object.class, new ForLoadedType(Object.class));
                     TYPE_CACHE.put(String.class, new ForLoadedType(String.class));
                     TYPE_CACHE.put(Boolean.class, new ForLoadedType(Boolean.class));
@@ -3868,7 +4007,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getOwnerType() {
                     Class<?> declaringClass = this.type.getDeclaringClass();
                     return declaringClass == null
@@ -3879,7 +4018,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getComponentType() {
                     Class<?> componentType = type.getComponentType();
                     return componentType == null
@@ -3933,7 +4072,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getOwnerType() {
                     TypeDescription declaringType = typeDescription.getDeclaringType();
                     return declaringType == null
@@ -3944,7 +4083,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getComponentType() {
                     TypeDescription componentType = typeDescription.getComponentType();
                     return componentType == null
@@ -3973,7 +4112,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * The non-generic type's declaring type.
                  */
-                @Nullable
+                @MaybeNull
                 private final TypeDescription.Generic declaringType;
 
                 /**
@@ -3998,7 +4137,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  * @param declaringType    The non-generic type's declaring type.
                  * @param annotationSource The annotation source to query for the declared annotations.
                  */
-                private Latent(TypeDescription typeDescription, @Nullable TypeDescription declaringType, AnnotationSource annotationSource) {
+                private Latent(TypeDescription typeDescription, @MaybeNull TypeDescription declaringType, AnnotationSource annotationSource) {
                     this(typeDescription,
                             declaringType == null
                                     ? Generic.UNDEFINED
@@ -4013,7 +4152,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  * @param declaringType    The non-generic type's declaring type.
                  * @param annotationSource The annotation source to query for the declared annotations.
                  */
-                protected Latent(TypeDescription typeDescription, @Nullable Generic declaringType, AnnotationSource annotationSource) {
+                protected Latent(TypeDescription typeDescription, @MaybeNull Generic declaringType, AnnotationSource annotationSource) {
                     this.typeDescription = typeDescription;
                     this.declaringType = declaringType;
                     this.annotationSource = annotationSource;
@@ -4022,7 +4161,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getOwnerType() {
                     return declaringType;
                 }
@@ -4030,7 +4169,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getComponentType() {
                     TypeDescription componentType = typeDescription.getComponentType();
                     return componentType == null
@@ -4088,7 +4227,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getSuperClass() {
                     Generic superClass = typeDescription.getSuperClass();
                     return superClass == null
@@ -4127,7 +4266,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getOwnerType() {
                     TypeDescription declaringType = typeDescription.getDeclaringType();
                     return declaringType == null
@@ -4138,7 +4277,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getComponentType() {
                     TypeDescription componentType = typeDescription.getComponentType();
                     return componentType == null
@@ -4164,6 +4303,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * {@inheritDoc}
              */
+            @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
             public Sort getSort() {
                 return getComponentType().getSort().isNonGeneric()
                         ? Sort.NON_GENERIC
@@ -4173,6 +4313,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * {@inheritDoc}
              */
+            @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
             public TypeDescription asErasure() {
                 return ArrayProjection.of(getComponentType().asErasure(), 1);
             }
@@ -4180,9 +4321,9 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public Generic getSuperClass() {
-                return TypeDescription.Generic.OBJECT;
+                return TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class);
             }
 
             /**
@@ -4251,7 +4392,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public Generic getOwnerType() {
                 return Generic.UNDEFINED;
             }
@@ -4327,6 +4468,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
 
             @Override
             @CachedReturnPlugin.Enhance("hashCode")
+            @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
             public int hashCode() {
                 return getSort().isNonGeneric()
                         ? asErasure().hashCode()
@@ -4334,8 +4476,10 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             }
 
             @Override
-            @SuppressFBWarnings(value = "EQ_CHECK_FOR_OPERAND_NOT_COMPATIBLE_WITH_THIS", justification = "Type check is performed by erasure implementation")
-            public boolean equals(Object other) {
+            @SuppressFBWarnings(
+                    value = {"EQ_CHECK_FOR_OPERAND_NOT_COMPATIBLE_WITH_THIS", "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"},
+                    justification = "Type check is performed by erasure implementation. Assuming component type for array type.")
+            public boolean equals(@MaybeNull Object other) {
                 if (this == other) {
                     return true;
                 } else if (getSort().isNonGeneric()) {
@@ -4349,6 +4493,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             }
 
             @Override
+            @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
             public String toString() {
                 return getSort().isNonGeneric()
                         ? asErasure().toString()
@@ -4393,9 +4538,9 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getComponentType() {
-                    return Sort.describe(genericArrayType.getGenericComponentType(), annotationReader.ofComponentType());
+                    return Sort.describeOrNull(genericArrayType.getGenericComponentType(), annotationReader.ofComponentType());
                 }
 
                 /**
@@ -4482,7 +4627,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public Generic getSuperClass() {
                 throw new IllegalStateException("A wildcard does not imply a super type definition: " + this);
             }
@@ -4634,7 +4779,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             }
 
             @Override
-            public boolean equals(Object other) {
+            public boolean equals(@MaybeNull Object other) {
                 if (this == other) {
                     return true;
                 } else if (!(other instanceof Generic)) {
@@ -4654,7 +4799,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                     stringBuilder.append(" super ");
                 } else {
                     bounds = getUpperBounds();
-                    if (bounds.getOnly().equals(TypeDescription.Generic.OBJECT)) {
+                    if (bounds.getOnly().equals(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class))) {
                         return SYMBOL;
                     }
                     stringBuilder.append(" extends ");
@@ -4755,7 +4900,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                      * {@inheritDoc}
                      */
                     public Generic get(int index) {
-                        return Sort.describe(upperBound[index], annotationReader.ofWildcardUpperBoundType(index));
+                        return Sort.describeOrNull(upperBound[index], annotationReader.ofWildcardUpperBoundType(index));
                     }
 
                     /**
@@ -4796,7 +4941,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                      * {@inheritDoc}
                      */
                     public Generic get(int index) {
-                        return Sort.describe(lowerBound[index], annotationReader.ofWildcardLowerBoundType(index));
+                        return Sort.describeOrNull(lowerBound[index], annotationReader.ofWildcardLowerBoundType(index));
                     }
 
                     /**
@@ -4848,7 +4993,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  * @return A description of an unbounded wildcard.
                  */
                 public static Generic unbounded(AnnotationSource annotationSource) {
-                    return new Latent(Collections.singletonList(TypeDescription.Generic.OBJECT), Collections.<Generic>emptyList(), annotationSource);
+                    return new Latent(Collections.singletonList(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)), Collections.<Generic>emptyList(), annotationSource);
                 }
 
                 /**
@@ -4870,7 +5015,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  * @return A wildcard with the given lower bound.
                  */
                 public static Generic boundedBelow(Generic lowerBound, AnnotationSource annotationSource) {
-                    return new Latent(Collections.singletonList(TypeDescription.Generic.OBJECT), Collections.singletonList(lowerBound), annotationSource);
+                    return new Latent(Collections.singletonList(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)), Collections.singletonList(lowerBound), annotationSource);
                 }
 
                 /**
@@ -4911,7 +5056,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public Generic getSuperClass() {
                 Generic superClass = asErasure().getSuperClass();
                 return superClass == null
@@ -4950,7 +5095,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public Generic findBindingOf(Generic typeVariable) {
                 Generic typeDescription = this;
                 do {
@@ -5077,7 +5222,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             }
 
             @Override
-            public boolean equals(Object other) {
+            public boolean equals(@MaybeNull Object other) {
                 if (this == other) {
                     return true;
                 } else if (!(other instanceof Generic)) {
@@ -5124,7 +5269,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  */
                 FOR_LEGACY_VM {
                     @Override
-                    protected void apply(StringBuilder stringBuilder, TypeDescription erasure, Generic ownerType) {
+                    protected void apply(StringBuilder stringBuilder, TypeDescription erasure, @MaybeNull Generic ownerType) {
                         if (ownerType != null) {
                             stringBuilder.append(ownerType.getTypeName()).append('.').append(ownerType.getSort().isParameterized()
                                     ? erasure.getSimpleName()
@@ -5140,7 +5285,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  */
                 FOR_JAVA_8_CAPABLE_VM {
                     @Override
-                    protected void apply(StringBuilder stringBuilder, TypeDescription erasure, Generic ownerType) {
+                    protected void apply(StringBuilder stringBuilder, TypeDescription erasure, @MaybeNull Generic ownerType) {
                         if (ownerType != null) {
                             stringBuilder.append(ownerType.getTypeName()).append('$');
                             if (ownerType.getSort().isParameterized()) {
@@ -5166,9 +5311,9 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  *
                  * @param stringBuilder The string builder which is used for creating a parameterized type's string representation.
                  * @param erasure       The rendered type's erasure.
-                 * @param ownerType     The rendered type's owner type.
+                 * @param ownerType     The rendered type's owner type which might be {@code null}.
                  */
-                protected abstract void apply(StringBuilder stringBuilder, TypeDescription erasure, Generic ownerType);
+                protected abstract void apply(StringBuilder stringBuilder, TypeDescription erasure, @MaybeNull Generic ownerType);
             }
 
             /**
@@ -5216,7 +5361,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getOwnerType() {
                     java.lang.reflect.Type ownerType = parameterizedType.getOwnerType();
                     return ownerType == null
@@ -5275,8 +5420,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                      * {@inheritDoc}
                      */
                     public Generic get(int index) {
-                        // Obfuscators sometimes render parameterized type arguments as null values.
-                        return Sort.describe(argumentType[index], annotationReader.ofTypeArgument(index));
+                        return Sort.describeOrNull(argumentType[index], annotationReader.ofTypeArgument(index));
                     }
 
                     /**
@@ -5301,7 +5445,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * This parameterized type's owner type or {@code null} if no owner type exists.
                  */
-                @Nullable
+                @MaybeNull
                 private final Generic ownerType;
 
                 /**
@@ -5323,7 +5467,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  * @param annotationSource The annotation source to query for the declared annotations.
                  */
                 public Latent(TypeDescription rawType,
-                              @Nullable Generic ownerType,
+                              @MaybeNull Generic ownerType,
                               List<? extends Generic> parameters,
                               AnnotationSource annotationSource) {
                     this.rawType = rawType;
@@ -5342,7 +5486,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getOwnerType() {
                     return ownerType;
                 }
@@ -5386,7 +5530,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getSuperClass() {
                     Generic superClass = super.getSuperClass();
                     return superClass == null
@@ -5425,7 +5569,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getOwnerType() {
                     Generic ownerType = parameterizedType.getOwnerType();
                     return ownerType == null
@@ -5496,7 +5640,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getOwnerType() {
                     TypeDescription declaringType = typeDescription.getDeclaringType();
                     return declaringType == null
@@ -5531,14 +5675,14 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             public TypeDescription asErasure() {
                 TypeList.Generic upperBounds = getUpperBounds();
                 return upperBounds.isEmpty()
-                        ? TypeDescription.OBJECT
+                        ? TypeDescription.ForLoadedType.of(Object.class)
                         : upperBounds.get(0).asErasure();
             }
 
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public Generic getSuperClass() {
                 throw new IllegalStateException("A type variable does not imply a super type definition: " + this);
             }
@@ -5676,7 +5820,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             }
 
             @Override
-            public boolean equals(Object other) {
+            public boolean equals(@MaybeNull Object other) {
                 if (this == other) {
                     return true;
                 } else if (!(other instanceof Generic)) {
@@ -5764,7 +5908,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getSuperClass() {
                     throw new IllegalStateException("A symbolic type variable does not imply a super type definition: " + this);
                 }
@@ -5904,7 +6048,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 }
 
                 @Override
-                public boolean equals(Object other) {
+                public boolean equals(@MaybeNull Object other) {
                     if (this == other) {
                         return true;
                     } else if (!(other instanceof Generic)) {
@@ -6029,7 +6173,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                      * {@inheritDoc}
                      */
                     public Generic get(int index) {
-                        return Sort.describe(bound[index], annotationReader.ofTypeVariableBoundType(index));
+                        return Sort.describeOrNull(bound[index], annotationReader.ofTypeVariableBoundType(index));
                     }
 
                     /**
@@ -6156,7 +6300,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public Generic getComponentType() {
                 return resolve().getComponentType();
             }
@@ -6171,7 +6315,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public Generic findBindingOf(Generic typeVariable) {
                 return resolve().findBindingOf(typeVariable);
             }
@@ -6186,7 +6330,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public Generic getOwnerType() {
                 return resolve().getOwnerType();
             }
@@ -6261,7 +6405,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             }
 
             @Override
-            public boolean equals(Object other) {
+            public boolean equals(@MaybeNull Object other) {
                 return this == other || other instanceof TypeDefinition && resolve().equals(other);
             }
 
@@ -6281,7 +6425,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getSuperClass() {
                     return LazySuperClass.of(this);
                 }
@@ -6325,7 +6469,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                      * @param delegate The lazy projection for which this description is a delegate.
                      * @return A lazy description of the super class or {@code null} if the delegate does not define a super class.
                      */
-                    @Nullable
+                    @MaybeNull
                     protected static Generic of(LazyProjection delegate) {
                         return delegate.asErasure().getSuperClass() == null
                                 ? Generic.UNDEFINED
@@ -6342,12 +6486,14 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                     /**
                      * {@inheritDoc}
                      */
+                    @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming super class for given instance.")
                     public TypeDescription asErasure() {
                         return delegate.asErasure().getSuperClass().asErasure();
                     }
 
                     @Override
                     @CachedReturnPlugin.Enhance("resolved")
+                    @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming super class for given instance.")
                     protected Generic resolve() {
                         return delegate.resolve().getSuperClass();
                     }
@@ -6487,7 +6633,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Generic getSuperClass() {
                     return resolve().getSuperClass();
                 }
@@ -6552,7 +6698,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  * @param type The type of which the super class is represented.
                  * @return A representation of the supplied type's super class or {@code null} if no such class exists.
                  */
-                @Nullable
+                @MaybeNull
                 public static Generic of(Class<?> type) {
                     return type.getSuperclass() == null
                             ? TypeDescription.Generic.UNDEFINED
@@ -6602,7 +6748,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 @Override
                 @CachedReturnPlugin.Enhance("resolved")
                 protected Generic resolve() {
-                    return Sort.describe(field.getGenericType(), getAnnotationReader());
+                    return Sort.describeOrNull(field.getGenericType(), getAnnotationReader());
                 }
 
                 /**
@@ -6640,7 +6786,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 @Override
                 @CachedReturnPlugin.Enhance("resolved")
                 protected Generic resolve() {
-                    return Sort.describe(method.getGenericReturnType(), getAnnotationReader());
+                    return Sort.describeOrNull(method.getGenericReturnType(), getAnnotationReader());
                 }
 
                 /**
@@ -6683,7 +6829,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  * @param index       The parameter's index.
                  * @param erasure     The erasure of the parameter type.
                  */
-                @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "The array is never exposed outside of the class")
+                @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "The array is not modified by class contract.")
                 public OfConstructorParameter(Constructor<?> constructor, int index, Class<?>[] erasure) {
                     this.constructor = constructor;
                     this.index = index;
@@ -6695,7 +6841,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 protected Generic resolve() {
                     java.lang.reflect.Type[] type = constructor.getGenericParameterTypes();
                     return erasure.length == type.length
-                            ? Sort.describe(type[index], getAnnotationReader())
+                            ? Sort.describeOrNull(type[index], getAnnotationReader())
                             : OfNonGenericType.ForLoadedType.of(erasure[index]);
                 }
 
@@ -6739,7 +6885,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  * @param index   The parameter's index.
                  * @param erasure The erasures of the method's parameter types.
                  */
-                @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "The array is never exposed outside of the class")
+                @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "The array is not modified by class contract.")
                 public OfMethodParameter(Method method, int index, Class<?>[] erasure) {
                     this.method = method;
                     this.index = index;
@@ -6751,7 +6897,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 protected Generic resolve() {
                     java.lang.reflect.Type[] type = method.getGenericParameterTypes();
                     return erasure.length == type.length
-                            ? Sort.describe(type[index], getAnnotationReader())
+                            ? Sort.describeOrNull(type[index], getAnnotationReader())
                             : OfNonGenericType.ForLoadedType.of(erasure[index]);
                 }
 
@@ -6790,7 +6936,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 @Override
                 @CachedReturnPlugin.Enhance("resolved")
                 protected Generic resolve() {
-                    return Sort.describe(RecordComponentDescription.ForLoadedRecordComponent.RECORD_COMPONENT.getGenericType(recordComponent), getAnnotationReader());
+                    return Sort.describeOrNull(RecordComponentDescription.ForLoadedRecordComponent.RECORD_COMPONENT.getGenericType(recordComponent), getAnnotationReader());
                 }
 
                 /**
@@ -6880,7 +7026,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * Represents an undefined {@link java.lang.reflect.Type} within a build step.
              */
-            @Nonnull(when = When.NEVER)
+            @AlwaysNull
             private static final java.lang.reflect.Type UNDEFINED = null;
 
             /**
@@ -6944,7 +7090,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
              * @param ownerType The raw type's (annotated) declaring type or {@code null} if no owner type should be declared.
              * @return A builder for creating a raw type.
              */
-            public static Builder rawType(Class<?> type, @Nullable Generic ownerType) {
+            public static Builder rawType(Class<?> type, @MaybeNull Generic ownerType) {
                 return rawType(ForLoadedType.of(type), ownerType);
             }
 
@@ -6955,7 +7101,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
              * @param ownerType The raw type's (annotated) declaring type or {@code null} if no owner type should be declared.
              * @return A builder for creating a raw type.
              */
-            public static Builder rawType(TypeDescription type, @Nullable Generic ownerType) {
+            public static Builder rawType(TypeDescription type, @MaybeNull Generic ownerType) {
                 TypeDescription declaringType = type.getDeclaringType();
                 if (declaringType == null && ownerType != null) {
                     throw new IllegalArgumentException(type + " does not have a declaring type: " + ownerType);
@@ -7055,7 +7201,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
              * @return A builder for creating a parameterized type.
              */
             public static Builder parameterizedType(Class<?> rawType,
-                                                    @Nullable java.lang.reflect.Type ownerType,
+                                                    @MaybeNull java.lang.reflect.Type ownerType,
                                                     List<? extends java.lang.reflect.Type> parameters) {
                 return parameterizedType(ForLoadedType.of(rawType),
                         ownerType == null
@@ -7095,7 +7241,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
              * @return A builder for creating a parameterized type.
              */
             public static Builder parameterizedType(TypeDescription rawType,
-                                                    @Nullable Generic ownerType,
+                                                    @MaybeNull Generic ownerType,
                                                     Collection<? extends TypeDefinition> parameters) {
                 TypeDescription declaringType = rawType.getDeclaringType();
                 if (ownerType == null && declaringType != null && rawType.isStatic()) {
@@ -7358,6 +7504,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
+                @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
                 public Builder onGenericArray(Generic genericArray) {
                     return new OfGenericArrayType(genericArray.getComponentType(), genericArray.getDeclaredAnnotations());
                 }
@@ -7389,6 +7536,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
+                @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
                 public Builder onNonGenericType(Generic typeDescription) {
                     return typeDescription.isArray()
                             ? typeDescription.getComponentType().accept(this).asArray().annotate(typeDescription.getDeclaredAnnotations())
@@ -7410,7 +7558,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * The raw type's (annotated) declaring type or {@code null} if no such type is defined.
                  */
-                @Nullable
+                @MaybeNull
                 @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
                 private final Generic ownerType;
 
@@ -7429,7 +7577,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  * @param typeDescription The type's erasure.
                  * @param ownerType       The raw type's raw declaring type or {@code null} if no such type is defined.
                  */
-                protected OfNonGenericType(TypeDescription typeDescription, @Nullable TypeDescription ownerType) {
+                protected OfNonGenericType(TypeDescription typeDescription, @MaybeNull TypeDescription ownerType) {
                     this(typeDescription, ownerType == null
                             ? Generic.UNDEFINED
                             : ownerType.asGenericType());
@@ -7441,7 +7589,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  * @param typeDescription The type's erasure.
                  * @param ownerType       The raw type's (annotated) declaring type.
                  */
-                protected OfNonGenericType(TypeDescription typeDescription, @Nullable Generic ownerType) {
+                protected OfNonGenericType(TypeDescription typeDescription, @MaybeNull Generic ownerType) {
                     this(typeDescription, ownerType, Collections.<AnnotationDescription>emptyList());
                 }
 
@@ -7453,7 +7601,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  * @param annotations     The type's type annotations.
                  */
                 protected OfNonGenericType(TypeDescription typeDescription,
-                                           @Nullable Generic ownerType,
+                                           @MaybeNull Generic ownerType,
                                            List<? extends AnnotationDescription> annotations) {
                     super(annotations);
                     this.ownerType = ownerType;
@@ -7488,6 +7636,8 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * The generic owner type.
                  */
+                @MaybeNull
+                @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
                 private final Generic ownerType;
 
                 /**
@@ -7502,7 +7652,9 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  * @param ownerType      The generic owner type.
                  * @param parameterTypes The parameter types.
                  */
-                protected OfParameterizedType(TypeDescription rawType, Generic ownerType, List<? extends Generic> parameterTypes) {
+                protected OfParameterizedType(TypeDescription rawType,
+                                              @MaybeNull Generic ownerType,
+                                              List<? extends Generic> parameterTypes) {
                     this(rawType, ownerType, parameterTypes, Collections.<AnnotationDescription>emptyList());
                 }
 
@@ -7515,7 +7667,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                  * @param annotations    The type's type annotations.
                  */
                 protected OfParameterizedType(TypeDescription rawType,
-                                              Generic ownerType,
+                                              @MaybeNull Generic ownerType,
                                               List<? extends Generic> parameterTypes,
                                               List<? extends AnnotationDescription> annotations) {
                     super(annotations);
@@ -7664,6 +7816,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
          * @param targetType The target type that is to be assigned to the source type.
          * @return {@code true} if the target type is assignable to the source type.
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
         private static boolean isAssignable(TypeDescription sourceType, TypeDescription targetType) {
             // Means that '[sourceType] var = ([targetType]) val;' is a valid assignment. This is true, if:
             // (1) Both types are equal (implies primitive types.)
@@ -7840,7 +7993,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public String getGenericSignature() {
             try {
                 SignatureWriter signatureWriter = new SignatureWriter();
@@ -7857,7 +8010,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 Generic superClass = getSuperClass();
                 // The object type itself is non generic and implicitly returns a non-generic signature
                 if (superClass == null) {
-                    superClass = TypeDescription.Generic.OBJECT;
+                    superClass = TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class);
                 }
                 superClass.accept(new Generic.Visitor.ForSignatureVisitor(signatureWriter.visitSuperclass()));
                 generic = generic || !superClass.getSort().isNonGeneric();
@@ -7886,6 +8039,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
         public boolean isVisibleTo(TypeDescription typeDescription) {
             return isPrimitive() || (isArray()
                     ? getComponentType().isVisibleTo(typeDescription)
@@ -7895,6 +8049,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
         public boolean isAccessibleTo(TypeDescription typeDescription) {
             return isPrimitive() || (isArray()
                     ? getComponentType().isVisibleTo(typeDescription)
@@ -7921,6 +8076,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
         public String getActualName() {
             if (isArray()) {
                 TypeDescription typeDescription = this;
@@ -7943,6 +8099,16 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
+        public String getLongSimpleName() {
+            TypeDescription declaringType = getDeclaringType();
+            return declaringType == null
+                    ? getSimpleName()
+                    : declaringType.getLongSimpleName() + "." + getSimpleName();
+        }
+
+        /**
+         * {@inheritDoc}
+         */
         public boolean isPrimitiveWrapper() {
             return represents(Boolean.class)
                     || represents(Byte.class)
@@ -7957,6 +8123,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
         public boolean isAnnotationReturnType() {
             return isPrimitive()
                     || represents(String.class)
@@ -7969,6 +8136,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
         public boolean isAnnotationValue() {
             return isPrimitive()
                     || represents(String.class)
@@ -7981,7 +8149,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @SuppressFBWarnings(value = "EC_UNRELATED_CLASS_AND_INTERFACE", justification = "Fits equality contract for type definitions")
+        @SuppressFBWarnings(value = "EC_UNRELATED_CLASS_AND_INTERFACE", justification = "Fits equality contract for type definitions.")
         public boolean represents(java.lang.reflect.Type type) {
             return equals(Sort.describe(type));
         }
@@ -7996,7 +8164,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeVariableSource getEnclosingSource() {
             MethodDescription enclosingMethod = getEnclosingMethod();
             return enclosingMethod == null
@@ -8031,11 +8199,18 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         public boolean isGenerified() {
             if (!getTypeVariables().isEmpty()) {
                 return true;
-            } else if (isStatic()) {
+            } else if (!isStatic()) {
+                TypeDescription declaringType = getDeclaringType();
+                if (declaringType != null && declaringType.isGenerified()) {
+                    return true;
+                }
+            }
+            try {
+                MethodDescription.InDefinedShape enclosingMethod = getEnclosingMethod();
+                return enclosingMethod != null && enclosingMethod.isGenerified();
+            } catch (Throwable ignored) { // Avoid exception in case of an illegal declaration.
                 return false;
             }
-            TypeDescription declaringType = getDeclaringType();
-            return declaringType != null && declaringType.isGenerified();
         }
 
         /**
@@ -8118,7 +8293,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public Object getDefaultValue() {
             if (represents(boolean.class)) {
                 return false;
@@ -8193,7 +8368,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public ClassFileVersion getClassFileVersion() {
             return null;
         }
@@ -8212,7 +8387,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (!(other instanceof TypeDefinition)) {
@@ -8225,6 +8400,11 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         @Override
         public String toString() {
             return (isPrimitive() ? "" : (isInterface() ? "interface" : "class") + " ") + getName();
+        }
+
+        @Override
+        protected String toSafeString() {
+            return toString();
         }
 
         /**
@@ -8250,7 +8430,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public TypeDescription getComponentType() {
                 return TypeDescription.UNDEFINED;
             }
@@ -8265,7 +8445,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public String getCanonicalName() {
                 if (isAnonymousType() || isLocalType()) {
                     return NO_NAME;
@@ -8294,7 +8474,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                         return internalName;
                     }
                 }
-                while (simpleNameIndex < internalName.length() && !Character.isLetter(internalName.charAt(simpleNameIndex))) {
+                while (simpleNameIndex < internalName.length() && !Character.isJavaIdentifierStart(internalName.charAt(simpleNameIndex))) {
                     simpleNameIndex += 1;
                 }
                 return internalName.substring(simpleNameIndex);
@@ -8350,7 +8530,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public TypeDescription getDeclaringType() {
                     return delegate().getDeclaringType();
                 }
@@ -8358,7 +8538,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public MethodDescription.InDefinedShape getEnclosingMethod() {
                     return delegate().getEnclosingMethod();
                 }
@@ -8366,7 +8546,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public TypeDescription getEnclosingType() {
                     return delegate().getEnclosingType();
                 }
@@ -8395,7 +8575,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public PackageDescription getPackage() {
                     return delegate().getPackage();
                 }
@@ -8422,7 +8602,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 }
 
                 @Override
-                @Nullable
+                @MaybeNull
                 public String getGenericSignature() {
                     // Embrace use of native generic signature by direct delegation.
                     return delegate().getGenericSignature();
@@ -8475,10 +8655,55 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 }
 
                 @Override
-                @Nullable
+                @MaybeNull
                 public ClassFileVersion getClassFileVersion() {
                     return delegate().getClassFileVersion();
                 }
+            }
+        }
+    }
+
+    /**
+     * A lazy proxy for representing a {@link TypeDescription} for a loaded type. This proxy is used to
+     * avoid locks when Byte Buddy is loaded circularly.
+     */
+    @HashCodeAndEqualsPlugin.Enhance
+    class LazyProxy implements InvocationHandler {
+
+        /**
+         * The represented loaded type.
+         */
+        private final Class<?> type;
+
+        /**
+         * Creates a new lazy proxy.
+         *
+         * @param type The represented loaded type.
+         */
+        protected LazyProxy(Class<?> type) {
+            this.type = type;
+        }
+
+        /**
+         * Resolves a lazy proxy for a loaded type as a type description.
+         *
+         * @param type The represented loaded type.
+         * @return The lazy proxy.
+         */
+        protected static TypeDescription of(Class<?> type) {
+            return (TypeDescription) Proxy.newProxyInstance(TypeDescription.class.getClassLoader(),
+                    new Class<?>[]{TypeDescription.class},
+                    new LazyProxy(type));
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public Object invoke(Object proxy, Method method, @MaybeNull Object[] argument) throws Throwable {
+            try {
+                return method.invoke(ForLoadedType.of(type), argument);
+            } catch (InvocationTargetException exception) {
+                throw exception.getTargetException();
             }
         }
     }
@@ -8502,7 +8727,6 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * A cache of type descriptions for commonly used types to avoid unnecessary allocations.
          */
-        @SuppressFBWarnings(value = "MS_MUTABLE_COLLECTION_PKGPROTECT", justification = "This collection is not exposed.")
         private static final Map<Class<?>, TypeDescription> TYPE_CACHE;
 
         /*
@@ -8511,6 +8735,9 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         static {
             TYPE_CACHE = new HashMap<Class<?>, TypeDescription>();
             TYPE_CACHE.put(TargetType.class, new ForLoadedType(TargetType.class));
+            TYPE_CACHE.put(Class.class, new ForLoadedType(Class.class));
+            TYPE_CACHE.put(Throwable.class, new ForLoadedType(Throwable.class));
+            TYPE_CACHE.put(Annotation.class, new ForLoadedType(Annotation.class));
             TYPE_CACHE.put(Object.class, new ForLoadedType(Object.class));
             TYPE_CACHE.put(String.class, new ForLoadedType(String.class));
             TYPE_CACHE.put(Boolean.class, new ForLoadedType(Boolean.class));
@@ -8627,7 +8854,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription getComponentType() {
             Class<?> componentType = type.getComponentType();
             return componentType == null
@@ -8657,7 +8884,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public Generic getSuperClass() {
             if (RAW_TYPES) {
                 return type.getSuperclass() == null
@@ -8684,7 +8911,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription getDeclaringType() {
             Class<?> declaringType = type.getDeclaringClass();
             return declaringType == null
@@ -8695,7 +8922,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public MethodDescription.InDefinedShape getEnclosingMethod() {
             Method enclosingMethod = type.getEnclosingMethod();
             Constructor<?> enclosingConstructor = type.getEnclosingConstructor();
@@ -8768,7 +8995,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
          */
         @CachedReturnPlugin.Enhance("declaredFields")
         public FieldList<FieldDescription.InDefinedShape> getDeclaredFields() {
-            return new FieldList.ForLoadedFields(type.getDeclaredFields());
+            return new FieldList.ForLoadedFields(GraalImageCode.getCurrent().sorted(type.getDeclaredFields(), FieldComparator.INSTANCE));
         }
 
         /**
@@ -8782,7 +9009,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public PackageDescription getPackage() {
             if (type.isArray() || type.isPrimitive()) {
                 return PackageDescription.UNDEFINED;
@@ -8792,7 +9019,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                     String name = type.getName();
                     int index = name.lastIndexOf('.');
                     return index == -1
-                            ? new PackageDescription.Simple(EMPTY_NAME)
+                            ? PackageDescription.DEFAULT
                             : new PackageDescription.Simple(name.substring(0, index));
                 } else {
                     return new PackageDescription.ForLoadedPackage(aPackage);
@@ -8817,7 +9044,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public String getCanonicalName() {
             String canonicalName = type.getCanonicalName();
             if (canonicalName == null) {
@@ -8949,7 +9176,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         }
 
         @Override
-        @Nullable
+        @MaybeNull
         @CachedReturnPlugin.Enhance("classFileVersion")
         public ClassFileVersion getClassFileVersion() {
             try {
@@ -8972,7 +9199,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
              * @param type The type to resolve.
              * @return The annotated super class of the supplied type or {@code null} if this feature is not supported.
              */
-            @Nullable
+            @MaybeNull
             AnnotatedElement getAnnotatedSuperclass(Class<?> type);
 
             /**
@@ -8989,7 +9216,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
              * @param type The class for which to locate the nest host.
              * @return The nest host of the specified class.
              */
-            @Nullable
+            @MaybeNull
             Class<?> getNestHost(Class<?> type);
 
             /**
@@ -9024,7 +9251,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
              * @param type The type for which to check the permitted subclasses.
              * @return The permitted subclasses.
              */
-            @Nullable
+            @MaybeNull
             Class<?>[] getPermittedSubclasses(Class<?> type);
 
             /**
@@ -9041,7 +9268,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
              * @param type The type for which to read the record components.
              * @return An array of all declared record components.
              */
-            @Nullable
+            @MaybeNull
             Object[] getRecordComponents(Class<?> type);
         }
     }
@@ -9099,6 +9326,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
          * @param arity         The arity of this array.
          * @return A projection of the component type as an array of the given value with the supplied arity.
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
         public static TypeDescription of(TypeDescription componentType, int arity) {
             if (arity < 0) {
                 throw new IllegalArgumentException("Arrays cannot have a negative arity");
@@ -9122,7 +9350,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription getComponentType() {
             return arity == 1
                     ? componentType
@@ -9139,9 +9367,9 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public Generic getSuperClass() {
-            return TypeDescription.Generic.OBJECT;
+            return TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class);
         }
 
         /**
@@ -9154,7 +9382,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public MethodDescription.InDefinedShape getEnclosingMethod() {
             return MethodDescription.UNDEFINED;
         }
@@ -9162,7 +9390,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription getEnclosingType() {
             return TypeDescription.UNDEFINED;
         }
@@ -9188,7 +9416,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public String getCanonicalName() {
             String canonicalName = componentType.getCanonicalName();
             if (canonicalName == null) {
@@ -9258,7 +9486,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public PackageDescription getPackage() {
             return PackageDescription.UNDEFINED;
         }
@@ -9293,7 +9521,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @AlwaysNull
         public TypeDescription getDeclaringType() {
             return TypeDescription.UNDEFINED;
         }
@@ -9301,6 +9529,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
         public int getModifiers() {
             return (getComponentType().getModifiers() & ~ARRAY_EXCLUDED) | ARRAY_IMPLIED;
         }
@@ -9372,7 +9601,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * The super type or {@code null} if no such type exists.
          */
-        @Nullable
+        @MaybeNull
         private final Generic superClass;
 
         /**
@@ -9388,7 +9617,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
          * @param superClass  The super type or {@code null} if no such type exists.
          * @param anInterface The interfaces that this type implements.
          */
-        public Latent(String name, int modifiers, Generic superClass, Generic... anInterface) {
+        public Latent(String name, int modifiers, @MaybeNull Generic superClass, Generic... anInterface) {
             this(name, modifiers, superClass, Arrays.asList(anInterface));
         }
 
@@ -9400,7 +9629,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
          * @param superClass The super type or {@code null} if no such type exists.
          * @param interfaces The interfaces that this type implements.
          */
-        public Latent(String name, int modifiers, @Nullable Generic superClass, List<? extends Generic> interfaces) {
+        public Latent(String name, int modifiers, @MaybeNull Generic superClass, List<? extends Generic> interfaces) {
             this.name = name;
             this.modifiers = modifiers;
             this.superClass = superClass;
@@ -9410,7 +9639,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public Generic getSuperClass() {
             return superClass;
         }
@@ -9474,12 +9703,12 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public PackageDescription getPackage() {
             String name = getName();
             int index = name.lastIndexOf('.');
             return index == -1
-                    ? PackageDescription.UNDEFINED
+                    ? PackageDescription.DEFAULT
                     : new PackageDescription.Simple(name.substring(0, index));
         }
 
@@ -9576,9 +9805,9 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public Generic getSuperClass() {
-            return TypeDescription.Generic.OBJECT;
+            return TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class);
         }
 
         /**
@@ -9591,7 +9820,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public MethodDescription.InDefinedShape getEnclosingMethod() {
             return MethodDescription.UNDEFINED;
         }
@@ -9599,7 +9828,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription getEnclosingType() {
             return TypeDescription.UNDEFINED;
         }
@@ -9656,7 +9885,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription getDeclaringType() {
             return TypeDescription.UNDEFINED;
         }
@@ -9731,7 +9960,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * The class loader to use for loading a super type.
          */
-        @Nullable
+        @MaybeNull
         private final ClassLoader classLoader;
 
         /**
@@ -9745,7 +9974,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
          * @param delegate    The delegate type description.
          * @param classLoader The class loader to use for loading a super type or {@code null} for using the boot loader.
          */
-        public SuperTypeLoading(TypeDescription delegate, @Nullable ClassLoader classLoader) {
+        public SuperTypeLoading(TypeDescription delegate, @MaybeNull ClassLoader classLoader) {
             this(delegate, classLoader, ClassLoadingDelegate.Simple.INSTANCE);
         }
 
@@ -9756,7 +9985,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
          * @param classLoader          The class loader to use for loading a super type or {@code null} for using the boot loader.
          * @param classLoadingDelegate A delegate for loading a type.
          */
-        public SuperTypeLoading(TypeDescription delegate, @Nullable ClassLoader classLoader, ClassLoadingDelegate classLoadingDelegate) {
+        public SuperTypeLoading(TypeDescription delegate, @MaybeNull ClassLoader classLoader, ClassLoadingDelegate classLoadingDelegate) {
             this.delegate = delegate;
             this.classLoader = classLoader;
             this.classLoadingDelegate = classLoadingDelegate;
@@ -9800,7 +10029,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public Generic getSuperClass() {
             Generic superClass = delegate.getSuperClass();
             return superClass == null
@@ -9853,7 +10082,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription getComponentType() {
             return delegate.getComponentType();
         }
@@ -9861,7 +10090,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription getDeclaringType() {
             return delegate.getDeclaringType();
         }
@@ -9876,7 +10105,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public MethodDescription.InDefinedShape getEnclosingMethod() {
             return delegate.getEnclosingMethod();
         }
@@ -9884,7 +10113,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription getEnclosingType() {
             return delegate.getEnclosingType();
         }
@@ -9899,7 +10128,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public String getCanonicalName() {
             return delegate.getCanonicalName();
         }
@@ -9921,7 +10150,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public PackageDescription getPackage() {
             return delegate.getPackage();
         }
@@ -9966,7 +10195,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             return delegate.getPermittedSubtypes();
         }
 
-        @Nullable
+        @MaybeNull
         @Override
         public ClassFileVersion getClassFileVersion() {
             return delegate.getClassFileVersion();
@@ -9985,7 +10214,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
              * @return The loaded type.
              * @throws ClassNotFoundException If the type could not be found.
              */
-            Class<?> load(String name, @Nullable ClassLoader classLoader) throws ClassNotFoundException;
+            Class<?> load(String name, @MaybeNull ClassLoader classLoader) throws ClassNotFoundException;
 
             /**
              * A simple class loading delegate that simply loads a type.
@@ -10000,7 +10229,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
                 /**
                  * {@inheritDoc}
                  */
-                public Class<?> load(String name, @Nullable ClassLoader classLoader) throws ClassNotFoundException {
+                public Class<?> load(String name, @MaybeNull ClassLoader classLoader) throws ClassNotFoundException {
                     return Class.forName(name, false, classLoader);
                 }
             }
@@ -10019,7 +10248,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * The class loader to use for loading types which might be {@code null} to represent the bootstrap class loader.
              */
-            @Nullable
+            @MaybeNull
             private final ClassLoader classLoader;
 
             /**
@@ -10034,7 +10263,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
              * @param classLoader          The class loader to use for loading types which might be {@code null} to represent the bootstrap class loader.
              * @param classLoadingDelegate A delegate for loading a type.
              */
-            protected ClassLoadingTypeProjection(Generic delegate, @Nullable ClassLoader classLoader, ClassLoadingDelegate classLoadingDelegate) {
+            protected ClassLoadingTypeProjection(Generic delegate, @MaybeNull ClassLoader classLoader, ClassLoadingDelegate classLoadingDelegate) {
                 this.delegate = delegate;
                 this.classLoader = classLoader;
                 this.classLoadingDelegate = classLoadingDelegate;
@@ -10067,7 +10296,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             @CachedReturnPlugin.Enhance("superClass")
             public Generic getSuperClass() {
                 Generic superClass = delegate.getSuperClass();
@@ -10120,7 +10349,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
             /**
              * The class loader to use for loading types which might be {@code null} to represent the bootstrap class loader.
              */
-            @Nullable
+            @MaybeNull
             private final ClassLoader classLoader;
 
             /**
@@ -10135,7 +10364,7 @@ public interface TypeDescription extends TypeDefinition, ByteCodeElement, TypeVa
              * @param classLoader          The class loader to use for loading types which might be {@code null} to represent the bootstrap class loader.
              * @param classLoadingDelegate A delegate for loading a type.
              */
-            protected ClassLoadingTypeList(TypeList.Generic delegate, @Nullable ClassLoader classLoader, ClassLoadingDelegate classLoadingDelegate) {
+            protected ClassLoadingTypeList(TypeList.Generic delegate, @MaybeNull ClassLoader classLoader, ClassLoadingDelegate classLoadingDelegate) {
                 this.delegate = delegate;
                 this.classLoader = classLoader;
                 this.classLoadingDelegate = classLoadingDelegate;

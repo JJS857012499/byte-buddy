@@ -20,7 +20,7 @@ import org.gradle.api.Project;
 import org.gradle.api.Task;
 import org.gradle.api.execution.TaskExecutionGraph;
 
-import javax.annotation.Nullable;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import java.util.*;
 
 /**
@@ -174,7 +174,7 @@ public enum Adjustment {
             /**
              * The current iterator or {@code null} if no such iterator is defined.
              */
-            @Nullable
+            @MaybeNull
             private Iterator<? extends Task> current;
 
             /**

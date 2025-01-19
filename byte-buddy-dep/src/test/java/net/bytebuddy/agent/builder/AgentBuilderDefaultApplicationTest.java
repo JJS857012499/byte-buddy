@@ -7,6 +7,7 @@ import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.dynamic.TargetType;
 import net.bytebuddy.dynamic.loading.ByteArrayClassLoader;
+import net.bytebuddy.dynamic.loading.ClassInjector;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
 import net.bytebuddy.implementation.FixedValue;
 import net.bytebuddy.implementation.MethodDelegation;
@@ -36,6 +37,7 @@ import java.io.ObjectOutputStream;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
+import java.security.ProtectionDomain;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.concurrent.Callable;
@@ -52,7 +54,7 @@ public class AgentBuilderDefaultApplicationTest {
 
     private static final String FOO = "foo", BAR = "bar", QUX = "qux";
 
-    private static final String LAMBDA_SAMPLE_FACTORY = "net.bytebuddy.test.precompiled.LambdaSampleFactory";
+    private static final String LAMBDA_SAMPLE_FACTORY = "net.bytebuddy.test.precompiled.v8.LambdaSampleFactory";
 
     @Parameterized.Parameters
     public static Collection<Object[]> data() {
@@ -837,12 +839,40 @@ public class AgentBuilderDefaultApplicationTest {
         }
     }
 
+    @Test
+    @IntegrationRule.Enforce
+    public void testAdviceTransformerWithInjection() throws Exception {
+        Instrumentation instrumentation = ByteBuddyAgent.install();
+        assertThat(instrumentation, instanceOf(Instrumentation.class));
+        ClassFileTransformer classFileTransformer = new AgentBuilder.Default()
+                .with(poolStrategy)
+                .with(new AgentBuilder.InjectionStrategy.UsingUnsafe.OfFactory(ClassInjector.UsingUnsafe.Factory.resolve(instrumentation)))
+                .ignore(none())
+                .with(AgentBuilder.InitializationStrategy.NoOp.INSTANCE)
+                .type(ElementMatchers.is(Foo.class), ElementMatchers.is(classLoader)).transform(new AgentBuilder.Transformer.ForAdvice()
+                        .with(poolStrategy)
+                        .with(AgentBuilder.LocationStrategy.ForClassLoader.STRONG)
+                        .include(BazAdvice.class.getClassLoader())
+                        .with(Assigner.DEFAULT)
+                        .withExceptionHandler(new Advice.ExceptionHandler.Simple(Removal.SINGLE))
+                        .advice(named(FOO), BazAdvice.class.getName())
+                        .auxiliary(BazAdviceAuxiliary.class.getName()))
+                .installOnByteBuddyAgent();
+        try {
+            Class<?> type = classLoader.loadClass(Foo.class.getName());
+            assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) (FOO + BAR)));
+        } finally {
+            assertThat(ByteBuddyAgent.getInstrumentation().removeTransformer(classFileTransformer), is(true));
+        }
+    }
+
     private static class FooTransformer implements AgentBuilder.Transformer {
 
         public DynamicType.Builder<?> transform(DynamicType.Builder<?> builder,
                                                 TypeDescription typeDescription,
                                                 ClassLoader classLoader,
-                                                JavaModule module) {
+                                                JavaModule module,
+                                                ProtectionDomain protectionDomain) {
             return builder.method(named(FOO)).intercept(FixedValue.value(BAR));
         }
     }
@@ -866,7 +896,8 @@ public class AgentBuilderDefaultApplicationTest {
         public DynamicType.Builder<?> transform(DynamicType.Builder<?> builder,
                                                 TypeDescription typeDescription,
                                                 ClassLoader classLoader,
-                                                JavaModule module) {
+                                                JavaModule module,
+                                                ProtectionDomain protectionDomain) {
             try {
                 return builder.method(named(FOO)).intercept(MethodDelegation.to(new Interceptor()));
             } catch (Exception exception) {
@@ -894,7 +925,8 @@ public class AgentBuilderDefaultApplicationTest {
         public DynamicType.Builder<?> transform(DynamicType.Builder<?> builder,
                                                 TypeDescription typeDescription,
                                                 ClassLoader classLoader,
-                                                JavaModule module) {
+                                                JavaModule module,
+                                                ProtectionDomain protectionDomain) {
             try {
                 return builder.method(named(FOO)).intercept(MethodDelegation.to(new Interceptor()));
             } catch (Exception exception) {
@@ -922,7 +954,8 @@ public class AgentBuilderDefaultApplicationTest {
         public DynamicType.Builder<?> transform(DynamicType.Builder<?> builder,
                                                 TypeDescription typeDescription,
                                                 ClassLoader classLoader,
-                                                JavaModule module) {
+                                                JavaModule module,
+                                                ProtectionDomain protectionDomain) {
             try {
                 return builder.method(named(FOO)).intercept(MethodDelegation.to(new Interceptor()));
             } catch (Exception exception) {
@@ -951,7 +984,8 @@ public class AgentBuilderDefaultApplicationTest {
         public DynamicType.Builder<?> transform(DynamicType.Builder<?> builder,
                                                 TypeDescription typeDescription,
                                                 ClassLoader classLoader,
-                                                JavaModule module) {
+                                                JavaModule module,
+                                                ProtectionDomain protectionDomain) {
             return builder.constructor(ElementMatchers.any()).intercept(SuperMethodCall.INSTANCE);
         }
     }
@@ -967,7 +1001,8 @@ public class AgentBuilderDefaultApplicationTest {
         public DynamicType.Builder<?> transform(DynamicType.Builder<?> builder,
                                                 TypeDescription typeDescription,
                                                 ClassLoader classLoader,
-                                                JavaModule module) {
+                                                JavaModule module,
+                                                ProtectionDomain protectionDomain) {
             return builder.method(named(methodName)).intercept(FixedValue.value(BAR));
         }
     }
@@ -977,7 +1012,8 @@ public class AgentBuilderDefaultApplicationTest {
         public DynamicType.Builder<?> transform(DynamicType.Builder<?> builder,
                                                 TypeDescription typeDescription,
                                                 ClassLoader classLoader,
-                                                JavaModule module) {
+                                                JavaModule module,
+                                                ProtectionDomain protectionDomain) {
             return builder.visit(Advice.to(BarAdvice.class).on(named(FOO)));
         }
     }
@@ -987,7 +1023,8 @@ public class AgentBuilderDefaultApplicationTest {
         public DynamicType.Builder<?> transform(DynamicType.Builder<?> builder,
                                                 TypeDescription typeDescription,
                                                 ClassLoader classLoader,
-                                                JavaModule module) {
+                                                JavaModule module,
+                                                ProtectionDomain protectionDomain) {
             return builder.visit(Advice.to(QuxAdvice.class).on(named(FOO)));
         }
     }
@@ -1005,6 +1042,21 @@ public class AgentBuilderDefaultApplicationTest {
         @Advice.OnMethodExit
         private static void exit(@Advice.Return(readOnly = false) String value) {
             value += QUX;
+        }
+    }
+
+    private static class BazAdvice {
+
+        @Advice.OnMethodExit
+        private static void exit(@Advice.Return(readOnly = false) String value) {
+            value += BazAdviceAuxiliary.value();
+        }
+    }
+
+    public static class BazAdviceAuxiliary {
+
+        public static String value() {
+            return BAR;
         }
     }
 }

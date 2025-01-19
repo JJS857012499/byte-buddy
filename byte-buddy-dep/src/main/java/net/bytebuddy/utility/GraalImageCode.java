@@ -17,10 +17,15 @@ package net.bytebuddy.utility;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.build.AccessControllerPlugin;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import net.bytebuddy.utility.privilege.GetSystemPropertyAction;
 
-import javax.annotation.Nullable;
+import java.lang.reflect.Method;
 import java.security.PrivilegedAction;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * A utility that resolves Graal VM native image properties.
@@ -56,7 +61,7 @@ public enum GraalImageCode {
      * The current image code or {@code null} if the image code was not yet resolved. The image code must be
      * initialized lazily to avoid that it's bound to a value during native compilation.
      */
-    @Nullable
+    @MaybeNull
     private static GraalImageCode current;
 
     /**
@@ -64,13 +69,16 @@ public enum GraalImageCode {
      *
      * @return The status of the Graal image code.
      */
-    @SuppressFBWarnings(value = "LI_LAZY_INIT_STATIC", justification = "This behaviour is intended to avoid early binding in native images.")
+    @SuppressFBWarnings(value = {"LI_LAZY_INIT_STATIC", "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"}, justification = "This behaviour is intended to avoid early binding in native images.")
     public static GraalImageCode getCurrent() {
         GraalImageCode current = GraalImageCode.current;
         if (current == null) {
             String value = doPrivileged(new GetSystemPropertyAction("org.graalvm.nativeimage.imagecode"));
             if (value == null) {
-                current = GraalImageCode.NONE;
+                String vendor = doPrivileged(new GetSystemPropertyAction("java.vm.vendor"));
+                current = vendor != null && vendor.toLowerCase(Locale.US).contains("graalvm")
+                        ? doPrivileged(ImageCodeContextAction.INSTANCE)
+                        : GraalImageCode.NONE;
             } else if (value.equalsIgnoreCase("agent")) {
                 current = GraalImageCode.AGENT;
             } else if (value.equalsIgnoreCase("runtime")) {
@@ -86,13 +94,28 @@ public enum GraalImageCode {
     }
 
     /**
+     * Sorts the provided values only if an active Graal image code is set.
+     *
+     * @param value      The values to sort.
+     * @param comparator the comparator to use.
+     * @param <T>        The array component type.
+     * @return The supplied array, potentially sorted.
+     */
+    public <T> T[] sorted(T[] value, Comparator<? super T> comparator) {
+        if (defined) {
+            Arrays.sort(value, comparator);
+        }
+        return value;
+    }
+
+    /**
      * A proxy for {@code java.security.AccessController#doPrivileged} that is activated if available.
      *
      * @param action The action to execute from a privileged context.
      * @param <T>    The type of the action's resolved value.
      * @return The action's resolved value.
      */
-    @Nullable
+    @MaybeNull
     @AccessControllerPlugin.Enhance
     private static <T> T doPrivileged(PrivilegedAction<T> action) {
         return action.run();
@@ -135,5 +158,33 @@ public enum GraalImageCode {
      */
     public boolean isNativeImageExecution() {
         return nativeImageExecution;
+    }
+
+    /**
+     * A privileged action to resolve the image code via the current JVM processes input arguments, if available.
+     */
+    protected enum ImageCodeContextAction implements PrivilegedAction<GraalImageCode> {
+
+        /**
+         * The singleton instance.
+         */
+        INSTANCE;
+
+        @Override
+        public GraalImageCode run() {
+            try {
+                Method method = Class.forName("java.lang.management.ManagementFactory").getMethod("getRuntimeMXBean");
+                @SuppressWarnings("unchecked")
+                List<String> arguments = (List<String>) method.getReturnType().getMethod("getInputArguments").invoke(method.invoke(null));
+                for (String argument : arguments) {
+                    if (argument.startsWith("-agentlib:native-image-agent")) {
+                        return GraalImageCode.AGENT;
+                    }
+                }
+            } catch (Throwable ignored) {
+                /* do nothing */
+            }
+            return GraalImageCode.NONE;
+        }
     }
 }

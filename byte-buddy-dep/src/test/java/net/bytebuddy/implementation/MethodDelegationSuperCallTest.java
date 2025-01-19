@@ -23,9 +23,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 
 public class MethodDelegationSuperCallTest {
 
-    private static final String SINGLE_DEFAULT_METHOD = "net.bytebuddy.test.precompiled.SingleDefaultMethodInterface";
+    private static final String SINGLE_DEFAULT_METHOD = "net.bytebuddy.test.precompiled.v8.SingleDefaultMethodInterface";
 
-    private static final String CONFLICTING_INTERFACE = "net.bytebuddy.test.precompiled.SingleDefaultMethodConflictingInterface";
+    private static final String CONFLICTING_INTERFACE = "net.bytebuddy.test.precompiled.v8.SingleDefaultMethodConflictingInterface";
 
     private static final String FOO = "foo", BAR = "bar";
 
@@ -56,6 +56,18 @@ public class MethodDelegationSuperCallTest {
                 .load(Bar.class.getClassLoader(), ClassLoadingStrategy.Default.WRAPPER);
         Bar instance = loaded.getLoaded().getDeclaredConstructor().newInstance();
         assertThat(instance.bar(), is(FOO));
+    }
+
+    @Test
+    public void testWithArgument() throws Exception {
+        DynamicType.Loaded<Baz> loaded = new ByteBuddy()
+                .subclass(Baz.class)
+                .method(isDeclaredBy(Baz.class))
+                .intercept(MethodDelegation.to(CallableClass.class))
+                .make()
+                .load(Baz.class.getClassLoader(), ClassLoadingStrategy.Default.WRAPPER);
+        Baz instance = loaded.getLoaded().getDeclaredConstructor().newInstance();
+        assertThat(instance.foo(FOO), is((Object) FOO));
     }
 
     @Test
@@ -188,6 +200,13 @@ public class MethodDelegationSuperCallTest {
 
         public void foo() {
             register(FOO);
+        }
+    }
+
+    public static class Baz {
+
+        public Object foo(Object value) {
+            return value;
         }
     }
 

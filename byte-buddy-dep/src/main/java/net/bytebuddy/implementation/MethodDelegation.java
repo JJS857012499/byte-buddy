@@ -49,11 +49,13 @@ import java.util.List;
 import static net.bytebuddy.matcher.ElementMatchers.*;
 
 /**
- * This implementation delegates an method call to another method which can either be {@code static} by providing
+ * This implementation delegates a method call to another method which can either be {@code static} by providing
  * a reference to a {@link java.lang.Class} or an instance method when another object is provided. The potential
  * targets of the method delegation can further be filtered by applying a filter. The method delegation can be
  * customized by invoking the {@code MethodDelegation}'s several builder methods.
- * <h3>Without any customization, the method delegation will work as follows:</h3>
+ * <p>&nbsp;</p>
+ * <b>Without any customization, the method delegation will work as follows:</b>
+ * <p>&nbsp;</p>
  * <span style="text-decoration: underline">Binding an instrumented method to a given delegate method</span>
  * <p>&nbsp;</p>
  * A method will be bound parameter by parameter. Considering a method {@code Foo#bar} being bound to a method
@@ -86,13 +88,16 @@ import static net.bytebuddy.matcher.ElementMatchers.*;
  * This annotation is similar to the {@link net.bytebuddy.implementation.bind.annotation.SuperCall}
  * annotation but it invokes a default method that is compatible to this method. If a source method does not represent
  * a default method, using this annotation excludes the method with this parameter annotation from being bound to this
- * source method.</li>
+ * source method. For using method handles, the {@link net.bytebuddy.implementation.bind.annotation.SuperCallHandle}
+ * and {@link net.bytebuddy.implementation.bind.annotation.DefaultCallHandle} annotations can be used.</li>
  * <li>The {@link net.bytebuddy.implementation.bind.annotation.SuperMethod} or
  * {@link net.bytebuddy.implementation.bind.annotation.DefaultMethod} annotations can be used on any parameter type
  * that is assignable from the {@link java.lang.reflect.Method} type. the parameter is bound a method instance that
  * allows for the reflective invocation of a super or default method. Note that this method is not equal to the intercepted
  * method but represents a synthetic accessor method. Using this annotation also causes this accessor to be {@code public}
- * which allows its outside invocation without any access checks by a security manager.</li>
+ * which allows its outside invocation without any access checks by a security manager. For using method handles, the
+ * {@link net.bytebuddy.implementation.bind.annotation.SuperCallHandle} and
+ * {@link net.bytebuddy.implementation.bind.annotation.DefaultCallHandle} annotations can be used.</li>
  * <li>{@link net.bytebuddy.implementation.bind.annotation.Origin}: A parameter of
  * {@code Qux#baz} that is annotated with {@code Origin} is assigned a reference to either a {@link java.lang.reflect.Method},
  * a {@link java.lang.reflect.Constructor}, a {@code java.lang.reflect.Executable} or a {@link java.lang.Class} instance.

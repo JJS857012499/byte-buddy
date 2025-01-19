@@ -21,7 +21,6 @@ import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.RecordComponentDescription;
 import net.bytebuddy.description.type.TypeDescription;
 
-import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.List;
 
@@ -144,7 +143,7 @@ public interface LatentMatcher<T> {
          * A resolved matcher of a latent field matcher for a field token.
          */
         @HashCodeAndEqualsPlugin.Enhance
-        protected static class ResolvedMatcher implements ElementMatcher<FieldDescription> {
+        protected static class ResolvedMatcher extends ElementMatcher.Junction.ForNonNullValues<FieldDescription> {
 
             /**
              * The signature token representing the matched field.
@@ -163,8 +162,8 @@ public interface LatentMatcher<T> {
             /**
              * {@inheritDoc}
              */
-            public boolean matches(@Nullable FieldDescription target) {
-                return target != null && target.asSignatureToken().equals(signatureToken);
+            protected boolean doMatch(FieldDescription target) {
+                return target.asSignatureToken().equals(signatureToken);
             }
         }
     }
@@ -200,7 +199,7 @@ public interface LatentMatcher<T> {
          * A resolved matcher of a latent method matcher for a method token.
          */
         @HashCodeAndEqualsPlugin.Enhance
-        protected static class ResolvedMatcher implements ElementMatcher<MethodDescription> {
+        protected static class ResolvedMatcher extends ElementMatcher.Junction.ForNonNullValues<MethodDescription> {
 
             /**
              * The signature token representing the matched field.
@@ -219,8 +218,8 @@ public interface LatentMatcher<T> {
             /**
              * {@inheritDoc}
              */
-            public boolean matches(@Nullable MethodDescription target) {
-                return target != null && target.asSignatureToken().equals(signatureToken);
+            public boolean doMatch(MethodDescription target) {
+                return target.asSignatureToken().equals(signatureToken);
             }
         }
     }

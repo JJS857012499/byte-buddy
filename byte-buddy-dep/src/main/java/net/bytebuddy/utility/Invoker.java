@@ -15,7 +15,8 @@
  */
 package net.bytebuddy.utility;
 
-import javax.annotation.Nullable;
+import net.bytebuddy.utility.nullability.MaybeNull;
+
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -51,6 +52,6 @@ public interface Invoker {
      * @throws IllegalAccessException    If the method is accessed illegally.
      * @throws InvocationTargetException If the invocation causes an error.
      */
-    @Nullable
-    Object invoke(Method method, @Nullable Object instance, Object[] argument) throws IllegalAccessException, InvocationTargetException;
+    @MaybeNull
+    Object invoke(Method method, @MaybeNull Object instance, @MaybeNull Object[] argument) throws IllegalAccessException, InvocationTargetException;
 }

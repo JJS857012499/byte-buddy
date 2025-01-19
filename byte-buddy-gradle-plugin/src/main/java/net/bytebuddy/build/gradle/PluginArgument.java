@@ -19,11 +19,13 @@ import net.bytebuddy.build.Plugin;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.Optional;
 
-import javax.annotation.Nullable;
+import net.bytebuddy.utility.nullability.MaybeNull;
+
+import javax.inject.Inject;
 import java.io.Serializable;
 
 /**
- * Describes an argument to a {@link Plugin} constuctor.
+ * Describes an argument to a {@link Plugin} constructor.
  */
 public class PluginArgument implements Serializable {
 
@@ -40,23 +42,17 @@ public class PluginArgument implements Serializable {
     /**
      * The argument value.
      */
-    @Nullable
+    @MaybeNull
+    @SuppressWarnings("serial")
     private Object value;
-
-    /**
-     * Creates a new plugin argument with default initialization.
-     */
-    @SuppressWarnings("unused")
-    public PluginArgument() {
-        /* empty */
-    }
 
     /**
      * Creates a new plugin argument assignment.
      *
      * @param index The argument index.
      */
-    protected PluginArgument(int index) {
+    @Inject
+    public PluginArgument(int index) {
         this.index = index;
     }
 
@@ -66,7 +62,7 @@ public class PluginArgument implements Serializable {
      * @param index The argument index.
      * @param value The argument value.
      */
-    protected PluginArgument(int index, @Nullable Object value) {
+    public PluginArgument(int index, @MaybeNull Object value) {
         this.index = index;
         this.value = value;
     }
@@ -95,7 +91,7 @@ public class PluginArgument implements Serializable {
      *
      * @return The argument value.
      */
-    @Nullable
+    @MaybeNull
     @Optional
     @Input
     public Object getValue() {
@@ -107,7 +103,7 @@ public class PluginArgument implements Serializable {
      *
      * @param value The argument value.
      */
-    public void setValue(@Nullable Object value) {
+    public void setValue(@MaybeNull Object value) {
         this.value = value;
     }
 

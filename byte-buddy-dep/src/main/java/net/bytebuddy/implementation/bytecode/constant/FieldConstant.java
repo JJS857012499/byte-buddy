@@ -22,6 +22,7 @@ import net.bytebuddy.implementation.Implementation;
 import net.bytebuddy.implementation.bytecode.StackManipulation;
 import net.bytebuddy.implementation.bytecode.member.FieldAccess;
 import net.bytebuddy.implementation.bytecode.member.MethodInvocation;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.objectweb.asm.MethodVisitor;
 
 import java.lang.reflect.Field;
@@ -75,7 +76,7 @@ public class FieldConstant extends StackManipulation.AbstractBase {
     }
 
     @Override
-    public boolean equals(Object other) {
+    public boolean equals(@MaybeNull Object other) {
         if (this == other) {
             return true;
         } else if (other == null || getClass() != other.getClass()) {
@@ -126,7 +127,7 @@ public class FieldConstant extends StackManipulation.AbstractBase {
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (other == null || getClass() != other.getClass()) {

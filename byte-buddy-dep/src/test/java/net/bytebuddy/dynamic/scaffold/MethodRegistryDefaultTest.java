@@ -17,14 +17,12 @@ import net.bytebuddy.implementation.attribute.MethodAttributeAppender;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.matcher.LatentMatcher;
-import net.bytebuddy.test.utility.MockitoRule;
-
-import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import java.util.Collections;
 
@@ -36,7 +34,7 @@ import static org.mockito.Mockito.*;
 public class MethodRegistryDefaultTest {
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private ClassFileVersion classFileVersion;
@@ -249,7 +247,7 @@ public class MethodRegistryDefaultTest {
         verify(firstHandler).prepare(firstType);
         verify(secondHandler).prepare(secondType);
         verify(firstFactory).make(typeDescription);
-        verifyZeroInteractions(secondFactory);
+        verifyNoMoreInteractions(secondFactory);
         assertThat(methodRegistry.target(instrumentedMethod), is(firstRecord));
     }
 
@@ -272,7 +270,7 @@ public class MethodRegistryDefaultTest {
         verify(firstHandler).prepare(firstType);
         verify(secondHandler).prepare(secondType);
         verify(firstFactory).make(typeDescription);
-        verifyZeroInteractions(secondFactory);
+        verifyNoMoreInteractions(secondFactory);
         assertThat(methodRegistry.target(instrumentedMethod), is(firstRecord));
     }
 
@@ -294,7 +292,7 @@ public class MethodRegistryDefaultTest {
         assertThat(methodRegistry.getLoadedTypeInitializer(), is(loadedTypeInitializer));
         verify(firstHandler).prepare(firstType);
         verify(secondHandler).prepare(secondType);
-        verifyZeroInteractions(firstFactory);
+        verifyNoMoreInteractions(firstFactory);
         verify(secondFactory).make(typeDescription);
         assertThat(methodRegistry.target(instrumentedMethod), is(secondRecord));
     }
@@ -319,8 +317,8 @@ public class MethodRegistryDefaultTest {
         assertThat(methodRegistry.getLoadedTypeInitializer(), is(loadedTypeInitializer));
         verify(firstHandler).prepare(firstType);
         verify(secondHandler).prepare(secondType);
-        verifyZeroInteractions(firstFactory);
-        verifyZeroInteractions(secondFactory);
+        verifyNoMoreInteractions(firstFactory);
+        verifyNoMoreInteractions(secondFactory);
         assertThat(methodRegistry.target(instrumentedMethod), instanceOf(TypeWriter.MethodPool.Record.ForNonImplementedMethod.class));
     }
 
@@ -358,8 +356,8 @@ public class MethodRegistryDefaultTest {
         assertThat(methodRegistry.getLoadedTypeInitializer(), is(loadedTypeInitializer));
         verify(firstHandler).prepare(firstType);
         verify(secondHandler).prepare(secondType);
-        verifyZeroInteractions(firstFactory);
-        verifyZeroInteractions(secondFactory);
+        verifyNoMoreInteractions(firstFactory);
+        verifyNoMoreInteractions(secondFactory);
         assertThat(methodRegistry.target(instrumentedMethod), instanceOf(TypeWriter.MethodPool.Record.ForDefinedMethod.OfVisibilityBridge.class));
     }
 
@@ -387,18 +385,18 @@ public class MethodRegistryDefaultTest {
         when(methodToken.accept(any(TypeDescription.Generic.Visitor.class))).thenReturn(methodToken);
         when(classFileVersion.isAtLeast(ClassFileVersion.JAVA_V5)).thenReturn(true);
         MethodRegistry.Compiled methodRegistry = new MethodRegistry.Default()
-            .append(firstMatcher, firstHandler, firstFactory, transformer)
-            .append(secondMatcher, secondHandler, secondFactory, transformer)
-            .prepare(firstType, methodGraphCompiler, TypeValidation.ENABLED, VisibilityBridgeStrategy.Default.NEVER, methodFilter)
-            .compile(implementationTargetFactory, classFileVersion);
+                .append(firstMatcher, firstHandler, firstFactory, transformer)
+                .append(secondMatcher, secondHandler, secondFactory, transformer)
+                .prepare(firstType, methodGraphCompiler, TypeValidation.ENABLED, VisibilityBridgeStrategy.Default.NEVER, methodFilter)
+                .compile(implementationTargetFactory, classFileVersion);
         assertThat(methodRegistry.getInstrumentedType(), is(typeDescription));
         assertThat(methodRegistry.getInstrumentedMethods().size(), is(0));
         assertThat(methodRegistry.getTypeInitializer(), is(typeInitializer));
         assertThat(methodRegistry.getLoadedTypeInitializer(), is(loadedTypeInitializer));
         verify(firstHandler).prepare(firstType);
         verify(secondHandler).prepare(secondType);
-        verifyZeroInteractions(firstFactory);
-        verifyZeroInteractions(secondFactory);
+        verifyNoMoreInteractions(firstFactory);
+        verifyNoMoreInteractions(secondFactory);
         assertThat(methodRegistry.target(instrumentedMethod), instanceOf(TypeWriter.MethodPool.Record.ForDefinedMethod.ForNonImplementedMethod.class));
     }
 }

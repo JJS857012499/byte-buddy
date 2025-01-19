@@ -28,10 +28,10 @@ import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.SuperMethodCall;
 import net.bytebuddy.implementation.bind.annotation.*;
 import net.bytebuddy.pool.TypePool;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import net.sf.cglib.proxy.*;
 import org.openjdk.jmh.annotations.*;
 
-import javax.annotation.Nullable;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -87,61 +87,61 @@ public class ClassByExtensionBenchmark {
     /**
      * An implementation to be used by {@link ClassByExtensionBenchmark#benchmarkByteBuddyWithProxyAndReusedDelegator()}.
      */
-    @Nullable
+    @MaybeNull
     private Implementation proxyInterceptor;
 
     /**
      * An implementation to be used by {@link ClassByExtensionBenchmark#benchmarkByteBuddyWithAccessorAndReusedDelegator()}.
      */
-    @Nullable
+    @MaybeNull
     private Implementation accessInterceptor;
 
     /**
      * An implementation to be used by {@link ClassByExtensionBenchmark#benchmarkByteBuddyWithPrefixAndReusedDelegator()}.
      */
-    @Nullable
+    @MaybeNull
     private Implementation.Composable prefixInterceptor;
 
     /**
      * A description of {@link ClassByExtensionBenchmark#baseClass}.
      */
-    @Nullable
+    @MaybeNull
     private TypeDescription baseClassDescription;
 
     /**
      * A description of {@link ByteBuddyProxyInterceptor}.
      */
-    @Nullable
+    @MaybeNull
     private TypeDescription proxyClassDescription;
 
     /**
      * A description of {@link ByteBuddyAccessInterceptor}.
      */
-    @Nullable
+    @MaybeNull
     private TypeDescription accessClassDescription;
 
     /**
      * A description of {@link ByteBuddyPrefixInterceptor}.
      */
-    @Nullable
+    @MaybeNull
     private TypeDescription prefixClassDescription;
 
     /**
      * A method delegation to {@link ByteBuddyProxyInterceptor}.
      */
-    @Nullable
+    @MaybeNull
     private Implementation proxyInterceptorDescription;
 
     /**
      * A method delegation to {@link ByteBuddyAccessInterceptor}.
      */
-    @Nullable
+    @MaybeNull
     private Implementation accessInterceptorDescription;
 
     /**
      * A method delegation to {@link ByteBuddyPrefixInterceptor}.
      */
-    @Nullable
+    @MaybeNull
     private Implementation.Composable prefixInterceptorDescription;
 
     /**

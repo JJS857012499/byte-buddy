@@ -1,27 +1,31 @@
 package net.bytebuddy.agent;
 
 import net.bytebuddy.dynamic.ClassFileLocator;
-import org.hamcrest.CoreMatchers;
+import net.bytebuddy.test.utility.JnaRule;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TestRule;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.OutputStream;
 import java.util.Properties;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.not;
-import static org.hamcrest.CoreMatchers.nullValue;
+import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 public class VirtualMachineAttachmentTest {
 
     private static final String FOO = "foo";
+
+    @Rule
+    public TestRule jnaRule = new JnaRule();
 
     private File agent;
 
@@ -31,11 +35,13 @@ public class VirtualMachineAttachmentTest {
         Manifest manifest = new Manifest();
         manifest.getMainAttributes().putValue(Attributes.Name.MANIFEST_VERSION.toString(), "1.0");
         manifest.getMainAttributes().putValue("Agent-Class", SampleAgent.class.getName());
-        JarOutputStream outputStream = new JarOutputStream(new FileOutputStream(agent), manifest);
+        OutputStream outputStream = new FileOutputStream(agent);
         try {
-            outputStream.putNextEntry(new JarEntry(SampleAgent.class.getName().replace('.', '/') + ".class"));
-            outputStream.write(ClassFileLocator.ForClassLoader.read(SampleAgent.class));
-            outputStream.closeEntry();
+            JarOutputStream jarOutputStream = new JarOutputStream(outputStream, manifest);
+            jarOutputStream.putNextEntry(new JarEntry(SampleAgent.class.getName().replace('.', '/') + ".class"));
+            jarOutputStream.write(ClassFileLocator.ForClassLoader.read(SampleAgent.class));
+            jarOutputStream.closeEntry();
+            jarOutputStream.close();
         } finally {
             outputStream.close();
         }
@@ -59,7 +65,7 @@ public class VirtualMachineAttachmentTest {
         }
         assertThat(SampleAgent.argument, is(FOO));
     }
-    
+
     @Test(timeout = 10000L)
     public void testSystemProperties() throws Exception {
         VirtualMachine virtualMachine = (VirtualMachine) VirtualMachine.Resolver.INSTANCE.run()

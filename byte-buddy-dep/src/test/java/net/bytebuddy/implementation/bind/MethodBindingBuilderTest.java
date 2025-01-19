@@ -7,14 +7,14 @@ import net.bytebuddy.implementation.Implementation;
 import net.bytebuddy.implementation.bind.annotation.TargetMethodAnnotationDrivenBinder;
 import net.bytebuddy.implementation.bytecode.StackManipulation;
 import net.bytebuddy.implementation.bytecode.StackSize;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Answers;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 import org.objectweb.asm.MethodVisitor;
 
 import static org.hamcrest.CoreMatchers.is;
@@ -30,7 +30,7 @@ public class MethodBindingBuilderTest {
     private static final String BAZ = "baz";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private MethodDescription methodDescription;
@@ -73,7 +73,7 @@ public class MethodBindingBuilderTest {
 
     @After
     public void tearDown() throws Exception {
-        verifyZeroInteractions(implementationContext);
+        verifyNoMoreInteractions(implementationContext);
     }
 
     @Test
@@ -94,7 +94,7 @@ public class MethodBindingBuilderTest {
         assertThat(methodBinding.getTarget(), is(methodDescription));
         methodBinding.apply(methodVisitor, implementationContext);
         verify(legalStackManipulation, times(2)).apply(methodVisitor, implementationContext);
-        verifyZeroInteractions(methodVisitor);
+        verifyNoMoreInteractions(methodVisitor);
     }
 
     @Test
@@ -121,7 +121,7 @@ public class MethodBindingBuilderTest {
         assertThat(methodBinding.getTarget(), is(methodDescription));
         methodBinding.apply(methodVisitor, implementationContext);
         verify(legalStackManipulation, times(4)).apply(methodVisitor, implementationContext);
-        verifyZeroInteractions(methodVisitor);
+        verifyNoMoreInteractions(methodVisitor);
     }
 
     @Test

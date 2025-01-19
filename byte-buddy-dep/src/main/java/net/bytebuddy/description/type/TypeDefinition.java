@@ -22,8 +22,9 @@ import net.bytebuddy.description.field.FieldList;
 import net.bytebuddy.description.method.MethodList;
 import net.bytebuddy.implementation.bytecode.StackSize;
 import net.bytebuddy.utility.dispatcher.JavaDispatcher;
+import net.bytebuddy.utility.nullability.MaybeNull;
+import net.bytebuddy.utility.nullability.UnknownNull;
 
-import javax.annotation.Nullable;
 import java.lang.reflect.*;
 import java.security.PrivilegedAction;
 import java.util.Iterator;
@@ -75,7 +76,7 @@ public interface TypeDefinition extends NamedElement, ModifierReviewable.ForType
      *
      * @return The super class of this type or {@code null} if no super class exists for this type.
      */
-    @Nullable
+    @MaybeNull
     TypeDescription.Generic getSuperClass();
 
     /**
@@ -116,7 +117,7 @@ public interface TypeDefinition extends NamedElement, ModifierReviewable.ForType
      *
      * @return The component type of this type or {@code null} if this type does not represent an array type.
      */
-    @Nullable
+    @MaybeNull
     TypeDefinition getComponentType();
 
     /**
@@ -281,6 +282,22 @@ public interface TypeDefinition extends NamedElement, ModifierReviewable.ForType
         }
 
         /**
+         * Describes the generic type while using the supplied annotation reader for resolving type annotations if this
+         * language feature is available on the current JVM. This method applies a check for null values as malformed signatures
+         * might cause incorrectly formatted results. This might also be caused by obfuscation tools.
+         *
+         * @param type             The type to describe.
+         * @param annotationReader The annotation reader for extracting type annotations.
+         * @return A description of the provided generic annotated type.
+         */
+        protected static TypeDescription.Generic describeOrNull(@MaybeNull Type type, TypeDescription.Generic.AnnotationReader annotationReader) {
+            if (type == null) {
+                throw new TypeNotPresentException("<unknown>", null);
+            }
+            return describe(type, annotationReader);
+        }
+
+        /**
          * Checks if this type sort represents a non-generic type.
          *
          * @return {@code true} if this sort form represents a non-generic.
@@ -358,6 +375,7 @@ public interface TypeDefinition extends NamedElement, ModifierReviewable.ForType
         /**
          * The next class to represent.
          */
+        @UnknownNull
         private TypeDefinition nextClass;
 
         /**

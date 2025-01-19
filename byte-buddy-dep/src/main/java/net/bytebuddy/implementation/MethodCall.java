@@ -15,6 +15,7 @@
  */
 package net.bytebuddy.implementation;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
 import net.bytebuddy.description.enumeration.EnumerationDescription;
 import net.bytebuddy.description.field.FieldDescription;
@@ -38,10 +39,8 @@ import net.bytebuddy.implementation.bytecode.member.MethodReturn;
 import net.bytebuddy.implementation.bytecode.member.MethodVariableAccess;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
-import net.bytebuddy.utility.CompoundList;
-import net.bytebuddy.utility.JavaConstant;
-import net.bytebuddy.utility.JavaType;
-import net.bytebuddy.utility.RandomString;
+import net.bytebuddy.utility.*;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
@@ -174,6 +173,7 @@ public class MethodCall implements Implementation.Composable {
      * @param matcher The matcher to identify the method to invoke.
      * @return A method call for the uniquely identified method.
      */
+    @SuppressWarnings("overloads")
     public static WithoutSpecifiedTarget invoke(ElementMatcher<? super MethodDescription> matcher) {
         return invoke(matcher, MethodGraph.Compiler.DEFAULT);
     }
@@ -197,6 +197,7 @@ public class MethodCall implements Implementation.Composable {
      * @return A method call implementation that uses the provided method locator for resolving the method
      * to be invoked.
      */
+    @SuppressWarnings("overloads")
     public static WithoutSpecifiedTarget invoke(MethodLocator.Factory methodLocator) {
         return new WithoutSpecifiedTarget(methodLocator);
     }
@@ -330,15 +331,26 @@ public class MethodCall implements Implementation.Composable {
      * Defines the given Java instances to be provided as arguments to the invoked method where the given
      * instances are stored in the generated class's constant pool.
      *
-     * @param javaConstant The Java instances to provide as arguments.
+     * @param constant The constants to provide as arguments.
      * @return A method call that hands the provided arguments to the invoked method.
      */
-    public MethodCall with(JavaConstant... javaConstant) {
-        List<ArgumentLoader.Factory> argumentLoaders = new ArrayList<ArgumentLoader.Factory>(javaConstant.length);
-        for (JavaConstant aJavaConstant : javaConstant) {
-            argumentLoaders.add(new ArgumentLoader.ForStackManipulation(new JavaConstantValue(aJavaConstant), aJavaConstant.getTypeDescription()));
+    public MethodCall with(ConstantValue... constant) {
+        List<ArgumentLoader.Factory> argumentLoaders = new ArrayList<ArgumentLoader.Factory>(constant.length);
+        for (ConstantValue aConstant : constant) {
+            argumentLoaders.add(new ArgumentLoader.ForStackManipulation(aConstant.toStackManipulation(), aConstant.getTypeDescription()));
         }
         return with(argumentLoaders);
+    }
+
+    /**
+     * Defines the given Java instances to be provided as arguments to the invoked method where the given
+     * instances are stored in the generated class's constant pool.
+     *
+     * @param constant The constants to provide as arguments.
+     * @return A method call that hands the provided arguments to the invoked method.
+     */
+    public MethodCall with(JavaConstant... constant) {
+        return with((ConstantValue[]) constant);
     }
 
     /**
@@ -805,8 +817,11 @@ public class MethodCall implements Implementation.Composable {
              * {@inheritDoc}
              */
             public MethodDescription resolve(TypeDescription targetType, MethodDescription instrumentedMethod) {
+                TypeDescription.Generic superClass = instrumentedType.getSuperClass();
                 List<MethodDescription> candidates = CompoundList.<MethodDescription>of(
-                        instrumentedType.getSuperClass().getDeclaredMethods().filter(isConstructor().and(matcher)),
+                        superClass == null
+                                ? Collections.<MethodDescription>emptyList()
+                                : superClass.getDeclaredMethods().filter(isConstructor().and(matcher)),
                         instrumentedType.getDeclaredMethods().filter(not(ElementMatchers.isVirtual()).and(matcher)),
                         methodGraphCompiler.compile((TypeDefinition) targetType, instrumentedType).listNodes().asMethodList().filter(matcher));
                 if (candidates.size() == 1) {
@@ -1045,7 +1060,7 @@ public class MethodCall implements Implementation.Composable {
             public StackManipulation toStackManipulation(ParameterDescription target, Assigner assigner, Assigner.Typing typing) {
                 StackManipulation stackManipulation = new StackManipulation.Compound(
                         ClassConstant.of(instrumentedType),
-                        assigner.assign(TypeDescription.Generic.OfNonGenericType.ForLoadedType.CLASS, target.getType(), typing));
+                        assigner.assign(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Class.class), target.getType(), typing));
                 if (!stackManipulation.isValid()) {
                     throw new IllegalStateException("Cannot assign Class value to " + target);
                 }
@@ -1159,7 +1174,7 @@ public class MethodCall implements Implementation.Composable {
              * A factory for an argument loader that supplies a method parameter as an argument.
              */
             @HashCodeAndEqualsPlugin.Enhance
-            protected static class Factory implements ArgumentLoader.Factory, ArgumentProvider {
+            public static class Factory implements ArgumentLoader.Factory, ArgumentProvider {
 
                 /**
                  * The index of the parameter to be loaded onto the operand stack.
@@ -1225,10 +1240,11 @@ public class MethodCall implements Implementation.Composable {
             /**
              * {@inheritDoc}
              */
+            @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
             public StackManipulation toStackManipulation(ParameterDescription target, Assigner assigner, Assigner.Typing typing) {
                 TypeDescription.Generic componentType;
                 if (target.getType().represents(Object.class)) {
-                    componentType = TypeDescription.Generic.OBJECT;
+                    componentType = TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class);
                 } else if (target.getType().isArray()) {
                     componentType = target.getType().getComponentType();
                 } else {
@@ -1312,6 +1328,7 @@ public class MethodCall implements Implementation.Composable {
             /**
              * {@inheritDoc}
              */
+            @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
             public StackManipulation toStackManipulation(ParameterDescription target, Assigner assigner, Assigner.Typing typing) {
                 StackManipulation stackManipulation = new StackManipulation.Compound(
                         MethodVariableAccess.load(parameterDescription),
@@ -1816,44 +1833,14 @@ public class MethodCall implements Implementation.Composable {
              * @param value The value to load as an argument or {@code null}.
              * @return An appropriate argument loader.
              */
-            public static ArgumentLoader.Factory of(Object value) {
+            public static ArgumentLoader.Factory of(@MaybeNull Object value) {
                 if (value == null) {
                     return ForNullConstant.INSTANCE;
-                } else if (value instanceof Boolean) {
-                    return new ForStackManipulation(IntegerConstant.forValue((Boolean) value), boolean.class);
-                } else if (value instanceof Byte) {
-                    return new ForStackManipulation(IntegerConstant.forValue((Byte) value), byte.class);
-                } else if (value instanceof Short) {
-                    return new ForStackManipulation(IntegerConstant.forValue((Short) value), short.class);
-                } else if (value instanceof Character) {
-                    return new ForStackManipulation(IntegerConstant.forValue((Character) value), char.class);
-                } else if (value instanceof Integer) {
-                    return new ForStackManipulation(IntegerConstant.forValue((Integer) value), int.class);
-                } else if (value instanceof Long) {
-                    return new ForStackManipulation(LongConstant.forValue((Long) value), long.class);
-                } else if (value instanceof Float) {
-                    return new ForStackManipulation(FloatConstant.forValue((Float) value), float.class);
-                } else if (value instanceof Double) {
-                    return new ForStackManipulation(DoubleConstant.forValue((Double) value), double.class);
-                } else if (value instanceof String) {
-                    return new ForStackManipulation(new TextConstant((String) value), String.class);
-                } else if (value instanceof Class) {
-                    return new ForStackManipulation(ClassConstant.of(TypeDescription.ForLoadedType.of((Class<?>) value)), Class.class);
-                } else if (value instanceof TypeDescription) {
-                    return new ForStackManipulation(ClassConstant.of((TypeDescription) value), Class.class);
-                } else if (value instanceof Enum<?>) {
-                    EnumerationDescription enumerationDescription = new EnumerationDescription.ForLoadedEnumeration((Enum<?>) value);
-                    return new ForStackManipulation(FieldAccess.forEnumeration(enumerationDescription), enumerationDescription.getEnumerationType());
-                } else if (value instanceof EnumerationDescription) {
-                    return new ForStackManipulation(FieldAccess.forEnumeration((EnumerationDescription) value), ((EnumerationDescription) value).getEnumerationType());
-                } else if (JavaType.METHOD_HANDLE.isInstance(value)) {
-                    return new ForStackManipulation(new JavaConstantValue(JavaConstant.MethodHandle.ofLoaded(value)), JavaType.METHOD_HANDLE.getTypeStub());
-                } else if (JavaType.METHOD_TYPE.isInstance(value)) {
-                    return new ForStackManipulation(new JavaConstantValue(JavaConstant.MethodType.ofLoaded(value)), JavaType.METHOD_TYPE.getTypeStub());
-                } else if (value instanceof JavaConstant) {
-                    return new ForStackManipulation(new JavaConstantValue((JavaConstant) value), ((JavaConstant) value).getTypeDescription());
                 } else {
-                    return new ForInstance.Factory(value);
+                    ConstantValue constant = ConstantValue.Simple.wrapOrNull(value);
+                    return constant == null
+                            ? new ForInstance.Factory(value)
+                            : new ForStackManipulation(constant.toStackManipulation(), constant.getTypeDescription());
                 }
             }
 
@@ -2072,12 +2059,14 @@ public class MethodCall implements Implementation.Composable {
                 /**
                  * {@inheritDoc}
                  */
+                @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming declaring type for type member.")
                 public StackManipulation toStackManipulation(MethodDescription invokedMethod, Assigner assigner, Assigner.Typing typing) {
                     if (instrumentedMethod.isStatic() && !invokedMethod.isStatic() && !invokedMethod.isConstructor()) {
                         throw new IllegalStateException("Cannot invoke " + invokedMethod + " from " + instrumentedMethod);
                     } else if (invokedMethod.isConstructor() && (!instrumentedMethod.isConstructor()
                             || !instrumentedType.equals(invokedMethod.getDeclaringType().asErasure())
-                            && !instrumentedType.getSuperClass().asErasure().equals(invokedMethod.getDeclaringType().asErasure()))) {
+                            && (instrumentedType.getSuperClass() == null
+                            || !instrumentedType.getSuperClass().asErasure().equals(invokedMethod.getDeclaringType().asErasure())))) {
                         throw new IllegalStateException("Cannot invoke " + invokedMethod + " from " + instrumentedMethod + " in " + instrumentedType);
                     }
                     return new StackManipulation.Compound(
@@ -2453,6 +2442,7 @@ public class MethodCall implements Implementation.Composable {
                 /**
                  * {@inheritDoc}
                  */
+                @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming declaring type for type member.")
                 public TargetHandler make(Implementation.Target implementationTarget) {
                     FieldDescription fieldDescription = location.resolve(implementationTarget.getInstrumentedType());
                     if (!fieldDescription.isStatic() && !implementationTarget.getInstrumentedType().isAssignableTo(fieldDescription.getDeclaringType().asErasure())) {
@@ -3134,6 +3124,7 @@ public class MethodCall implements Implementation.Composable {
                 /**
                  * {@inheritDoc}
                  */
+                @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming declaring type for type member.")
                 public TerminationHandler make(TypeDescription instrumentedType) {
                     if (!fieldDescription.isStatic() && !instrumentedType.isAssignableTo(fieldDescription.getDeclaringType().asErasure())) {
                         throw new IllegalStateException("Cannot set " + fieldDescription + " from " + instrumentedType);

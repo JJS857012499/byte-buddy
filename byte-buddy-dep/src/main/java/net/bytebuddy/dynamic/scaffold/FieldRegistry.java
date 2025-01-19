@@ -22,8 +22,8 @@ import net.bytebuddy.dynamic.Transformer;
 import net.bytebuddy.implementation.attribute.FieldAttributeAppender;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.LatentMatcher;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nullable;
 import java.util.*;
 
 /**
@@ -49,7 +49,7 @@ public interface FieldRegistry {
      */
     FieldRegistry prepend(LatentMatcher<? super FieldDescription> matcher,
                           FieldAttributeAppender.Factory fieldAttributeAppenderFactory,
-                          @Nullable Object defaultValue,
+                          @MaybeNull Object defaultValue,
                           Transformer<FieldDescription> transformer);
 
     /**
@@ -116,7 +116,7 @@ public interface FieldRegistry {
          */
         public FieldRegistry prepend(LatentMatcher<? super FieldDescription> matcher,
                                      FieldAttributeAppender.Factory fieldAttributeAppenderFactory,
-                                     @Nullable Object defaultValue,
+                                     @MaybeNull Object defaultValue,
                                      Transformer<FieldDescription> transformer) {
             List<Entry> entries = new ArrayList<Entry>(this.entries.size() + 1);
             entries.add(new Entry(matcher, fieldAttributeAppenderFactory, defaultValue, transformer));
@@ -160,7 +160,8 @@ public interface FieldRegistry {
             /**
              * The default value to write to the field or {@code null} if no default value is to be set for the field.
              */
-            @Nullable
+            @MaybeNull
+            @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
             private final Object defaultValue;
 
             /**
@@ -178,7 +179,7 @@ public interface FieldRegistry {
              */
             protected Entry(LatentMatcher<? super FieldDescription> matcher,
                             FieldAttributeAppender.Factory fieldAttributeAppenderFactory,
-                            @Nullable Object defaultValue,
+                            @MaybeNull Object defaultValue,
                             Transformer<FieldDescription> transformer) {
                 this.matcher = matcher;
                 this.fieldAttributeAppenderFactory = fieldAttributeAppenderFactory;
@@ -200,7 +201,7 @@ public interface FieldRegistry {
              *
              * @return The default value to write to the field or {@code null} if no default value is to be set for the field.
              */
-            @Nullable
+            @MaybeNull
             protected Object getDefaultValue() {
                 return defaultValue;
             }
@@ -280,7 +281,7 @@ public interface FieldRegistry {
                 /**
                  * The default value to write to the field or {@code null} if no default value is to be set for the field.
                  */
-                @Nullable
+                @MaybeNull
                 @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
                 private final Object defaultValue;
 
@@ -299,7 +300,7 @@ public interface FieldRegistry {
                  */
                 protected Entry(ElementMatcher<? super FieldDescription> matcher,
                                 FieldAttributeAppender fieldAttributeAppender,
-                                @Nullable Object defaultValue,
+                                @MaybeNull Object defaultValue,
                                 Transformer<FieldDescription> transformer) {
                     this.matcher = matcher;
                     this.fieldAttributeAppender = fieldAttributeAppender;
@@ -321,7 +322,7 @@ public interface FieldRegistry {
                 /**
                  * {@inheritDoc}
                  */
-                public boolean matches(@Nullable FieldDescription target) {
+                public boolean matches(@MaybeNull FieldDescription target) {
                     return matcher.matches(target);
                 }
             }

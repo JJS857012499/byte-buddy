@@ -15,6 +15,7 @@
  */
 package net.bytebuddy.matcher;
 
+import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.description.ByteCodeElement;
 import net.bytebuddy.description.ModifierReviewable;
 import net.bytebuddy.description.NamedElement;
@@ -32,8 +33,8 @@ import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.description.type.TypeList;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
 import net.bytebuddy.utility.JavaModule;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nullable;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.lang.reflect.Constructor;
@@ -118,7 +119,7 @@ public final class ElementMatchers {
      * @param <T>   The type of the matched object.
      * @return A matcher that matches an exact value.
      */
-    public static <T> ElementMatcher.Junction<T> is(@Nullable Object value) {
+    public static <T> ElementMatcher.Junction<T> is(@MaybeNull Object value) {
         return value == null
                 ? NullMatcher.<T>make()
                 : new EqualityMatcher<T>(value);
@@ -654,7 +655,7 @@ public final class ElementMatchers {
      * Matches a {@link NamedElement} for its membership of a set.
      *
      * @param names The set of expected names.
-     * @param <T>  The type of the matched object.
+     * @param <T>   The type of the matched object.
      * @return An element matcher which matches if the element's name is found in the set.
      */
     public static <T extends NamedElement> ElementMatcher.Junction<T> namedOneOf(String... names) {
@@ -1334,7 +1335,7 @@ public final class ElementMatchers {
     /**
      * Matches a {@link MethodDescription} with no parameters.
      *
-     * @param <T>    The type of the matched object.
+     * @param <T> The type of the matched object.
      * @return A matcher that matches a method description by the number of its parameters.
      */
     public static <T extends MethodDescription> ElementMatcher.Junction<T> takesNoArguments() {
@@ -1600,7 +1601,7 @@ public final class ElementMatchers {
      * @return A matcher that matches a Java <i>main</i> method.
      */
     public static <T extends MethodDescription> ElementMatcher.Junction<T> isMain() {
-        return named("main").and(takesArguments(String[].class)).and(returns(TypeDescription.VOID).and(isStatic()).and(isPublic()));
+        return named("main").and(takesArguments(String[].class)).and(returns(TypeDescription.ForLoadedType.of(void.class)).and(isStatic()).and(isPublic()));
     }
 
     /**
@@ -1610,7 +1611,7 @@ public final class ElementMatchers {
      * @return A matcher that only matches a non-overridden {@link Object#finalize()} method.
      */
     public static <T extends MethodDescription> ElementMatcher.Junction<T> isDefaultFinalizer() {
-        return isFinalizer().and(isDeclaredBy(TypeDescription.OBJECT));
+        return isFinalizer().and(isDeclaredBy(TypeDescription.ForLoadedType.of(Object.class)));
     }
 
     /**
@@ -1620,7 +1621,7 @@ public final class ElementMatchers {
      * @return A matcher that only matches the {@link Object#finalize()} method.
      */
     public static <T extends MethodDescription> ElementMatcher.Junction<T> isFinalizer() {
-        return named("finalize").and(takesNoArguments()).and(returns(TypeDescription.VOID));
+        return named("finalize").and(takesNoArguments()).and(returns(TypeDescription.ForLoadedType.of(void.class)));
     }
 
     /**
@@ -1640,7 +1641,7 @@ public final class ElementMatchers {
      * @return A matcher that only matches the {@link Object#equals(Object)} method.
      */
     public static <T extends MethodDescription> ElementMatcher.Junction<T> isEquals() {
-        return named("equals").and(takesArguments(TypeDescription.OBJECT)).and(returns(boolean.class));
+        return named("equals").and(takesArguments(TypeDescription.ForLoadedType.of(Object.class))).and(returns(boolean.class));
     }
 
     /**
@@ -1660,7 +1661,7 @@ public final class ElementMatchers {
      * @return A matcher that only matches the {@link Object#toString()} method.
      */
     public static <T extends MethodDescription> ElementMatcher.Junction<T> isToString() {
-        return named("toString").and(takesNoArguments()).and(returns(TypeDescription.STRING));
+        return named("toString").and(takesNoArguments()).and(returns(TypeDescription.ForLoadedType.of(String.class)));
     }
 
     /**
@@ -1670,7 +1671,7 @@ public final class ElementMatchers {
      * @return A matcher that matches any setter method.
      */
     public static <T extends MethodDescription> ElementMatcher.Junction<T> isSetter() {
-        return nameStartsWith("set").and(takesArguments(1)).and(returns(TypeDescription.VOID));
+        return nameStartsWith("set").and(takesArguments(1)).and(returns(TypeDescription.ForLoadedType.of(void.class)));
     }
 
     /**
@@ -1760,7 +1761,7 @@ public final class ElementMatchers {
      * @return A matcher that matches any getter method.
      */
     public static <T extends MethodDescription> ElementMatcher.Junction<T> isGetter() {
-        return takesNoArguments().and(not(returns(TypeDescription.VOID))).and(nameStartsWith("get").or(nameStartsWith("is").and(returnsGeneric(anyOf(boolean.class, Boolean.class)))));
+        return takesNoArguments().and(not(returns(TypeDescription.ForLoadedType.of(void.class)))).and(nameStartsWith("get").or(nameStartsWith("is").and(returnsGeneric(anyOf(boolean.class, Boolean.class)))));
     }
 
     /**
@@ -2006,6 +2007,28 @@ public final class ElementMatchers {
      */
     public static <T extends TypeDescription> ElementMatcher.Junction<T> hasAnnotation(ElementMatcher<? super AnnotationDescription> matcher) {
         return new InheritedAnnotationMatcher<T>(new CollectionItemMatcher<AnnotationDescription>(matcher));
+    }
+
+    /**
+     * Matches a type to have a minimal class file version. If a type description is not implying a class file version, it is not matched.
+     *
+     * @param classFileVersion The minimal class file version to match.
+     * @param <T>              The type of the matched object.
+     * @return A matcher that matches a type description by its class file version.
+     */
+    public static <T extends TypeDescription> ElementMatcher.Junction<T> hasClassFileVersionAtLeast(ClassFileVersion classFileVersion) {
+        return new ClassFileVersionMatcher<T>(classFileVersion, false);
+    }
+
+    /**
+     * Matches a type to have a maximal class file version. If a type description is not implying a class file version, it is not matched.
+     *
+     * @param classFileVersion The maximal class file version to match.
+     * @param <T>              The type of the matched object.
+     * @return A matcher that matches a type description by its class file version.
+     */
+    public static <T extends TypeDescription> ElementMatcher.Junction<T> hasClassFileVersionAtMost(ClassFileVersion classFileVersion) {
+        return new ClassFileVersionMatcher<T>(classFileVersion, true);
     }
 
     /**
@@ -2256,7 +2279,7 @@ public final class ElementMatchers {
      * @return A matcher that matches the given class loader and any class loader that is a child of the given
      * class loader.
      */
-    public static <T extends ClassLoader> ElementMatcher.Junction<T> isChildOf(@Nullable ClassLoader classLoader) {
+    public static <T extends ClassLoader> ElementMatcher.Junction<T> isChildOf(@MaybeNull ClassLoader classLoader) {
         return classLoader == ClassLoadingStrategy.BOOTSTRAP_LOADER
                 ? BooleanMatcher.<T>of(true)
                 : ElementMatchers.<T>hasChild(is(classLoader));
@@ -2281,7 +2304,7 @@ public final class ElementMatchers {
      * @return A matcher that matches the given class loader and any class loader that is a parent of the given
      * class loader.
      */
-    public static <T extends ClassLoader> ElementMatcher.Junction<T> isParentOf(@Nullable ClassLoader classLoader) {
+    public static <T extends ClassLoader> ElementMatcher.Junction<T> isParentOf(@MaybeNull ClassLoader classLoader) {
         return classLoader == ClassLoadingStrategy.BOOTSTRAP_LOADER
                 ? ElementMatchers.<T>isBootstrapClassLoader()
                 : new ClassLoaderParentMatcher<T>(classLoader);

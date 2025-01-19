@@ -15,6 +15,7 @@
  */
 package net.bytebuddy.implementation;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
 import net.bytebuddy.description.field.FieldDescription;
 import net.bytebuddy.description.method.MethodDescription;
@@ -24,21 +25,25 @@ import net.bytebuddy.dynamic.scaffold.InstrumentedType;
 import net.bytebuddy.implementation.bytecode.ByteCodeAppender;
 import net.bytebuddy.implementation.bytecode.StackManipulation;
 import net.bytebuddy.implementation.bytecode.assign.Assigner;
-import net.bytebuddy.implementation.bytecode.constant.*;
+import net.bytebuddy.implementation.bytecode.constant.ClassConstant;
+import net.bytebuddy.implementation.bytecode.constant.DefaultValue;
 import net.bytebuddy.implementation.bytecode.member.FieldAccess;
 import net.bytebuddy.implementation.bytecode.member.MethodReturn;
 import net.bytebuddy.implementation.bytecode.member.MethodVariableAccess;
+import net.bytebuddy.utility.ConstantValue;
 import net.bytebuddy.utility.JavaConstant;
-import net.bytebuddy.utility.JavaType;
 import net.bytebuddy.utility.RandomString;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.lang.reflect.Field;
 import java.lang.reflect.Type;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
 
 import static net.bytebuddy.matcher.ElementMatchers.named;
 
@@ -109,7 +114,7 @@ public abstract class FieldAccessor implements Implementation {
      * @return A field accessor that follows the Java naming conventions for bean properties.
      */
     public static OwnerTypeLocatable ofBeanProperty() {
-        return of(FieldNameExtractor.ForBeanProperty.INSTANCE);
+        return of(FieldNameExtractor.ForBeanProperty.INSTANCE, FieldNameExtractor.ForBeanProperty.CAPITALIZED);
     }
 
     /**
@@ -119,7 +124,27 @@ public abstract class FieldAccessor implements Implementation {
      * @return A field accessor using the given field name extractor.
      */
     public static OwnerTypeLocatable of(FieldNameExtractor fieldNameExtractor) {
-        return new ForImplicitProperty(new FieldLocation.Relative(fieldNameExtractor));
+        return of(Collections.singletonList(fieldNameExtractor));
+    }
+
+    /**
+     * Defines a custom strategy for determining the field that is accessed by this field accessor.
+     *
+     * @param fieldNameExtractor The field name extractors to use in their application order.
+     * @return A field accessor using the given field name extractor.
+     */
+    public static OwnerTypeLocatable of(FieldNameExtractor... fieldNameExtractor) {
+        return of(Arrays.asList(fieldNameExtractor));
+    }
+
+    /**
+     * Defines a custom strategy for determining the field that is accessed by this field accessor.
+     *
+     * @param fieldNameExtractors The field name extractors to use in their application order.
+     * @return A field accessor using the given field name extractor.
+     */
+    public static OwnerTypeLocatable of(List<? extends FieldNameExtractor> fieldNameExtractors) {
+        return new ForImplicitProperty(new FieldLocation.Relative(fieldNameExtractors));
     }
 
     /**
@@ -207,6 +232,7 @@ public abstract class FieldAccessor implements Implementation {
             /**
              * {@inheritDoc}
              */
+            @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming declaring type for type member.")
             public Prepared prepare(TypeDescription instrumentedType) {
                 if (!fieldDescription.isStatic() && !instrumentedType.isAssignableTo(fieldDescription.getDeclaringType().asErasure())) {
                     throw new IllegalStateException(fieldDescription + " is not declared by " + instrumentedType);
@@ -231,9 +257,9 @@ public abstract class FieldAccessor implements Implementation {
         class Relative implements FieldLocation {
 
             /**
-             * The field name extractor to use.
+             * The field name extractors to use in their application order.
              */
-            private final FieldNameExtractor fieldNameExtractor;
+            private final List<? extends FieldNameExtractor> fieldNameExtractors;
 
             /**
              * The field locator factory to use.
@@ -243,20 +269,20 @@ public abstract class FieldAccessor implements Implementation {
             /**
              * Creates a new relative field location.
              *
-             * @param fieldNameExtractor The field name extractor to use.
+             * @param fieldNameExtractors The field name extractors to use in their application order.
              */
-            protected Relative(FieldNameExtractor fieldNameExtractor) {
-                this(fieldNameExtractor, FieldLocator.ForClassHierarchy.Factory.INSTANCE);
+            protected Relative(List<? extends FieldNameExtractor> fieldNameExtractors) {
+                this(fieldNameExtractors, FieldLocator.ForClassHierarchy.Factory.INSTANCE);
             }
 
             /**
              * Creates a new relative field location.
              *
-             * @param fieldNameExtractor  The field name extractor to use.
+             * @param fieldNameExtractors  The field name extractors to use in their application order.
              * @param fieldLocatorFactory The field locator factory to use.
              */
-            private Relative(FieldNameExtractor fieldNameExtractor, FieldLocator.Factory fieldLocatorFactory) {
-                this.fieldNameExtractor = fieldNameExtractor;
+            private Relative(List<? extends FieldNameExtractor> fieldNameExtractors, FieldLocator.Factory fieldLocatorFactory) {
+                this.fieldNameExtractors = fieldNameExtractors;
                 this.fieldLocatorFactory = fieldLocatorFactory;
             }
 
@@ -264,14 +290,14 @@ public abstract class FieldAccessor implements Implementation {
              * {@inheritDoc}
              */
             public FieldLocation with(FieldLocator.Factory fieldLocatorFactory) {
-                return new Relative(fieldNameExtractor, fieldLocatorFactory);
+                return new Relative(fieldNameExtractors, fieldLocatorFactory);
             }
 
             /**
              * {@inheritDoc}
              */
             public FieldLocation.Prepared prepare(TypeDescription instrumentedType) {
-                return new Prepared(fieldNameExtractor, fieldLocatorFactory.make(instrumentedType));
+                return new Prepared(fieldNameExtractors, fieldLocatorFactory.make(instrumentedType));
             }
 
             /**
@@ -281,9 +307,9 @@ public abstract class FieldAccessor implements Implementation {
             protected static class Prepared implements FieldLocation.Prepared {
 
                 /**
-                 * The field name extractor to use.
+                 * The field name extractor to use in their application order.
                  */
-                private final FieldNameExtractor fieldNameExtractor;
+                private final List<? extends FieldNameExtractor> fieldNameExtractors;
 
                 /**
                  * The field locator factory to use.
@@ -293,11 +319,11 @@ public abstract class FieldAccessor implements Implementation {
                 /**
                  * Creates a new relative field location.
                  *
-                 * @param fieldNameExtractor The field name extractor to use.
-                 * @param fieldLocator       The field locator to use.
+                 * @param fieldNameExtractors The field name extractors to use in their application order.
+                 * @param fieldLocator        The field locator to use.
                  */
-                protected Prepared(FieldNameExtractor fieldNameExtractor, FieldLocator fieldLocator) {
-                    this.fieldNameExtractor = fieldNameExtractor;
+                protected Prepared(List<? extends FieldNameExtractor> fieldNameExtractors, FieldLocator fieldLocator) {
+                    this.fieldNameExtractors = fieldNameExtractors;
                     this.fieldLocator = fieldLocator;
                 }
 
@@ -305,7 +331,11 @@ public abstract class FieldAccessor implements Implementation {
                  * {@inheritDoc}
                  */
                 public FieldDescription resolve(MethodDescription instrumentedMethod) {
-                    FieldLocator.Resolution resolution = fieldLocator.locate(fieldNameExtractor.resolve(instrumentedMethod));
+                    FieldLocator.Resolution resolution = FieldLocator.Resolution.Illegal.INSTANCE;
+                    Iterator<? extends FieldNameExtractor> iterator = fieldNameExtractors.iterator();
+                    while (iterator.hasNext() && !resolution.isResolved()) {
+                        resolution = fieldLocator.locate(iterator.next().resolve(instrumentedMethod));
+                    }
                     if (!resolution.isResolved()) {
                         throw new IllegalStateException("Cannot resolve field for " + instrumentedMethod + " using " + fieldLocator);
                     }
@@ -336,9 +366,24 @@ public abstract class FieldAccessor implements Implementation {
         enum ForBeanProperty implements FieldNameExtractor {
 
             /**
-             * The singleton instance.
+             * A resolver that resolves a standard bean property name.
              */
-            INSTANCE;
+            INSTANCE {
+                @Override
+                protected char resolve(char character) {
+                    return Character.toLowerCase(character);
+                }
+            },
+
+            /**
+             * A resolver that resolves a field name with a capital letter.
+             */
+            CAPITALIZED {
+                @Override
+                protected char resolve(char character) {
+                    return Character.toUpperCase(character);
+                }
+            };
 
             /**
              * {@inheritDoc}
@@ -357,8 +402,16 @@ public abstract class FieldAccessor implements Implementation {
                 if (name.length() == 0) {
                     throw new IllegalArgumentException(methodDescription + " does not specify a bean name");
                 }
-                return Character.toLowerCase(name.charAt(0)) + name.substring(1);
+                return resolve(name.charAt(0)) + name.substring(1);
             }
+
+            /**
+             * Resolves the first character of the bean property.
+             *
+             * @param character The first character.
+             * @return The resolved first character.
+             */
+            protected abstract char resolve(char character);
         }
 
         /**
@@ -448,6 +501,19 @@ public abstract class FieldAccessor implements Implementation {
          * @return An instrumentation that sets the field's value to the given class constant.
          */
         Composable setsValue(TypeDescription typeDescription);
+
+        /**
+         * <p>
+         * Defines a setter of a given constant value for the described field.
+         * </p>
+         * <p>
+         * <b>Note</b>: If the instrumented method does not return {@code void}, a chained instrumentation must be supplied.
+         * </p>
+         *
+         * @param constant The constant to set as a value.
+         * @return An instrumentation that sets the field's value to the given constant.
+         */
+        Composable setsValue(ConstantValue constant);
 
         /**
          * <p>
@@ -683,38 +749,14 @@ public abstract class FieldAccessor implements Implementation {
         /**
          * {@inheritDoc}
          */
-        public Composable setsValue(Object value) {
+        public Composable setsValue(@MaybeNull Object value) {
             if (value == null) {
                 return setsDefaultValue();
             }
-            Class<?> type = value.getClass();
-            if (type == String.class) {
-                return setsValue(new TextConstant((String) value), String.class);
-            } else if (type == Class.class) {
-                return setsValue(ClassConstant.of(TypeDescription.ForLoadedType.of((Class<?>) value)), Class.class);
-            } else if (type == Boolean.class) {
-                return setsValue(IntegerConstant.forValue((Boolean) value), boolean.class);
-            } else if (type == Byte.class) {
-                return setsValue(IntegerConstant.forValue((Byte) value), byte.class);
-            } else if (type == Short.class) {
-                return setsValue(IntegerConstant.forValue((Short) value), short.class);
-            } else if (type == Character.class) {
-                return setsValue(IntegerConstant.forValue((Character) value), char.class);
-            } else if (type == Integer.class) {
-                return setsValue(IntegerConstant.forValue((Integer) value), int.class);
-            } else if (type == Long.class) {
-                return setsValue(LongConstant.forValue((Long) value), long.class);
-            } else if (type == Float.class) {
-                return setsValue(FloatConstant.forValue((Float) value), float.class);
-            } else if (type == Double.class) {
-                return setsValue(DoubleConstant.forValue((Double) value), double.class);
-            } else if (JavaType.METHOD_HANDLE.getTypeStub().isAssignableFrom(type)) {
-                return setsValue(new JavaConstantValue(JavaConstant.MethodHandle.ofLoaded(value)), type);
-            } else if (JavaType.METHOD_TYPE.getTypeStub().represents(type)) {
-                return setsValue(new JavaConstantValue(JavaConstant.MethodType.ofLoaded(value)), type);
-            } else {
-                return setsReference(value);
-            }
+            ConstantValue constant = ConstantValue.Simple.wrapOrNull(value);
+            return constant == null
+                    ? setsReference(value)
+                    : setsValue(constant.toStackManipulation(), constant.getTypeDescription().asGenericType());
         }
 
         /**
@@ -727,8 +769,15 @@ public abstract class FieldAccessor implements Implementation {
         /**
          * {@inheritDoc}
          */
+        public Composable setsValue(ConstantValue constant) {
+            return setsValue(constant.toStackManipulation(), constant.getTypeDescription().asGenericType());
+        }
+
+        /**
+         * {@inheritDoc}
+         */
         public Composable setsValue(JavaConstant constant) {
-            return setsValue(new JavaConstantValue(constant), constant.getTypeDescription().asGenericType());
+            return setsValue((ConstantValue) constant);
         }
 
         /**
@@ -802,7 +851,7 @@ public abstract class FieldAccessor implements Implementation {
                     assigner,
                     typing,
                     ForSetter.TerminationHandler.RETURNING,
-                    new FieldLocation.Relative(fieldNameExtractor));
+                    new FieldLocation.Relative(Collections.singletonList(fieldNameExtractor)));
         }
 
         /**
@@ -937,7 +986,7 @@ public abstract class FieldAccessor implements Implementation {
          * @param instrumentedType The instrumented type.
          * @return The initialized value.
          */
-        @Nullable
+        @MaybeNull
         protected abstract T initialize(TypeDescription instrumentedType);
 
         /**
@@ -949,7 +998,7 @@ public abstract class FieldAccessor implements Implementation {
          * @param instrumentedMethod The instrumented method.
          * @return The stack manipulation to apply.
          */
-        protected abstract StackManipulation resolve(T initialized,
+        protected abstract StackManipulation resolve(@MaybeNull T initialized,
                                                      FieldDescription fieldDescription,
                                                      TypeDescription instrumentedType,
                                                      MethodDescription instrumentedMethod);
@@ -1030,7 +1079,7 @@ public abstract class FieldAccessor implements Implementation {
             /**
              * {@inheritDoc}
              */
-            @Nonnull(when = When.NEVER)
+            @AlwaysNull
             protected Void initialize(TypeDescription instrumentedType) {
                 return null;
             }
@@ -1038,7 +1087,7 @@ public abstract class FieldAccessor implements Implementation {
             /**
              * {@inheritDoc}
              */
-            protected StackManipulation resolve(Void unused,
+            protected StackManipulation resolve(@MaybeNull Void unused,
                                                 FieldDescription fieldDescription,
                                                 TypeDescription instrumentedType,
                                                 MethodDescription instrumentedMethod) {
@@ -1102,7 +1151,7 @@ public abstract class FieldAccessor implements Implementation {
             /**
              * {@inheritDoc}
              */
-            @Nonnull(when = When.NEVER)
+            @AlwaysNull
             protected Void initialize(TypeDescription instrumentedType) {
                 return null;
             }
@@ -1110,7 +1159,7 @@ public abstract class FieldAccessor implements Implementation {
             /**
              * {@inheritDoc}
              */
-            protected StackManipulation resolve(Void initialized,
+            protected StackManipulation resolve(@MaybeNull Void initialized,
                                                 FieldDescription fieldDescription,
                                                 TypeDescription instrumentedType,
                                                 MethodDescription instrumentedMethod) {
@@ -1185,7 +1234,7 @@ public abstract class FieldAccessor implements Implementation {
             /**
              * {@inheritDoc}
              */
-            @Nonnull(when = When.NEVER)
+            @AlwaysNull
             protected Void initialize(TypeDescription instrumentedType) {
                 return null;
             }
@@ -1193,7 +1242,7 @@ public abstract class FieldAccessor implements Implementation {
             /**
              * {@inheritDoc}
              */
-            protected StackManipulation resolve(Void unused,
+            protected StackManipulation resolve(@MaybeNull Void unused,
                                                 FieldDescription fieldDescription,
                                                 TypeDescription instrumentedType,
                                                 MethodDescription instrumentedMethod) {
@@ -1286,7 +1335,8 @@ public abstract class FieldAccessor implements Implementation {
             /**
              * {@inheritDoc}
              */
-            protected StackManipulation resolve(FieldDescription.InDefinedShape target,
+            @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Expects its own initialized value as argument")
+            protected StackManipulation resolve(@MaybeNull FieldDescription.InDefinedShape target,
                                                 FieldDescription fieldDescription,
                                                 TypeDescription instrumentedType,
                                                 MethodDescription instrumentedMethod) {
@@ -1370,7 +1420,8 @@ public abstract class FieldAccessor implements Implementation {
             /**
              * {@inheritDoc}
              */
-            protected StackManipulation resolve(FieldLocation.Prepared target,
+            @SuppressFBWarnings(value = "NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE", justification = "Expects its own initialized value as argument")
+            protected StackManipulation resolve(@MaybeNull FieldLocation.Prepared target,
                                                 FieldDescription fieldDescription,
                                                 TypeDescription instrumentedType,
                                                 MethodDescription instrumentedMethod) {
@@ -1422,8 +1473,10 @@ public abstract class FieldAccessor implements Implementation {
             private final TypeDescription instrumentedType;
 
             /**
-             * The initialized value.
+             * The initialized value which might be {@code null}.
              */
+            @MaybeNull
+            @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
             private final T initialized;
 
             /**
@@ -1435,10 +1488,10 @@ public abstract class FieldAccessor implements Implementation {
              * Creates a new appender for a field setter.
              *
              * @param instrumentedType The instrumented type.
-             * @param initialized      The initialized value.
+             * @param initialized      The initialized value which might be {@code null}.
              * @param fieldLocation    The set field's prepared location.
              */
-            protected Appender(TypeDescription instrumentedType, T initialized, FieldLocation.Prepared fieldLocation) {
+            protected Appender(TypeDescription instrumentedType, @MaybeNull T initialized, FieldLocation.Prepared fieldLocation) {
                 this.instrumentedType = instrumentedType;
                 this.initialized = initialized;
                 this.fieldLocation = fieldLocation;

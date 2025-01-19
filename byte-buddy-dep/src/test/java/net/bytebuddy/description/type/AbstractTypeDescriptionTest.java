@@ -1,6 +1,7 @@
 package net.bytebuddy.description.type;
 
 import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.asm.AsmVisitorWrapper;
 import net.bytebuddy.description.TypeVariableSource;
 import net.bytebuddy.description.annotation.AnnotationDescription;
 import net.bytebuddy.description.annotation.AnnotationList;
@@ -16,6 +17,8 @@ import net.bytebuddy.test.packaging.SimpleType;
 import net.bytebuddy.test.scope.EnclosingType;
 import net.bytebuddy.test.utility.JavaVersionRule;
 import net.bytebuddy.test.visibility.Sample;
+import net.bytebuddy.utility.AsmClassReader;
+import net.bytebuddy.utility.AsmClassWriter;
 import net.bytebuddy.utility.OpenedClassReader;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.Matcher;
@@ -31,6 +34,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.reflect.Array;
 import java.lang.reflect.GenericSignatureFormatError;
+import java.lang.reflect.MalformedParameterizedTypeException;
 import java.util.*;
 import java.util.concurrent.Callable;
 
@@ -39,8 +43,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptionGenericVariableDefiningTest {
 
@@ -213,8 +216,20 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
     @Test
     public void testSimpleName() throws Exception {
         for (Class<?> type : standardTypes) {
-            if (type.getName().equals("net.bytebuddy.test.scope.EnclosingType$1Foo"))
-                assertThat(describe(type).getSimpleName(), is(type.getSimpleName()));
+            assertThat(describe(type).getSimpleName(), is(type.getSimpleName()));
+        }
+    }
+
+    @Test
+    public void getLongSimpleName() throws Exception {
+        for (Class<?> type : standardTypes) {
+            if (type.getDeclaringClass() == null) {
+                assertThat(describe(type).getLongSimpleName(), is(type.getSimpleName()));
+            } else {
+                assertThat(describe(type).getLongSimpleName(), is(type.getDeclaringClass().getSimpleName()
+                        + "."
+                        + type.getSimpleName()));
+            }
         }
     }
 
@@ -352,7 +367,7 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
         assertThat(describe(SampleClass.class), not(new Object()));
         assertThat(describe(SampleClass.class), not(equalTo(null)));
         assertThat(describe(Object[].class), is((TypeDescription) TypeDescription.ForLoadedType.of(Object[].class)));
-        assertThat(describe(Object[].class), not(TypeDescription.OBJECT));
+        assertThat(describe(Object[].class), not(TypeDescription.ForLoadedType.of(Object.class)));
     }
 
     @Test
@@ -409,10 +424,10 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
         assertThat(describe(SampleInterface.class).getSuperClass(), nullValue(TypeDescription.Generic.class));
         assertThat(describe(SampleAnnotation.class).getSuperClass(), nullValue(TypeDescription.Generic.class));
         assertThat(describe(void.class).getSuperClass(), nullValue(TypeDescription.Generic.class));
-        assertThat(describe(SampleClass.class).getSuperClass(), is(TypeDescription.Generic.OBJECT));
+        assertThat(describe(SampleClass.class).getSuperClass(), is(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)));
         assertThat(describe(SampleIndirectInterfaceImplementation.class).getSuperClass(),
                 is((TypeDefinition) TypeDescription.ForLoadedType.of(SampleInterfaceImplementation.class)));
-        assertThat(describe(Object[].class).getSuperClass(), is(TypeDescription.Generic.OBJECT));
+        assertThat(describe(Object[].class).getSuperClass(), is(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)));
     }
 
     @Test
@@ -505,12 +520,12 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
         assertThat(describe(SamplePackagePrivate.class).isVisibleTo(TypeDescription.ForLoadedType.of(SampleClass.class)), is(true));
         assertThat(describe(SampleInterface.class).isVisibleTo(TypeDescription.ForLoadedType.of(SampleClass.class)), is(true));
         assertThat(describe(OtherAnnotation.class).isVisibleTo(TypeDescription.ForLoadedType.of(SampleClass.class)), is(true));
-        assertThat(describe(SamplePackagePrivate.class).isVisibleTo(TypeDescription.OBJECT), is(false));
-        assertThat(describe(SampleInterface.class).isVisibleTo(TypeDescription.OBJECT), is(true));
-        assertThat(describe(OtherAnnotation.class).isVisibleTo(TypeDescription.OBJECT), is(false));
-        assertThat(describe(int.class).isVisibleTo(TypeDescription.OBJECT), is(true));
-        assertThat(describe(SampleInterface[].class).isVisibleTo(TypeDescription.OBJECT), is(true));
-        assertThat(describe(SamplePackagePrivate[].class).isVisibleTo(TypeDescription.OBJECT), is(false));
+        assertThat(describe(SamplePackagePrivate.class).isVisibleTo(TypeDescription.ForLoadedType.of(Object.class)), is(false));
+        assertThat(describe(SampleInterface.class).isVisibleTo(TypeDescription.ForLoadedType.of(Object.class)), is(true));
+        assertThat(describe(OtherAnnotation.class).isVisibleTo(TypeDescription.ForLoadedType.of(Object.class)), is(false));
+        assertThat(describe(int.class).isVisibleTo(TypeDescription.ForLoadedType.of(Object.class)), is(true));
+        assertThat(describe(SampleInterface[].class).isVisibleTo(TypeDescription.ForLoadedType.of(Object.class)), is(true));
+        assertThat(describe(SamplePackagePrivate[].class).isVisibleTo(TypeDescription.ForLoadedType.of(Object.class)), is(false));
     }
 
     @Test
@@ -565,7 +580,7 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
         assertThat(iterator.hasNext(), is(true));
         assertThat(iterator.next(), is((TypeDefinition) TypeDescription.ForLoadedType.of(Traversal.class)));
         assertThat(iterator.hasNext(), is(true));
-        assertThat(iterator.next(), is((TypeDefinition) TypeDescription.OBJECT));
+        assertThat(iterator.next(), is((TypeDefinition) TypeDescription.ForLoadedType.of(Object.class)));
         assertThat(iterator.hasNext(), is(false));
     }
 
@@ -573,7 +588,7 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
     public void testHierarchyEnds() throws Exception {
         Iterator<TypeDefinition> iterator = describe(Object.class).iterator();
         assertThat(iterator.hasNext(), is(true));
-        assertThat(iterator.next(), is((TypeDefinition) TypeDescription.OBJECT));
+        assertThat(iterator.next(), is((TypeDefinition) TypeDescription.ForLoadedType.of(Object.class)));
         assertThat(iterator.hasNext(), is(false));
         iterator.next();
     }
@@ -597,6 +612,32 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
         TypeDescription typeDescription = describe(SignatureMalformer.malform(MalformedBase.class));
         assertThat(typeDescription.getDeclaredMethods().filter(isMethod()).size(), is(1));
         typeDescription.getDeclaredMethods().filter(isMethod()).getOnly().getReturnType().getSort();
+    }
+
+    @Test(expected = TypeNotPresentException.class)
+    public void testMalformedTypeVariableDefinition() throws Exception {
+        TypeDescription typeDescription = describe(TypeVariableMalformer.malform(MalformedTypeVariable.class));
+        assertThat(typeDescription.getDeclaredFields().size(), is(1));
+        typeDescription.getDeclaredFields().getOnly().getType().getUpperBounds();
+    }
+
+    @Test(expected = TypeNotPresentException.class)
+    public void testMalformedParameterizedTypeVariableDefinition() throws Exception {
+        TypeDescription typeDescription = describe(TypeVariableMalformer.malform(MalformedParameterizedTypeVariable.class));
+        assertThat(typeDescription.getDeclaredFields().getOnly().getType().getTypeArguments().size(), is(1));
+        typeDescription.getDeclaredFields().getOnly().getType().getTypeArguments().getOnly().getUpperBounds();
+    }
+
+    @Test(expected = MalformedParameterizedTypeException.class)
+    public void testMalformedParameterizedLengthDefinitionArguments() throws Exception {
+        TypeDescription typeDescription = describe(ParameterizedTypeLengthMalformer.malform(MalformedParameterizedLength.class));
+        typeDescription.getDeclaredFields().getOnly().getType().getTypeArguments();
+    }
+
+    @Test(expected = MalformedParameterizedTypeException.class)
+    public void testMalformedParameterizedLengthDefinitionOwner() throws Exception {
+        TypeDescription typeDescription = describe(ParameterizedTypeLengthMalformer.malform(MalformedParameterizedLength.class));
+        typeDescription.getDeclaredFields().getOnly().getType().getOwnerType();
     }
 
     @Test
@@ -654,6 +695,8 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
         assertThat(describe(GenericSample.Nested.class).isGenerified(), is(false));
         assertThat(describe(GenericSample.NestedInterface.class).isGenerified(), is(false));
         assertThat(describe(Object.class).isGenerified(), is(false));
+        assertThat(describe(anonymousGenericSample().getClass()).isGenerified(), is(true));
+        assertThat(describe(innerGenericSample().getClass()).isGenerified(), is(true));
     }
 
     @Test
@@ -709,11 +752,11 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
 
     @Test
     public void testNestMatesTrivial() throws Exception {
-        assertThat(describe(Object.class).getNestHost(), is(TypeDescription.OBJECT));
+        assertThat(describe(Object.class).getNestHost(), is(TypeDescription.ForLoadedType.of(Object.class)));
         assertThat(describe(Object.class).getNestMembers().size(), is(1));
-        assertThat(describe(Object.class).getNestMembers(), hasItem(TypeDescription.OBJECT));
+        assertThat(describe(Object.class).getNestMembers(), hasItem(TypeDescription.ForLoadedType.of(Object.class)));
         assertThat(describe(Object.class).isNestMateOf(Object.class), is(true));
-        assertThat(describe(Object.class).isNestMateOf(TypeDescription.STRING), is(false));
+        assertThat(describe(Object.class).isNestMateOf(TypeDescription.ForLoadedType.of(String.class)), is(false));
         assertThat(describe(Object.class).isNestHost(), is(true));
     }
 
@@ -735,13 +778,13 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
 
     @Test
     public void testNonEnclosedAnonymousType() throws Exception {
-        ClassWriter classWriter = new ClassWriter(0);
-        classWriter.visit(Opcodes.V1_6, Opcodes.ACC_PUBLIC, "foo/Bar", null, "java/lang/Object", null);
-        classWriter.visitInnerClass("foo/Bar", null, null, Opcodes.ACC_PUBLIC);
-        classWriter.visitEnd();
+        AsmClassWriter classWriter = AsmClassWriter.Factory.Default.IMPLICIT.make(AsmVisitorWrapper.NO_FLAGS);
+        classWriter.getVisitor().visit(Opcodes.V1_6, Opcodes.ACC_PUBLIC, "foo/Bar", null, "java/lang/Object", null);
+        classWriter.getVisitor().visitInnerClass("foo/Bar", null, null, Opcodes.ACC_PUBLIC);
+        classWriter.getVisitor().visitEnd();
 
         ClassLoader classLoader = new ByteArrayClassLoader(null,
-                Collections.singletonMap("foo.Bar", classWriter.toByteArray()),
+                Collections.singletonMap("foo.Bar", classWriter.getBinaryRepresentation()),
                 ByteArrayClassLoader.PersistenceHandler.MANIFEST);
         Class<?> type = classLoader.loadClass("foo.Bar");
 
@@ -759,7 +802,7 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
     @Test
     @JavaVersionRule.Enforce(17)
     public void testSealed() throws Exception {
-        Class<?> sealed = Class.forName("net.bytebuddy.test.precompiled.Sealed");
+        Class<?> sealed = Class.forName("net.bytebuddy.test.precompiled.v17.Sealed");
         assertThat(describe(sealed).isSealed(), is(true));
         assertThat(describe(sealed).getPermittedSubtypes().size(), is(3));
         assertThat(describe(sealed).getPermittedSubtypes().get(0), is(describe(Class.forName(sealed.getName() + "$SubNonSealed"))));
@@ -776,10 +819,10 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
     @Test
     @JavaVersionRule.Enforce(16)
     public void testRecordComponents() throws Exception {
-        Class<?> sampleRecord = Class.forName("net.bytebuddy.test.precompiled.SampleRecord");
+        Class<?> sampleRecord = Class.forName("net.bytebuddy.test.precompiled.v16.RecordSample");
         assertThat(describe(sampleRecord).isRecord(), is(true));
         @SuppressWarnings("unchecked")
-        Class<? extends Annotation> typeAnnotation = (Class<? extends Annotation>) Class.forName("net.bytebuddy.test.precompiled.TypeAnnotation");
+        Class<? extends Annotation> typeAnnotation = (Class<? extends Annotation>) Class.forName("net.bytebuddy.test.precompiled.v8.TypeAnnotation");
         MethodDescription.InDefinedShape value = new MethodDescription.ForLoadedMethod(typeAnnotation.getMethod("value"));
         RecordComponentList<RecordComponentDescription.InDefinedShape> recordComponents = describe(sampleRecord).getRecordComponents();
         assertThat(recordComponents.size(), is(1));
@@ -804,9 +847,9 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
     @Test
     @JavaVersionRule.Enforce(16)
     public void testRecordComponentsField() throws Exception {
-        Class<?> sampleRecord = Class.forName("net.bytebuddy.test.precompiled.SampleRecord");
+        Class<?> sampleRecord = Class.forName("net.bytebuddy.test.precompiled.v16.RecordSample");
         @SuppressWarnings("unchecked")
-        Class<? extends Annotation> typeAnnotation = (Class<? extends Annotation>) Class.forName("net.bytebuddy.test.precompiled.TypeAnnotation");
+        Class<? extends Annotation> typeAnnotation = (Class<? extends Annotation>) Class.forName("net.bytebuddy.test.precompiled.v8.TypeAnnotation");
         MethodDescription.InDefinedShape value = new MethodDescription.ForLoadedMethod(typeAnnotation.getMethod("value"));
         FieldDescription fieldDescription = describe(sampleRecord).getDeclaredFields().filter(named(FOO)).getOnly();
         assertThat(fieldDescription.getDeclaredAnnotations().size(), is(1));
@@ -827,9 +870,9 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
     @Test
     @JavaVersionRule.Enforce(16)
     public void testRecordComponentsAccessor() throws Exception {
-        Class<?> sampleRecord = Class.forName("net.bytebuddy.test.precompiled.SampleRecord");
+        Class<?> sampleRecord = Class.forName("net.bytebuddy.test.precompiled.v16.RecordSample");
         @SuppressWarnings("unchecked")
-        Class<? extends Annotation> typeAnnotation = (Class<? extends Annotation>) Class.forName("net.bytebuddy.test.precompiled.TypeAnnotation");
+        Class<? extends Annotation> typeAnnotation = (Class<? extends Annotation>) Class.forName("net.bytebuddy.test.precompiled.v8.TypeAnnotation");
         MethodDescription.InDefinedShape value = new MethodDescription.ForLoadedMethod(typeAnnotation.getMethod("value"));
         MethodDescription methodDescription = describe(sampleRecord).getDeclaredMethods().filter(named(FOO)).getOnly();
         assertThat(methodDescription.getDeclaredAnnotations().size(), is(1));
@@ -850,9 +893,9 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
     @Test
     @JavaVersionRule.Enforce(16)
     public void testRecordComponentsConstructorParameter() throws Exception {
-        Class<?> sampleRecord = Class.forName("net.bytebuddy.test.precompiled.SampleRecord");
+        Class<?> sampleRecord = Class.forName("net.bytebuddy.test.precompiled.v16.RecordSample");
         @SuppressWarnings("unchecked")
-        Class<? extends Annotation> typeAnnotation = (Class<? extends Annotation>) Class.forName("net.bytebuddy.test.precompiled.TypeAnnotation");
+        Class<? extends Annotation> typeAnnotation = (Class<? extends Annotation>) Class.forName("net.bytebuddy.test.precompiled.v8.TypeAnnotation");
         MethodDescription.InDefinedShape value = new MethodDescription.ForLoadedMethod(typeAnnotation.getMethod("value"));
         ParameterDescription parameterDescription = describe(sampleRecord).getDeclaredMethods().filter(isConstructor()).getOnly().getParameters().getOnly();
         assertThat(parameterDescription.getDeclaredAnnotations().size(), is(1));
@@ -868,6 +911,14 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
         assertThat(parameterDescription.getType().getTypeArguments().getOnly().getDeclaredAnnotations().size(), is(1));
         assertThat(parameterDescription.getType().getTypeArguments().getOnly().getDeclaredAnnotations().getOnly().getAnnotationType().represents(typeAnnotation), is(true));
         assertThat(parameterDescription.getType().getTypeArguments().getOnly().getDeclaredAnnotations().getOnly().prepare(typeAnnotation).getValue(value).resolve(), is((Object) 84));
+    }
+
+    @Test
+    @JavaVersionRule.Enforce(11)
+    public void testIllegalReferenceOnTypeVariableOnOutdatedJdks() throws Exception {
+        Class<?> type = Class.forName("net.bytebuddy.test.precompiled.v11.ClassExtendsTypeReference");
+        TypeDescription description = describe(type);
+        assertThat(description.getDeclaredMethods().filter(isMethod()).getOnly().getTypeVariables().size(), is(0));
     }
 
     private Class<?> inMethodClass() {
@@ -899,18 +950,16 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
 
     private static class SignatureMalformer extends ClassVisitor {
 
-        private static final String FOO = "foo";
-
         public SignatureMalformer(ClassVisitor classVisitor) {
             super(OpenedClassReader.ASM_API, classVisitor);
         }
 
         public static Class<?> malform(Class<?> type) throws Exception {
-            ClassReader classReader = new ClassReader(type.getName());
-            ClassWriter classWriter = new ClassWriter(classReader, 0);
-            classReader.accept(new SignatureMalformer(classWriter), 0);
+            AsmClassReader classReader = AsmClassReader.Factory.Default.IMPLICIT.make(ClassFileLocator.ForClassLoader.read(type));
+            AsmClassWriter classWriter = AsmClassWriter.Factory.Default.IMPLICIT.make(AsmVisitorWrapper.NO_FLAGS, classReader);
+            classReader.accept(new SignatureMalformer(classWriter.getVisitor()), AsmVisitorWrapper.NO_FLAGS);
             ClassLoader classLoader = new ByteArrayClassLoader(ClassLoadingStrategy.BOOTSTRAP_LOADER,
-                    Collections.singletonMap(type.getName(), classWriter.toByteArray()),
+                    Collections.singletonMap(type.getName(), classWriter.getBinaryRepresentation()),
                     ByteArrayClassLoader.PersistenceHandler.MANIFEST);
             return classLoader.loadClass(type.getName());
         }
@@ -921,13 +970,85 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
         }
 
         @Override
-        public FieldVisitor visitField(int access, String name, String desc, String signature, Object value) {
-            return super.visitField(access, name, desc, FOO, value);
+        public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+            return super.visitField(access, name, descriptor, FOO, value);
         }
 
         @Override
         public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
             return super.visitMethod(access, name, desc, FOO, exceptions);
+        }
+    }
+
+    private static class TypeVariableMalformer extends ClassVisitor {
+
+        public TypeVariableMalformer(ClassVisitor classVisitor) {
+            super(OpenedClassReader.ASM_API, classVisitor);
+        }
+
+        public static Class<?> malform(Class<?> type) throws Exception {
+            AsmClassReader classReader = AsmClassReader.Factory.Default.IMPLICIT.make(ClassFileLocator.ForClassLoader.read(type));
+            AsmClassWriter classWriter = AsmClassWriter.Factory.Default.IMPLICIT.make(AsmVisitorWrapper.NO_FLAGS, classReader);
+            classReader.accept(new TypeVariableMalformer(classWriter.getVisitor()), AsmVisitorWrapper.NO_FLAGS);
+            ClassLoader classLoader = new ByteArrayClassLoader(ClassLoadingStrategy.BOOTSTRAP_LOADER,
+                    Collections.singletonMap(type.getName(), classWriter.getBinaryRepresentation()),
+                    ByteArrayClassLoader.PersistenceHandler.MANIFEST);
+            return classLoader.loadClass(type.getName());
+        }
+
+        @Override
+        public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+            if (descriptor.equals(Type.getDescriptor(Object.class))) {
+                signature = "TA;";
+            } else if (descriptor.equals(Type.getDescriptor(Set.class))) {
+                signature = "L" + Type.getInternalName(Set.class) + "<TA;>;";
+            }
+            return super.visitField(access, name, descriptor, signature, value);
+        }
+
+        @Override
+        public void visitInnerClass(String name, String outerName, String innerName, int access) {
+            /* do nothing */
+        }
+
+        @Override
+        public void visitOuterClass(String owner, String name, String descriptor) {
+            /* do nothing */
+        }
+    }
+
+    private static class ParameterizedTypeLengthMalformer extends ClassVisitor {
+
+        public ParameterizedTypeLengthMalformer(ClassVisitor classVisitor) {
+            super(OpenedClassReader.ASM_API, classVisitor);
+        }
+
+        public static Class<?> malform(Class<?> type) throws Exception {
+            AsmClassReader classReader = AsmClassReader.Factory.Default.IMPLICIT.make(ClassFileLocator.ForClassLoader.read(type));
+            AsmClassWriter classWriter = AsmClassWriter.Factory.Default.IMPLICIT.make(AsmVisitorWrapper.NO_FLAGS, classReader);
+            classReader.accept(new ParameterizedTypeLengthMalformer(classWriter.getVisitor()), AsmVisitorWrapper.NO_FLAGS);
+            ClassLoader classLoader = new ByteArrayClassLoader(ClassLoadingStrategy.BOOTSTRAP_LOADER,
+                    Collections.singletonMap(type.getName(), classWriter.getBinaryRepresentation()),
+                    ByteArrayClassLoader.PersistenceHandler.MANIFEST);
+            return classLoader.loadClass(type.getName());
+        }
+
+        @Override
+        public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+            if (descriptor.equals(Type.getDescriptor(Map.class))) {
+                signature = "L" + Type.getInternalName(Map.class) + "<" + Type.getDescriptor(Object.class) + ">;";
+            }
+            return super.visitField(access, name, descriptor, signature, value);
+        }
+
+        @Override
+        public void visitInnerClass(String name, String outerName, String innerName, int access) {
+            /* do nothing */
+        }
+
+        @Override
+        public void visitOuterClass(String owner, String name, String descriptor) {
+            /* do nothing */
         }
     }
 
@@ -937,6 +1058,24 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
         Callable<T> foo;
 
         abstract Callable<T> foo();
+    }
+
+    @SuppressWarnings("unused")
+    public abstract static class MalformedTypeVariable {
+
+        Object foo;
+    }
+
+    @SuppressWarnings("unused")
+    public abstract static class MalformedParameterizedTypeVariable {
+
+        Set<Object> foo;
+    }
+
+    @SuppressWarnings("unused")
+    public abstract static class MalformedParameterizedLength {
+
+        Map<Object, Object> foo;
     }
 
     static class SamplePackagePrivate {
@@ -1020,6 +1159,19 @@ public abstract class AbstractTypeDescriptionTest extends AbstractTypeDescriptio
         interface NestedInterface {
             /* empty */
         }
+    }
+
+    private static  <T> GenericSample<T> anonymousGenericSample() {
+        return new GenericSample<T>() {
+            /* empty */
+        };
+    }
+
+    private static  <T> GenericSample<T> innerGenericSample() {
+        class ExtendedGenericSample<T> extends GenericSample<T> {
+            /* empty */
+        };
+        return new ExtendedGenericSample<T>();
     }
 
     private static class Type$With$Dollar {

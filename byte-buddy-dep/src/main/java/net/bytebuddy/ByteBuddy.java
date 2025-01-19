@@ -39,10 +39,7 @@ import net.bytebuddy.implementation.attribute.AnnotationRetention;
 import net.bytebuddy.implementation.attribute.AnnotationValueFilter;
 import net.bytebuddy.implementation.attribute.MethodAttributeAppender;
 import net.bytebuddy.implementation.auxiliary.AuxiliaryType;
-import net.bytebuddy.implementation.bytecode.ByteCodeAppender;
-import net.bytebuddy.implementation.bytecode.Duplication;
-import net.bytebuddy.implementation.bytecode.StackManipulation;
-import net.bytebuddy.implementation.bytecode.TypeCreation;
+import net.bytebuddy.implementation.bytecode.*;
 import net.bytebuddy.implementation.bytecode.assign.Assigner;
 import net.bytebuddy.implementation.bytecode.assign.TypeCasting;
 import net.bytebuddy.implementation.bytecode.collection.ArrayFactory;
@@ -55,11 +52,11 @@ import net.bytebuddy.implementation.bytecode.member.MethodVariableAccess;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.LatentMatcher;
 import net.bytebuddy.utility.*;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import net.bytebuddy.utility.privilege.GetSystemPropertyAction;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
-import javax.annotation.Nullable;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.lang.reflect.Type;
@@ -114,6 +111,13 @@ public class ByteBuddy {
     public static final String DEFAULT_NAMING_PROPERTY = "net.bytebuddy.naming";
 
     /**
+     * A property that controls the default type validation applied by Byte Buddy. If not set,
+     * and if not otherwise configured by the user, types will be explicitly validated to
+     * supply better error messages.
+     */
+    public static final String DEFAULT_VALIDATION_PROPERTY = "net.bytebuddy.validation";
+
+    /**
      * The default prefix for the default {@link net.bytebuddy.NamingStrategy}.
      */
     private static final String BYTE_BUDDY_DEFAULT_PREFIX = "ByteBuddy";
@@ -124,59 +128,96 @@ public class ByteBuddy {
     private static final String BYTE_BUDDY_DEFAULT_SUFFIX = "auxiliary";
 
     /**
+     * The default name of a fixed context name for synthetic fields and methods.
+     */
+    private static final String BYTE_BUDDY_DEFAULT_CONTEXT_NAME = "synthetic";
+
+    /**
+     * The default type validation to apply.
+     */
+    private static final TypeValidation DEFAULT_TYPE_VALIDATION;
+
+    /**
      * The default naming strategy or {@code null} if no such strategy is set.
      */
-    @Nullable
+    @MaybeNull
     private static final NamingStrategy DEFAULT_NAMING_STRATEGY;
 
     /**
      * The default auxiliary naming strategy or {@code null} if no such strategy is set.
      */
-    @Nullable
+    @MaybeNull
     private static final AuxiliaryType.NamingStrategy DEFAULT_AUXILIARY_NAMING_STRATEGY;
+
+    /**
+     * The default implementation context factory or {@code null} if no such factory is set.
+     */
+    @MaybeNull
+    private static final Implementation.Context.Factory DEFAULT_IMPLEMENTATION_CONTEXT_FACTORY;
 
     /*
      * Resolves the default naming strategy.
      */
     static {
-        String value = doPrivileged(new GetSystemPropertyAction(DEFAULT_NAMING_PROPERTY));
+        String validation;
+        try {
+            validation = doPrivileged(new GetSystemPropertyAction(DEFAULT_VALIDATION_PROPERTY));
+        } catch (Throwable ignored) {
+            validation = null;
+        }
+        DEFAULT_TYPE_VALIDATION = validation == null || Boolean.parseBoolean(validation)
+                ? TypeValidation.ENABLED
+                : TypeValidation.DISABLED;
+        String naming;
+        try {
+            naming = doPrivileged(new GetSystemPropertyAction(DEFAULT_NAMING_PROPERTY));
+        } catch (Throwable ignored) {
+            naming = null;
+        }
         NamingStrategy namingStrategy;
         AuxiliaryType.NamingStrategy auxiliaryNamingStrategy;
-        if (value == null) {
+        Implementation.Context.Factory implementationContextFactory;
+        if (naming == null) {
             if (GraalImageCode.getCurrent().isDefined()) {
                 namingStrategy = new NamingStrategy.Suffixing(BYTE_BUDDY_DEFAULT_PREFIX,
                         new NamingStrategy.Suffixing.BaseNameResolver.WithCallerSuffix(NamingStrategy.Suffixing.BaseNameResolver.ForUnnamedType.INSTANCE),
                         NamingStrategy.BYTE_BUDDY_RENAME_PACKAGE);
-                auxiliaryNamingStrategy = new AuxiliaryType.NamingStrategy.Enumerating(BYTE_BUDDY_DEFAULT_SUFFIX);
+                auxiliaryNamingStrategy = new AuxiliaryType.NamingStrategy.Suffixing(BYTE_BUDDY_DEFAULT_SUFFIX);
+                implementationContextFactory = new Implementation.Context.Default.Factory.WithFixedSuffix(BYTE_BUDDY_DEFAULT_CONTEXT_NAME);
             } else {
                 namingStrategy = null;
                 auxiliaryNamingStrategy = null;
+                implementationContextFactory = null;
             }
-        } else if (value.equalsIgnoreCase("fixed")) {
+        } else if (naming.equalsIgnoreCase("fixed")) {
             namingStrategy = new NamingStrategy.Suffixing(BYTE_BUDDY_DEFAULT_PREFIX,
                     NamingStrategy.Suffixing.BaseNameResolver.ForUnnamedType.INSTANCE,
                     NamingStrategy.BYTE_BUDDY_RENAME_PACKAGE);
-            auxiliaryNamingStrategy = new AuxiliaryType.NamingStrategy.Enumerating(BYTE_BUDDY_DEFAULT_SUFFIX);
-        } else if (value.equalsIgnoreCase("caller")) {
+            auxiliaryNamingStrategy = new AuxiliaryType.NamingStrategy.Suffixing(BYTE_BUDDY_DEFAULT_SUFFIX);
+            implementationContextFactory = new Implementation.Context.Default.Factory.WithFixedSuffix(BYTE_BUDDY_DEFAULT_CONTEXT_NAME);
+        } else if (naming.equalsIgnoreCase("caller")) {
             namingStrategy = new NamingStrategy.Suffixing(BYTE_BUDDY_DEFAULT_PREFIX,
                     new NamingStrategy.Suffixing.BaseNameResolver.WithCallerSuffix(NamingStrategy.Suffixing.BaseNameResolver.ForUnnamedType.INSTANCE),
                     NamingStrategy.BYTE_BUDDY_RENAME_PACKAGE);
-            auxiliaryNamingStrategy = new AuxiliaryType.NamingStrategy.Enumerating(BYTE_BUDDY_DEFAULT_SUFFIX);
+            auxiliaryNamingStrategy = new AuxiliaryType.NamingStrategy.Suffixing(BYTE_BUDDY_DEFAULT_SUFFIX);
+            implementationContextFactory = new Implementation.Context.Default.Factory.WithFixedSuffix(BYTE_BUDDY_DEFAULT_CONTEXT_NAME);
         } else {
             long seed;
             try {
-                seed = Long.parseLong(value);
+                seed = Long.parseLong(naming);
             } catch (Exception ignored) {
-                throw new IllegalStateException("'net.bytebuddy.naming' is set to an unknown, non-numeric value: " + value);
+                throw new IllegalStateException("'net.bytebuddy.naming' is set to an unknown, non-numeric value: " + naming);
             }
             namingStrategy = new NamingStrategy.SuffixingRandom(BYTE_BUDDY_DEFAULT_PREFIX,
                     NamingStrategy.Suffixing.BaseNameResolver.ForUnnamedType.INSTANCE,
                     NamingStrategy.BYTE_BUDDY_RENAME_PACKAGE,
                     new RandomString(RandomString.DEFAULT_LENGTH, new Random(seed)));
-            auxiliaryNamingStrategy = new AuxiliaryType.NamingStrategy.Enumerating(BYTE_BUDDY_DEFAULT_SUFFIX);
+            auxiliaryNamingStrategy = new AuxiliaryType.NamingStrategy.Suffixing(BYTE_BUDDY_DEFAULT_SUFFIX);
+            implementationContextFactory = new Implementation.Context.Default.Factory.WithFixedSuffix(BYTE_BUDDY_DEFAULT_CONTEXT_NAME);
         }
         DEFAULT_NAMING_STRATEGY = namingStrategy;
         DEFAULT_AUXILIARY_NAMING_STRATEGY = auxiliaryNamingStrategy;
+        DEFAULT_IMPLEMENTATION_CONTEXT_FACTORY = implementationContextFactory;
     }
 
     /**
@@ -186,7 +227,7 @@ public class ByteBuddy {
      * @param <T>    The type of the action's resolved value.
      * @return The action's resolved value.
      */
-    @Nullable
+    @MaybeNull
     @AccessControllerPlugin.Enhance
     private static <T> T doPrivileged(PrivilegedAction<T> action) {
         return action.run();
@@ -248,9 +289,14 @@ public class ByteBuddy {
     protected final VisibilityBridgeStrategy visibilityBridgeStrategy;
 
     /**
-     * The class writer strategy to use.
+     * The class reader factory to use.
      */
-    protected final ClassWriterStrategy classWriterStrategy;
+    protected final AsmClassReader.Factory classReaderFactory;
+
+    /**
+     * The class writer factory to use.
+     */
+    protected final AsmClassWriter.Factory classWriterFactory;
 
     /**
      * <p>
@@ -282,12 +328,15 @@ public class ByteBuddy {
                         : DEFAULT_AUXILIARY_NAMING_STRATEGY,
                 AnnotationValueFilter.Default.APPEND_DEFAULTS,
                 AnnotationRetention.ENABLED,
-                Implementation.Context.Default.Factory.INSTANCE,
+                DEFAULT_IMPLEMENTATION_CONTEXT_FACTORY == null
+                        ? Implementation.Context.Default.Factory.INSTANCE
+                        : DEFAULT_IMPLEMENTATION_CONTEXT_FACTORY,
                 MethodGraph.Compiler.DEFAULT,
                 InstrumentedType.Factory.Default.MODIFIABLE,
-                TypeValidation.ENABLED,
+                DEFAULT_TYPE_VALIDATION,
                 VisibilityBridgeStrategy.Default.ALWAYS,
-                ClassWriterStrategy.Default.CONSTANT_POOL_RETAINING,
+                AsmClassReader.Factory.Default.IMPLICIT,
+                AsmClassWriter.Factory.Default.IMPLICIT,
                 new LatentMatcher.Resolved<MethodDescription>(isSynthetic().or(isDefaultFinalizer())));
     }
 
@@ -304,7 +353,8 @@ public class ByteBuddy {
      * @param instrumentedTypeFactory      The instrumented type factory to use.
      * @param typeValidation               Determines if a type should be explicitly validated.
      * @param visibilityBridgeStrategy     The visibility bridge strategy to apply.
-     * @param classWriterStrategy          The class writer strategy to use.
+     * @param classReaderFactory           The class reader factory to use.
+     * @param classWriterFactory           The class writer factory to use.
      * @param ignoredMethods               A matcher for identifying methods that should be excluded from instrumentation.
      */
     protected ByteBuddy(ClassFileVersion classFileVersion,
@@ -317,7 +367,8 @@ public class ByteBuddy {
                         InstrumentedType.Factory instrumentedTypeFactory,
                         TypeValidation typeValidation,
                         VisibilityBridgeStrategy visibilityBridgeStrategy,
-                        ClassWriterStrategy classWriterStrategy,
+                        AsmClassReader.Factory classReaderFactory,
+                        AsmClassWriter.Factory classWriterFactory,
                         LatentMatcher<? super MethodDescription> ignoredMethods) {
         this.classFileVersion = classFileVersion;
         this.namingStrategy = namingStrategy;
@@ -329,7 +380,8 @@ public class ByteBuddy {
         this.instrumentedTypeFactory = instrumentedTypeFactory;
         this.typeValidation = typeValidation;
         this.visibilityBridgeStrategy = visibilityBridgeStrategy;
-        this.classWriterStrategy = classWriterStrategy;
+        this.classReaderFactory = classReaderFactory;
+        this.classWriterFactory = classWriterFactory;
         this.ignoredMethods = ignoredMethods;
     }
 
@@ -489,7 +541,7 @@ public class ByteBuddy {
         if (superType.isPrimitive() || superType.isArray() || superType.isFinal()) {
             throw new IllegalArgumentException("Cannot subclass primitive, array or final types: " + superType);
         } else if (superType.isInterface()) {
-            actualSuperType = TypeDescription.Generic.OBJECT;
+            actualSuperType = TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class);
             interfaceTypes = new TypeList.Generic.Explicit(superType);
         } else {
             actualSuperType = superType.asGenericType();
@@ -506,7 +558,8 @@ public class ByteBuddy {
                 methodGraphCompiler,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods,
                 constructorStrategy);
     }
@@ -652,7 +705,7 @@ public class ByteBuddy {
     public DynamicType.Builder<?> makePackage(String name) {
         return new SubclassDynamicTypeBuilder<Object>(instrumentedTypeFactory.subclass(name + "." + PackageDescription.PACKAGE_CLASS_NAME,
                 PackageDescription.PACKAGE_MODIFIERS,
-                TypeDescription.Generic.OBJECT),
+                TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)),
                 classFileVersion,
                 auxiliaryTypeNamingStrategy,
                 annotationValueFilterFactory,
@@ -661,7 +714,8 @@ public class ByteBuddy {
                 methodGraphCompiler,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods,
                 ConstructorStrategy.Default.NO_CONSTRUCTORS);
     }
@@ -673,7 +727,7 @@ public class ByteBuddy {
      * @return A dynamic type builder that creates a record.
      */
     public DynamicType.Builder<?> makeRecord() {
-        TypeDescription.Generic record = InstrumentedType.Default.of(JavaType.RECORD.getTypeStub().getName(), TypeDescription.Generic.OBJECT, Visibility.PUBLIC)
+        TypeDescription.Generic record = InstrumentedType.Default.of(JavaType.RECORD.getTypeStub().getName(), TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class), Visibility.PUBLIC)
                 .withMethod(new MethodDescription.Token(Opcodes.ACC_PROTECTED))
                 .withMethod(new MethodDescription.Token("hashCode",
                         Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT,
@@ -681,7 +735,7 @@ public class ByteBuddy {
                 .withMethod(new MethodDescription.Token("equals",
                         Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT,
                         TypeDescription.ForLoadedType.of(boolean.class).asGenericType(),
-                        Collections.singletonList(TypeDescription.Generic.OBJECT)))
+                        Collections.singletonList(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class))))
                 .withMethod(new MethodDescription.Token("toString",
                         Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT,
                         TypeDescription.ForLoadedType.of(String.class).asGenericType()))
@@ -695,7 +749,8 @@ public class ByteBuddy {
                 methodGraphCompiler,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods,
                 RecordConstructorStrategy.INSTANCE)
                 .method(isHashCode()).intercept(RecordObjectMethod.HASH_CODE)
@@ -716,9 +771,9 @@ public class ByteBuddy {
      * @return A type builder that creates a new {@link Annotation} type.
      */
     public DynamicType.Builder<? extends Annotation> makeAnnotation() {
-        return new SubclassDynamicTypeBuilder<Annotation>(instrumentedTypeFactory.subclass(namingStrategy.subclass(TypeDescription.Generic.ANNOTATION),
+        return new SubclassDynamicTypeBuilder<Annotation>(instrumentedTypeFactory.subclass(namingStrategy.subclass(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Annotation.class)),
                 ModifierContributor.Resolver.of(Visibility.PUBLIC, TypeManifestation.ANNOTATION).resolve(),
-                TypeDescription.Generic.OBJECT).withInterfaces(new TypeList.Generic.Explicit(TypeDescription.Generic.ANNOTATION)),
+                TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)).withInterfaces(new TypeList.Generic.Explicit(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Annotation.class))),
                 classFileVersion,
                 auxiliaryTypeNamingStrategy,
                 annotationValueFilterFactory,
@@ -727,7 +782,8 @@ public class ByteBuddy {
                 methodGraphCompiler,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods,
                 ConstructorStrategy.Default.NO_CONSTRUCTORS);
     }
@@ -776,7 +832,8 @@ public class ByteBuddy {
                 methodGraphCompiler,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods,
                 ConstructorStrategy.Default.NO_CONSTRUCTORS)
                 .defineConstructor(Visibility.PRIVATE).withParameters(String.class, int.class)
@@ -872,7 +929,8 @@ public class ByteBuddy {
                 methodGraphCompiler,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods,
                 type,
                 classFileLocator);
@@ -978,7 +1036,8 @@ public class ByteBuddy {
                 methodGraphCompiler,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods,
                 type,
                 classFileLocator,
@@ -1081,7 +1140,8 @@ public class ByteBuddy {
                 implementationContextFactory,
                 methodGraphCompiler,
                 typeValidation,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods,
                 classFileLocator);
     }
@@ -1106,7 +1166,8 @@ public class ByteBuddy {
                 instrumentedTypeFactory,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods);
     }
 
@@ -1130,7 +1191,8 @@ public class ByteBuddy {
                 instrumentedTypeFactory,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods);
     }
 
@@ -1153,7 +1215,8 @@ public class ByteBuddy {
                 instrumentedTypeFactory,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods);
     }
 
@@ -1177,7 +1240,8 @@ public class ByteBuddy {
                 instrumentedTypeFactory,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods);
     }
 
@@ -1208,7 +1272,8 @@ public class ByteBuddy {
                 instrumentedTypeFactory,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods);
     }
 
@@ -1234,7 +1299,8 @@ public class ByteBuddy {
                 instrumentedTypeFactory,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods);
     }
 
@@ -1242,7 +1308,7 @@ public class ByteBuddy {
      * Creates a new configuration where the {@link MethodGraph.Compiler} is used for creating a {@link MethodGraph}
      * of the instrumented type. A method graph is a representation of a type's virtual methods, including all information
      * on bridge methods that are inserted by the Java compiler. Creating a method graph is a rather expensive operation
-     * and more efficient strategies might exist for certain types or ava types that are created by alternative JVM
+     * and more efficient strategies might exist for certain types or Java types that are created by alternative JVM
      * languages. By default, a general purpose method graph compiler is used that uses the information that is exposed
      * by the generic type information that is embedded in any class file.
      *
@@ -1260,7 +1326,8 @@ public class ByteBuddy {
                 instrumentedTypeFactory,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods);
     }
 
@@ -1282,7 +1349,8 @@ public class ByteBuddy {
                 instrumentedTypeFactory,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods);
     }
 
@@ -1306,7 +1374,8 @@ public class ByteBuddy {
                 instrumentedTypeFactory,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods);
     }
 
@@ -1328,7 +1397,8 @@ public class ByteBuddy {
                 instrumentedTypeFactory,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods);
     }
 
@@ -1338,7 +1408,9 @@ public class ByteBuddy {
      *
      * @param classWriterStrategy The class writer strategy to apply during type creation.
      * @return A new Byte Buddy instance that applies the supplied class writer strategy.
+     * @deprecated Use {@link ByteBuddy#with(AsmClassWriter.Factory)}.
      */
+    @Deprecated
     public ByteBuddy with(ClassWriterStrategy classWriterStrategy) {
         return new ByteBuddy(classFileVersion,
                 namingStrategy,
@@ -1350,7 +1422,76 @@ public class ByteBuddy {
                 instrumentedTypeFactory,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                new ClassWriterStrategy.Delegating(classWriterStrategy),
+                ignoredMethods);
+    }
+
+    /**
+     * Creates a new configuration that applies the supplied class reader factory.
+     *
+     * @param classReaderFactory The class reader factory to apply during type creation.
+     * @return A new Byte Buddy instance that applies the supplied class reader factory.
+     */
+    public ByteBuddy with(AsmClassReader.Factory classReaderFactory) {
+        return new ByteBuddy(classFileVersion,
+                namingStrategy,
+                auxiliaryTypeNamingStrategy,
+                annotationValueFilterFactory,
+                annotationRetention,
+                implementationContextFactory,
+                methodGraphCompiler,
+                instrumentedTypeFactory,
+                typeValidation,
+                visibilityBridgeStrategy,
+                classReaderFactory,
+                classWriterFactory,
+                ignoredMethods);
+    }
+
+    /**
+     * Creates a new configuration that applies the supplied class writer factory.
+     *
+     * @param classWriterFactory The class writer factory to apply during type creation.
+     * @return A new Byte Buddy instance that applies the supplied class writer factory.
+     */
+    public ByteBuddy with(AsmClassWriter.Factory classWriterFactory) {
+        return new ByteBuddy(classFileVersion,
+                namingStrategy,
+                auxiliaryTypeNamingStrategy,
+                annotationValueFilterFactory,
+                annotationRetention,
+                implementationContextFactory,
+                methodGraphCompiler,
+                instrumentedTypeFactory,
+                typeValidation,
+                visibilityBridgeStrategy,
+                classReaderFactory,
+                classWriterFactory,
+                ignoredMethods);
+    }
+
+    /**
+     * Creates a new configuration that ignores any original {@link AsmClassReader} while creating classes.
+     *
+     * @return A new Byte Buddy instance that applies the supplied class writer factory.
+     */
+    public ByteBuddy withIgnoredClassReader() {
+        if (classWriterFactory instanceof AsmClassWriter.Factory.Suppressing) {
+            return this;
+        }
+        return new ByteBuddy(classFileVersion,
+                namingStrategy,
+                auxiliaryTypeNamingStrategy,
+                annotationValueFilterFactory,
+                annotationRetention,
+                implementationContextFactory,
+                methodGraphCompiler,
+                instrumentedTypeFactory,
+                typeValidation,
+                visibilityBridgeStrategy,
+                classReaderFactory,
+                new AsmClassWriter.Factory.Suppressing(classWriterFactory),
                 ignoredMethods);
     }
 
@@ -1362,6 +1503,7 @@ public class ByteBuddy {
      * @param ignoredMethods A matcher for identifying methods to be excluded from instrumentation.
      * @return A new Byte Buddy instance that excludes any method from instrumentation if it is matched by the supplied matcher.
      */
+    @SuppressWarnings("overloads")
     public ByteBuddy ignore(ElementMatcher<? super MethodDescription> ignoredMethods) {
         return ignore(new LatentMatcher.Resolved<MethodDescription>(ignoredMethods));
     }
@@ -1377,6 +1519,7 @@ public class ByteBuddy {
      * @param ignoredMethods A matcher for identifying methods to be excluded from instrumentation.
      * @return A new Byte Buddy instance that excludes any method from instrumentation if it is matched by the supplied matcher.
      */
+    @SuppressWarnings("overloads")
     public ByteBuddy ignore(LatentMatcher<? super MethodDescription> ignoredMethods) {
         return new ByteBuddy(classFileVersion,
                 namingStrategy,
@@ -1388,7 +1531,8 @@ public class ByteBuddy {
                 instrumentedTypeFactory,
                 typeValidation,
                 visibilityBridgeStrategy,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods);
     }
 
@@ -1485,7 +1629,7 @@ public class ByteBuddy {
              */
             public Size apply(MethodVisitor methodVisitor, Context implementationContext, MethodDescription instrumentedMethod) {
                 FieldDescription valuesField = instrumentedType.getDeclaredFields().filter(named(ENUM_VALUES)).getOnly();
-                MethodDescription cloneMethod = TypeDescription.Generic.OBJECT.getDeclaredMethods().filter(named(CLONE_METHOD_NAME)).getOnly();
+                MethodDescription cloneMethod = TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class).getDeclaredMethods().filter(named(CLONE_METHOD_NAME)).getOnly();
                 return new Size(new StackManipulation.Compound(
                         FieldAccess.forField(valuesField).read(),
                         MethodInvocation.invoke(cloneMethod).virtual(valuesField.getType().asErasure()),
@@ -1576,7 +1720,7 @@ public class ByteBuddy {
             return Collections.singletonList(new MethodDescription.Token(MethodDescription.CONSTRUCTOR_INTERNAL_NAME,
                     Opcodes.ACC_PUBLIC,
                     Collections.<TypeVariableToken>emptyList(),
-                    TypeDescription.Generic.VOID,
+                    TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(void.class),
                     tokens,
                     Collections.<TypeDescription.Generic>emptyList(),
                     Collections.<AnnotationDescription>emptyList(),
@@ -1749,12 +1893,12 @@ public class ByteBuddy {
                     stackManipulation,
                     MethodInvocation.invoke(new MethodDescription.Latent(JavaType.OBJECT_METHODS.getTypeStub(), new MethodDescription.Token("bootstrap",
                             Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
-                            TypeDescription.Generic.OBJECT,
+                            TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class),
                             Arrays.asList(JavaType.METHOD_HANDLES_LOOKUP.getTypeStub().asGenericType(),
-                                    TypeDescription.STRING.asGenericType(),
+                                    TypeDescription.ForLoadedType.of(String.class).asGenericType(),
                                     JavaType.TYPE_DESCRIPTOR.getTypeStub().asGenericType(),
-                                    TypeDescription.CLASS.asGenericType(),
-                                    TypeDescription.STRING.asGenericType(),
+                                    TypeDescription.ForLoadedType.of(Class.class).asGenericType(),
+                                    TypeDescription.ForLoadedType.of(String.class).asGenericType(),
                                     TypeDescription.ArrayProjection.of(JavaType.METHOD_HANDLE.getTypeStub()).asGenericType())))).dynamic(name,
                             returnType,
                             CompoundList.of(implementationTarget.getInstrumentedType(), arguments),

@@ -1,0 +1,12 @@
+plugins {
+    id "java-library"
+}
+
+java {
+    sourceCompatibility = javaVersion
+    targetCompatibility = javaVersion
+}
+
+dependencies {
+    implementation project(":service-definition-lib")
+}

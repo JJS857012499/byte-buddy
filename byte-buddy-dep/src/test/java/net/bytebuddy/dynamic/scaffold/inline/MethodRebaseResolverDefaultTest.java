@@ -9,13 +9,12 @@ import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.implementation.auxiliary.AuxiliaryType;
 import net.bytebuddy.matcher.ElementMatchers;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
-import org.mockito.Mockito;
+import org.mockito.junit.MockitoJUnit;
 import org.objectweb.asm.Opcodes;
 
 import java.util.Collections;
@@ -33,7 +32,7 @@ public class MethodRebaseResolverDefaultTest {
     private static final String FOO = "foo", BAR = "bar", QUX = "qux";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private MethodDescription.InDefinedShape methodDescription, otherMethod;
@@ -66,7 +65,7 @@ public class MethodRebaseResolverDefaultTest {
     public void setUp() throws Exception {
         when(methodDescription.asDefined()).thenReturn(methodDescription);
         when(methodDescription.getParameters()).thenReturn(new ParameterList.Empty<ParameterDescription.InDefinedShape>());
-        when(methodDescription.getReturnType()).thenReturn(TypeDescription.Generic.VOID);
+        when(methodDescription.getReturnType()).thenReturn(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(void.class));
         when(methodDescription.getInternalName()).thenReturn(FOO);
         when(methodDescription.asToken(matchesPrototype(ElementMatchers.is(instrumentedType)))).thenReturn(token);
         when(methodDescription.asSignatureToken()).thenReturn(signatureToken);

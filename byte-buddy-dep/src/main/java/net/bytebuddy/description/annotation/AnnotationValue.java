@@ -15,16 +15,16 @@
  */
 package net.bytebuddy.description.annotation;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.build.CachedReturnPlugin;
 import net.bytebuddy.description.enumeration.EnumerationDescription;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDefinition;
 import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.AnnotationTypeMismatchException;
 import java.lang.annotation.IncompleteAnnotationException;
@@ -51,7 +51,7 @@ public interface AnnotationValue<T, S> {
     /**
      * An undefined annotation value.
      */
-    @Nonnull(when = When.NEVER)
+    @AlwaysNull
     AnnotationValue<?, ?> UNDEFINED = null;
 
     /**
@@ -107,7 +107,7 @@ public interface AnnotationValue<T, S> {
      * @param classLoader The class loader for loading this value or {@code null} for using the boot loader.
      * @return The loaded value of this annotation.
      */
-    Loaded<S> load(@Nullable ClassLoader classLoader);
+    Loaded<S> load(@MaybeNull ClassLoader classLoader);
 
     /**
      * A rendering dispatcher is responsible for resolving annotation values to {@link String} representations.
@@ -201,7 +201,7 @@ public interface AnnotationValue<T, S> {
         /**
          * A rendering dispatcher for Java 14 onward.
          */
-        JAVA_14_CAPABLE_VM('{', '}', ClassFileVersion.ofThisVm(ClassFileVersion.JAVA_V5).isLessThan(ClassFileVersion.JAVA_V17)) {
+        JAVA_14_CAPABLE_VM('{', '}', true) {
             @Override
             public String toSourceString(byte value) {
                 return "(byte)0x" + Integer.toHexString(value & 0xFF);
@@ -253,7 +253,7 @@ public interface AnnotationValue<T, S> {
         /**
          * A rendering dispatcher for Java 17 onward.
          */
-        JAVA_17_CAPABLE_VM('{', '}', ClassFileVersion.ofThisVm(ClassFileVersion.JAVA_V5).isLessThan(ClassFileVersion.JAVA_V17)) {
+        JAVA_17_CAPABLE_VM('{', '}', false) {
             @Override
             public String toSourceString(byte value) {
                 return "(byte)0x" + Integer.toHexString(value & 0xFF);
@@ -305,6 +305,63 @@ public interface AnnotationValue<T, S> {
             public String toTypeErrorString(Class<?> type) {
                 return type.getName();
             }
+        },
+
+        /**
+         * A rendering dispatcher for Java 19 onward.
+         */
+        JAVA_19_CAPABLE_VM('{', '}', ClassFileVersion.ofThisVm(ClassFileVersion.JAVA_V5).isLessThan(ClassFileVersion.JAVA_V17)) {
+            @Override
+            public String toSourceString(byte value) {
+                return "(byte)0x" + Integer.toHexString(value & 0xFF);
+            }
+
+            @Override
+            public String toSourceString(char value) {
+                StringBuilder stringBuilder = new StringBuilder().append('\'');
+                if (value == '\'') {
+                    stringBuilder.append("\\'");
+                } else {
+                    stringBuilder.append(value);
+                }
+                return stringBuilder.append('\'').toString();
+            }
+
+            @Override
+            public String toSourceString(long value) {
+                return value + "L";
+            }
+
+            @Override
+            public String toSourceString(float value) {
+                return Math.abs(value) <= Float.MAX_VALUE // Float.isFinite(value)
+                        ? value + "f"
+                        : (Float.isInfinite(value) ? (value < 0.0f ? "-1.0f/0.0f" : "1.0f/0.0f") : "0.0f/0.0f");
+            }
+
+            @Override
+            public String toSourceString(double value) {
+                return Math.abs(value) <= Double.MAX_VALUE // Double.isFinite(value)
+                        ? Double.toString(value)
+                        : (Double.isInfinite(value) ? (value < 0.0d ? "-1.0/0.0" : "1.0/0.0") : "0.0/0.0");
+            }
+
+            @Override
+            public String toSourceString(String value) {
+                return "\"" + (value.indexOf('"') == -1
+                        ? value
+                        : value.replace("\"", "\\\"")) + "\"";
+            }
+
+            @Override
+            public String toSourceString(TypeDescription value) {
+                return value.getCanonicalName() + ".class";
+            }
+
+            @Override
+            public String toTypeErrorString(Class<?> type) {
+                return type.getName();
+            }
         };
 
         /**
@@ -317,9 +374,14 @@ public interface AnnotationValue<T, S> {
          */
         public static final RenderingDispatcher CURRENT;
 
+        /*
+         * Resolves the rendering dispatcher to use.
+         */
         static {
             ClassFileVersion classFileVersion = ClassFileVersion.ofThisVm(ClassFileVersion.JAVA_V5);
-            if (classFileVersion.isAtLeast(ClassFileVersion.JAVA_V17)) {
+            if (classFileVersion.isAtLeast(ClassFileVersion.JAVA_V19)) {
+                CURRENT = RenderingDispatcher.JAVA_19_CAPABLE_VM;
+            } else if (classFileVersion.isAtLeast(ClassFileVersion.JAVA_V17)) {
                 CURRENT = RenderingDispatcher.JAVA_17_CAPABLE_VM;
             } else if (classFileVersion.isAtLeast(ClassFileVersion.JAVA_V14)) {
                 CURRENT = RenderingDispatcher.JAVA_14_CAPABLE_VM;
@@ -348,8 +410,8 @@ public interface AnnotationValue<T, S> {
         /**
          * Creates a new rendering dispatcher.
          *
-         * @param openingBrace         The opening brace of an array {@link String} representation.
-         * @param closingBrace         The closing brace of an array {@link String} representation.
+         * @param openingBrace       The opening brace of an array {@link String} representation.
+         * @param closingBrace       The closing brace of an array {@link String} representation.
          * @param componentAsInteger If {@code true}, annotation types are represented as characters rather then integer values.
          */
         RenderingDispatcher(char openingBrace, char closingBrace, boolean componentAsInteger) {
@@ -1092,7 +1154,7 @@ public interface AnnotationValue<T, S> {
         /**
          * {@inheritDoc}
          */
-        public AnnotationValue.Loaded<U> load(@Nullable ClassLoader classLoader) {
+        public AnnotationValue.Loaded<U> load(@MaybeNull ClassLoader classLoader) {
             return new Loaded<U>(value, propertyDelegate);
         }
 
@@ -1103,7 +1165,7 @@ public interface AnnotationValue<T, S> {
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             return this == other || other instanceof AnnotationValue<?, ?> && propertyDelegate.equals(value, ((AnnotationValue<?, ?>) other).resolve());
         }
 
@@ -1592,7 +1654,7 @@ public interface AnnotationValue<T, S> {
             }
 
             @Override
-            public boolean equals(Object other) {
+            public boolean equals(@MaybeNull Object other) {
                 if (this == other) {
                     return true;
                 } else if (!(other instanceof AnnotationValue.Loaded<?>)) {
@@ -1677,7 +1739,7 @@ public interface AnnotationValue<T, S> {
          * {@inheritDoc}
          */
         @SuppressWarnings("unchecked")
-        public AnnotationValue.Loaded<U> load(@Nullable ClassLoader classLoader) {
+        public AnnotationValue.Loaded<U> load(@MaybeNull ClassLoader classLoader) {
             try {
                 return new Loaded<U>(annotationDescription
                         .prepare((Class<U>) Class.forName(annotationDescription.getAnnotationType().getName(), false, classLoader))
@@ -1693,7 +1755,7 @@ public interface AnnotationValue<T, S> {
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             return this == other || other instanceof AnnotationValue<?, ?> && annotationDescription.equals(((AnnotationValue<?, ?>) other).resolve());
         }
 
@@ -1750,7 +1812,7 @@ public interface AnnotationValue<T, S> {
             }
 
             @Override
-            public boolean equals(Object other) {
+            public boolean equals(@MaybeNull Object other) {
                 if (this == other) {
                     return true;
                 } else if (!(other instanceof AnnotationValue.Loaded<?>)) {
@@ -1833,7 +1895,7 @@ public interface AnnotationValue<T, S> {
          * {@inheritDoc}
          */
         @SuppressWarnings("unchecked")
-        public AnnotationValue.Loaded<U> load(@Nullable ClassLoader classLoader) {
+        public AnnotationValue.Loaded<U> load(@MaybeNull ClassLoader classLoader) {
             try {
                 return new Loaded<U>(enumerationDescription.load((Class<U>) Class.forName(enumerationDescription.getEnumerationType().getName(), false, classLoader)));
             } catch (ClassNotFoundException exception) {
@@ -1847,7 +1909,7 @@ public interface AnnotationValue<T, S> {
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             return this == other || other instanceof AnnotationValue<?, ?> && enumerationDescription.equals(((AnnotationValue<?, ?>) other).resolve());
         }
 
@@ -1904,7 +1966,7 @@ public interface AnnotationValue<T, S> {
             }
 
             @Override
-            public boolean equals(Object other) {
+            public boolean equals(@MaybeNull Object other) {
                 if (this == other) {
                     return true;
                 } else if (!(other instanceof AnnotationValue.Loaded<?>)) {
@@ -2030,7 +2092,7 @@ public interface AnnotationValue<T, S> {
              * {@inheritDoc}
              */
             @SuppressWarnings("unchecked")
-            public AnnotationValue.Loaded<U> load(@Nullable ClassLoader classLoader) {
+            public AnnotationValue.Loaded<U> load(@MaybeNull ClassLoader classLoader) {
                 try {
                     // Type casting to Object is required for Java 6 compilability.
                     return (AnnotationValue.Loaded<U>) (Object) new Loaded((Class<Enum<?>>) Class.forName(typeDescription.getName(), false, classLoader), value);
@@ -2183,7 +2245,7 @@ public interface AnnotationValue<T, S> {
          * {@inheritDoc}
          */
         @SuppressWarnings("unchecked")
-        public AnnotationValue.Loaded<U> load(@Nullable ClassLoader classLoader) {
+        public AnnotationValue.Loaded<U> load(@MaybeNull ClassLoader classLoader) {
             try {
                 return new Loaded<U>((U) (typeDescription.isPrimitive()
                         ? PRIMITIVE_TYPES.get(typeDescription)
@@ -2199,7 +2261,7 @@ public interface AnnotationValue<T, S> {
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             return this == other || other instanceof AnnotationValue<?, ?> && typeDescription.equals(((AnnotationValue<?, ?>) other).resolve());
         }
 
@@ -2256,7 +2318,7 @@ public interface AnnotationValue<T, S> {
             }
 
             @Override
-            public boolean equals(Object other) {
+            public boolean equals(@MaybeNull Object other) {
                 if (this == other) {
                     return true;
                 } else if (!(other instanceof AnnotationValue.Loaded<?>)) {
@@ -2365,7 +2427,7 @@ public interface AnnotationValue<T, S> {
             for (TypeDescription value : typeDescription) {
                 values.add((AnnotationValue) ForTypeDescription.<Class>of(value));
             }
-            return new ForDescriptionArray<TypeDescription[], Class<?>[]>(TypeDescription.class, TypeDescription.CLASS, values);
+            return new ForDescriptionArray<TypeDescription[], Class<?>[]>(TypeDescription.class, TypeDescription.ForLoadedType.of(Class.class), values);
         }
 
         /**
@@ -2386,9 +2448,13 @@ public interface AnnotationValue<T, S> {
          * {@inheritDoc}
          */
         @SuppressWarnings("unchecked")
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
         public AnnotationValue<U, V> filter(MethodDescription.InDefinedShape property, TypeDefinition typeDefinition) {
             if (typeDefinition.isArray() && typeDefinition.getComponentType().asErasure().equals(componentType)) {
                 for (AnnotationValue<?, ?> value : values) {
+                    if (value.getSort() != Sort.of(componentType)) {
+                        return new ForMismatchedType<U, V>(property, RenderingDispatcher.CURRENT.toArrayErrorString(value.getSort()));
+                    }
                     value = value.filter(property, typeDefinition.getComponentType());
                     if (value.getState() != State.RESOLVED) {
                         return (AnnotationValue<U, V>) value;
@@ -2417,13 +2483,15 @@ public interface AnnotationValue<T, S> {
          * {@inheritDoc}
          */
         @SuppressWarnings("unchecked")
-        public AnnotationValue.Loaded<V> load(@Nullable ClassLoader classLoader) {
+        public AnnotationValue.Loaded<V> load(@MaybeNull ClassLoader classLoader) {
             List<AnnotationValue.Loaded<?>> values = new ArrayList<AnnotationValue.Loaded<?>>(this.values.size());
             for (AnnotationValue<?, ?> value : this.values) {
                 values.add(value.load(classLoader));
             }
             try {
-                return new Loaded<V>((Class<V>) Class.forName(componentType.getName(), false, classLoader), values);
+                return new Loaded<V>((Class<V>) (componentType.isPrimitive()
+                        ? unloadedComponentType
+                        : Class.forName(componentType.getName(), false, classLoader)), values);
             } catch (ClassNotFoundException exception) {
                 return new ForMissingType.Loaded<V>(componentType.getName(), exception);
             }
@@ -2440,7 +2508,7 @@ public interface AnnotationValue<T, S> {
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (!(other instanceof AnnotationValue<?, ?>)) {
@@ -2526,14 +2594,13 @@ public interface AnnotationValue<T, S> {
              * {@inheritDoc}
              */
             public boolean represents(Object value) {
-                if (!(value instanceof Object[])) return false;
+                if (!value.getClass().isArray()) return false;
                 if (value.getClass().getComponentType() != componentType) return false;
-                Object[] array = (Object[]) value;
-                if (values.size() != array.length) return false;
+                if (values.size() != Array.getLength(value)) return false;
                 Iterator<AnnotationValue.Loaded<?>> iterator = values.iterator();
-                for (Object aValue : array) {
+                for (int index = 0; index < Array.getLength(value); index++) {
                     AnnotationValue.Loaded<?> self = iterator.next();
-                    if (!self.represents(aValue)) {
+                    if (!self.represents(Array.get(value, index))) {
                         return false;
                     }
                 }
@@ -2551,7 +2618,7 @@ public interface AnnotationValue<T, S> {
             }
 
             @Override
-            public boolean equals(Object other) {
+            public boolean equals(@MaybeNull Object other) {
                 if (this == other) {
                     return true;
                 } else if (!(other instanceof AnnotationValue.Loaded<?>)) {
@@ -2562,17 +2629,16 @@ public interface AnnotationValue<T, S> {
                     return false;
                 }
                 Object value = annotationValue.resolve();
-                if (!(value instanceof Object[])) {
+                if (!value.getClass().isArray()) {
                     return false;
                 }
-                Object[] arrayValue = (Object[]) value;
-                if (values.size() != arrayValue.length) {
+                if (values.size() != Array.getLength(value)) {
                     return false;
                 }
                 Iterator<AnnotationValue.Loaded<?>> iterator = values.iterator();
-                for (Object aValue : arrayValue) {
+                for (int index = 0; index < Array.getLength(value); index++) {
                     AnnotationValue.Loaded<?> self = iterator.next();
-                    if (!self.getState().isResolved() || !self.resolve().equals(aValue)) {
+                    if (!self.getState().isResolved() || !self.resolve().equals(Array.get(value, index))) {
                         return false;
                     }
                 }
@@ -2639,7 +2705,7 @@ public interface AnnotationValue<T, S> {
         /**
          * {@inheritDoc}
          */
-        public AnnotationValue.Loaded<V> load(@Nullable ClassLoader classLoader) {
+        public AnnotationValue.Loaded<V> load(@MaybeNull ClassLoader classLoader) {
             return new Loaded<V>(typeName, new ClassNotFoundException(typeName));
         }
 
@@ -2752,7 +2818,7 @@ public interface AnnotationValue<T, S> {
         /**
          * {@inheritDoc}
          */
-        public AnnotationValue.Loaded<V> load(@Nullable ClassLoader classLoader) {
+        public AnnotationValue.Loaded<V> load(@MaybeNull ClassLoader classLoader) {
             try {
                 Class<?> type = Class.forName(property.getDeclaringType().getName(), false, classLoader);
                 try {
@@ -2868,7 +2934,7 @@ public interface AnnotationValue<T, S> {
          * {@inheritDoc}
          */
         @SuppressWarnings("unchecked")
-        public AnnotationValue.Loaded<V> load(@Nullable ClassLoader classLoader) {
+        public AnnotationValue.Loaded<V> load(@MaybeNull ClassLoader classLoader) {
             try {
                 Class<? extends Annotation> type = (Class<? extends Annotation>) Class.forName(typeDescription.getName(), false, classLoader);
                 return type.isAnnotation()
@@ -2994,7 +3060,7 @@ public interface AnnotationValue<T, S> {
         /**
          * {@inheritDoc}
          */
-        public AnnotationValue.Loaded<V> load(@Nullable ClassLoader classLoader) {
+        public AnnotationValue.Loaded<V> load(@MaybeNull ClassLoader classLoader) {
             try {
                 return new Loaded<V>(Class.forName(typeDescription.getName(), false, classLoader));
             } catch (ClassNotFoundException exception) {

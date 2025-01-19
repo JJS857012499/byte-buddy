@@ -15,7 +15,9 @@
  */
 package net.bytebuddy.agent;
 
-import javax.annotation.Nullable;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import net.bytebuddy.agent.utility.nullability.MaybeNull;
+
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.InvocationTargetException;
 import java.security.Permission;
@@ -26,13 +28,18 @@ import java.security.Permission;
 public class Installer {
 
     /**
+     * The name of the {@link Installer} class that is stored in an obfuscated format which will not be relocated.
+     */
+    public static final String NAME = new StringBuilder("rellatsnI.tnega.yddubetyb.ten").reverse().toString();
+
+    /**
      * A field for carrying the {@link java.lang.instrument.Instrumentation} that was loaded by the Byte Buddy
      * agent. Note that this field must never be accessed directly as the agent is injected into the VM's
      * system class loader. This way, the field of this class might be {@code null} even after the installation
      * of the Byte Buddy agent as this class might be loaded by a different class loader than the system class
      * loader.
      */
-    @Nullable
+    @MaybeNull
     private static volatile Instrumentation instrumentation;
 
     /**
@@ -90,16 +97,38 @@ public class Installer {
      * @param instrumentation The instrumentation instance.
      */
     public static void premain(String arguments, Instrumentation instrumentation) {
-        Installer.instrumentation = instrumentation;
+        doMain(instrumentation);
     }
 
     /**
-     * Allows the installation of this agent via the Attach API.
+     * Allows the installation of this agent via the attach API.
      *
      * @param arguments       The unused agent arguments.
      * @param instrumentation The instrumentation instance.
      */
     public static void agentmain(String arguments, Instrumentation instrumentation) {
+        doMain(instrumentation);
+    }
+
+    /**
+     * Installs the {@link Instrumentation} in the current class and possibly obfuscated class.
+     *
+     * @param instrumentation The instrumentation instance.
+     */
+    @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not interrupt agent attachment.")
+    private static synchronized void doMain(Instrumentation instrumentation) {
+        if (Installer.instrumentation != null) {
+            return;
+        }
         Installer.instrumentation = instrumentation;
+        try {
+            if (!Installer.class.getName().equals(NAME)) {
+                Class.forName(NAME, false, ClassLoader.getSystemClassLoader())
+                        .getField("instrumentation")
+                        .set(null, instrumentation);
+            }
+        } catch (Throwable ignored) {
+            /* do nothing */
+        }
     }
 }

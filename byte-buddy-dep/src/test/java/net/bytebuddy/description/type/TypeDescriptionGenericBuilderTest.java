@@ -4,15 +4,17 @@ import net.bytebuddy.description.annotation.AnnotationDescription;
 import net.bytebuddy.description.field.FieldDescription;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.test.utility.JavaVersionRule;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.MethodRule;
 
-import java.lang.reflect.*;
-import java.util.ArrayList;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Type;
+import java.lang.reflect.WildcardType;
+import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;
+import java.util.Comparator;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.sameInstance;
@@ -40,7 +42,13 @@ public class TypeDescriptionGenericBuilderTest extends AbstractTypeDescriptionGe
     }
 
     protected TypeDescription.Generic describeExceptionType(Method method, int index) {
-        return describe(method.getGenericExceptionTypes()[index], new TypeDescription.Generic.AnnotationReader.Delegator.ForLoadedExecutableExceptionType(method, index))
+        Type[] type = method.getGenericExceptionTypes();
+        Arrays.sort(type, new Comparator<Type>() {
+            public int compare(Type left, Type right) {
+                return left.toString().compareTo(right.toString());
+            }
+        });
+        return describe(type[index], new TypeDescription.Generic.AnnotationReader.Delegator.ForLoadedExecutableExceptionType(method, index))
                 .accept(TypeDescription.Generic.Visitor.Substitutor.ForAttachment.of(new MethodDescription.ForLoadedMethod(method)));
     }
 
@@ -84,7 +92,7 @@ public class TypeDescriptionGenericBuilderTest extends AbstractTypeDescriptionGe
     public void testGenericOwnerType() throws Exception {
         TypeDescription.Generic.Builder.parameterizedType(TypeDescription.ForLoadedType.of(Foo.Nested.class),
                 TypeDescription.Generic.Builder.parameterizedType(Foo.class, Object.class).build(),
-                Collections.<TypeDefinition>singletonList(TypeDescription.OBJECT));
+                Collections.<TypeDefinition>singletonList(TypeDescription.ForLoadedType.of(Object.class)));
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -124,12 +132,12 @@ public class TypeDescriptionGenericBuilderTest extends AbstractTypeDescriptionGe
 
     @Test(expected = IllegalArgumentException.class)
     public void testIncompatibleType() throws Exception {
-        TypeDescription.Generic.Builder.rawType(Bar.Inner.class, TypeDescription.Generic.OBJECT);
+        TypeDescription.Generic.Builder.rawType(Bar.Inner.class, TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class));
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testIncompatibleOwnerTypeWhenNonRequired() throws Exception {
-        TypeDescription.Generic.Builder.rawType(Object.class, TypeDescription.Generic.OBJECT);
+        TypeDescription.Generic.Builder.rawType(Object.class, TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class));
     }
 
     @Test

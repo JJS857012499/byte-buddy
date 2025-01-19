@@ -21,8 +21,9 @@ import com.sun.jna.ptr.IntByReference;
 import com.sun.jna.win32.StdCallLibrary;
 import com.sun.jna.win32.W32APIOptions;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import net.bytebuddy.agent.utility.nullability.MaybeNull;
+import net.bytebuddy.agent.utility.nullability.UnknownNull;
 
-import javax.annotation.Nullable;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -32,6 +33,8 @@ import java.security.PrivilegedAction;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * <p>
@@ -77,7 +80,7 @@ public interface VirtualMachine {
      * @param argument The argument to provide or {@code null} if no argument should be provided.
      * @throws IOException If an I/O exception occurs.
      */
-    void loadAgent(String jarFile, @Nullable String argument) throws IOException;
+    void loadAgent(String jarFile, @MaybeNull String argument) throws IOException;
 
     /**
      * Loads a native agent into the represented virtual machine.
@@ -94,7 +97,7 @@ public interface VirtualMachine {
      * @param argument The argument to provide or {@code null} if no argument should be provided.
      * @throws IOException If an I/O exception occurs.
      */
-    void loadAgentPath(String path, @Nullable String argument) throws IOException;
+    void loadAgentPath(String path, @MaybeNull String argument) throws IOException;
 
     /**
      * Loads a native agent library into the represented virtual machine.
@@ -111,7 +114,7 @@ public interface VirtualMachine {
      * @param argument The argument to provide or {@code null} if no argument should be provided.
      * @throws IOException If an I/O exception occurs.
      */
-    void loadAgentLibrary(String library, @Nullable String argument) throws IOException;
+    void loadAgentLibrary(String library, @MaybeNull String argument) throws IOException;
 
     /**
      * Starts a JMX management agent.
@@ -332,21 +335,21 @@ public interface VirtualMachine {
         /**
          * {@inheritDoc}
          */
-        public void loadAgent(String jarFile, @Nullable String argument) throws IOException {
+        public void loadAgent(String jarFile, @MaybeNull String argument) throws IOException {
             load(jarFile, false, argument);
         }
 
         /**
          * {@inheritDoc}
          */
-        public void loadAgentPath(String path, @Nullable String argument) throws IOException {
+        public void loadAgentPath(String path, @MaybeNull String argument) throws IOException {
             load(path, true, argument);
         }
 
         /**
          * {@inheritDoc}
          */
-        public void loadAgentLibrary(String library, @Nullable String argument) throws IOException {
+        public void loadAgentLibrary(String library, @MaybeNull String argument) throws IOException {
             load(library, false, argument);
         }
 
@@ -358,7 +361,7 @@ public interface VirtualMachine {
          * @param argument The argument to the agent or {@code null} if no argument is given.
          * @throws IOException If an I/O exception occurs.
          */
-        protected void load(String file, boolean absolute, @Nullable String argument) throws IOException {
+        protected void load(String file, boolean absolute, @MaybeNull String argument) throws IOException {
             Connection.Response response = connection.execute(PROTOCOL_VERSION, LOAD_COMMAND, INSTRUMENT_COMMAND, Boolean.toString(absolute), (argument == null
                     ? file
                     : file + ARGUMENT_DELIMITER + argument));
@@ -682,7 +685,7 @@ public interface VirtualMachine {
             }
 
             /**
-             * Implements a connection for a Posix socket in JNA.
+             * Implements a connection for a POSIX socket in JNA.
              */
             class ForJnaPosixSocket extends OnPersistentByteChannel<Integer> {
 
@@ -697,7 +700,7 @@ public interface VirtualMachine {
                 private final File socket;
 
                 /**
-                 * Creates a connection for a virtual posix socket implemented in JNA.
+                 * Creates a connection for a virtual POSIX socket implemented in JNA.
                  *
                  * @param library The JNA library to use.
                  * @param socket  The POSIX socket.
@@ -749,7 +752,7 @@ public interface VirtualMachine {
                 }
 
                 /**
-                 * A JNA library binding for Posix sockets.
+                 * A JNA library binding for POSIX sockets.
                  */
                 protected interface PosixLibrary extends Library {
 
@@ -932,7 +935,7 @@ public interface VirtualMachine {
                         /**
                          * Reads a configuration dependant variable into a memory segment.
                          *
-                         * @param name The name of the variable.
+                         * @param name   The name of the variable.
                          * @param buffer The buffer to read the variable into.
                          * @param length The length of the buffer.
                          * @return The amount of bytes written to the buffer.
@@ -1006,6 +1009,9 @@ public interface VirtualMachine {
                         throw new IllegalArgumentException("Cannot supply more then four arguments to Windows attach mechanism: " + Arrays.asList(argument));
                     }
                     String name = "\\\\.\\pipe\\javatool" + Math.abs(random.nextInt() + 1);
+
+                    WinBase.SECURITY_ATTRIBUTES sa = createSecurityAttributesToAllowMediumIntegrity();
+
                     WinNT.HANDLE pipe = Kernel32.INSTANCE.CreateNamedPipe(name,
                             WinBase.PIPE_ACCESS_INBOUND,
                             WinBase.PIPE_TYPE_BYTE | WinBase.PIPE_READMODE_BYTE | WinBase.PIPE_WAIT,
@@ -1013,7 +1019,7 @@ public interface VirtualMachine {
                             4096,
                             8192,
                             WinBase.NMPWAIT_USE_DEFAULT_WAIT,
-                            null);
+                            sa);
                     if (pipe == null) {
                         throw new Win32Exception(Native.getLastError());
                     }
@@ -1069,6 +1075,63 @@ public interface VirtualMachine {
                             throw new IllegalStateException(throwable);
                         }
                     }
+                }
+
+                /**
+                 * Custom {@link WinBase.SECURITY_ATTRIBUTES} is required here to "get" Medium Integrity Level.
+                 * In order to allow Medium Integrity Level clients to open
+                 * and use a NamedPipe created by an High Integrity Level process.
+                 *
+                 * @return A security attributes object that gives everyone read and write access.
+                 */
+                private WinBase.SECURITY_ATTRIBUTES createSecurityAttributesToAllowMediumIntegrity() {
+                    // Allow read/write to Everybody
+                    WinNT.PSID pSidEverybody = new WinNT.PSID(WinNT.SECURITY_MAX_SID_SIZE);
+                    if (!Advapi32.INSTANCE.CreateWellKnownSid(WinNT.WELL_KNOWN_SID_TYPE.WinWorldSid, null, pSidEverybody, new IntByReference(WinNT.SECURITY_MAX_SID_SIZE))) {
+                        throw new Win32Exception(Kernel32.INSTANCE.GetLastError());
+                    }
+                    // Allow full control to System
+                    WinNT.PSID pSidSystem = new WinNT.PSID(WinNT.SECURITY_MAX_SID_SIZE);
+                    if (!Advapi32.INSTANCE.CreateWellKnownSid(WinNT.WELL_KNOWN_SID_TYPE.WinBuiltinSystemOperatorsSid, null, pSidSystem, new IntByReference(WinNT.SECURITY_MAX_SID_SIZE))) {
+                        throw new Win32Exception(Kernel32.INSTANCE.GetLastError());
+                    }
+                    // Allow full control to Administrators
+                    WinNT.PSID pSidAdmin = new WinNT.PSID(WinNT.SECURITY_MAX_SID_SIZE);
+                    if (!Advapi32.INSTANCE.CreateWellKnownSid(WinNT.WELL_KNOWN_SID_TYPE.WinBuiltinAdministratorsSid, null, pSidAdmin, new IntByReference(WinNT.SECURITY_MAX_SID_SIZE))) {
+                        throw new Win32Exception(Kernel32.INSTANCE.GetLastError());
+                    }
+
+                    // Prepare ACL
+                    int cbAcl = Native.getNativeSize(WinNT.ACL.class, null);
+                    cbAcl += Native.getNativeSize(WinNT.ACCESS_ALLOWED_ACE.class, null) * 3;
+                    cbAcl += (Advapi32.INSTANCE.GetLengthSid(pSidEverybody) - WinDef.DWORD.SIZE);
+                    cbAcl += (Advapi32.INSTANCE.GetLengthSid(pSidSystem) - WinDef.DWORD.SIZE);
+                    cbAcl += (Advapi32.INSTANCE.GetLengthSid(pSidAdmin) - WinDef.DWORD.SIZE);
+                    cbAcl = Advapi32Util.alignOnDWORD(cbAcl);
+                    WinNT.ACL pAcl = new WinNT.ACL(cbAcl);
+                    if (!Advapi32.INSTANCE.InitializeAcl(pAcl, cbAcl, WinNT.ACL_REVISION)) {
+                        throw new Win32Exception(Kernel32.INSTANCE.GetLastError());
+                    }
+                    if (!Advapi32.INSTANCE.AddAccessAllowedAce(pAcl, WinNT.ACL_REVISION, WinNT.GENERIC_READ | WinNT.GENERIC_WRITE, pSidEverybody)) {
+                        throw new Win32Exception(Kernel32.INSTANCE.GetLastError());
+                    }
+                    if (!Advapi32.INSTANCE.AddAccessAllowedAce(pAcl, WinNT.ACL_REVISION, WinNT.GENERIC_ALL, pSidSystem)) {
+                        throw new Win32Exception(Kernel32.INSTANCE.GetLastError());
+                    }
+                    if (!Advapi32.INSTANCE.AddAccessAllowedAce(pAcl, WinNT.ACL_REVISION, WinNT.GENERIC_ALL, pSidAdmin)) {
+                        throw new Win32Exception(Kernel32.INSTANCE.GetLastError());
+                    }
+                    WinNT.SECURITY_DESCRIPTOR sd = new WinNT.SECURITY_DESCRIPTOR(64 * 1024);
+                    if (!Advapi32.INSTANCE.InitializeSecurityDescriptor(sd, WinNT.SECURITY_DESCRIPTOR_REVISION)) {
+                        throw new Win32Exception(Kernel32.INSTANCE.GetLastError());
+                    }
+                    if (!Advapi32.INSTANCE.SetSecurityDescriptorDacl(sd, true, pAcl, false)) {
+                        throw new Win32Exception(Kernel32.INSTANCE.GetLastError());
+                    }
+                    WinBase.SECURITY_ATTRIBUTES sa = new WinBase.SECURITY_ATTRIBUTES();
+                    sa.dwLength = new WinDef.DWORD(sa.size());
+                    sa.lpSecurityDescriptor = sd.getPointer();
+                    return sa;
                 }
 
                 /**
@@ -1130,15 +1193,15 @@ public interface VirtualMachine {
                      * @param threadId           A pointer to the thread id or {@code null} if no thread reference is set.
                      * @return A handle to the created remote thread or {@code null} if the creation failed.
                      */
-                    @Nullable
+                    @MaybeNull
                     @SuppressWarnings("checkstyle:methodname")
                     WinNT.HANDLE CreateRemoteThread(WinNT.HANDLE process,
-                                                    @Nullable WinBase.SECURITY_ATTRIBUTES securityAttributes,
+                                                    @MaybeNull WinBase.SECURITY_ATTRIBUTES securityAttributes,
                                                     int stackSize,
                                                     Pointer code,
                                                     Pointer argument,
-                                                    @Nullable WinDef.DWORD creationFlags,
-                                                    @Nullable Pointer threadId);
+                                                    @MaybeNull WinDef.DWORD creationFlags,
+                                                    @MaybeNull Pointer threadId);
 
                     /**
                      * Receives the exit code of a given thread.
@@ -1162,7 +1225,7 @@ public interface VirtualMachine {
                      * @param process A handle to the target process.
                      * @return A pointer to the allocated code or {@code null} if the code could not be allocated.
                      */
-                    @Nullable
+                    @MaybeNull
                     @SuppressWarnings("checkstyle:methodname")
                     WinDef.LPVOID allocate_remote_code(WinNT.HANDLE process);
 
@@ -1177,14 +1240,14 @@ public interface VirtualMachine {
                      * @param argument3 The forth  argument or {@code null} if no such argument is provided.
                      * @return A pointer to the allocated argument or {@code null} if the argument could not be allocated.
                      */
-                    @Nullable
+                    @MaybeNull
                     @SuppressWarnings("checkstyle:methodname")
                     WinDef.LPVOID allocate_remote_argument(WinNT.HANDLE process,
                                                            String pipe,
-                                                           @Nullable String argument0,
-                                                           @Nullable String argument1,
-                                                           @Nullable String argument2,
-                                                           @Nullable String argument3);
+                                                           @MaybeNull String argument0,
+                                                           @MaybeNull String argument1,
+                                                           @MaybeNull String argument2,
+                                                           @MaybeNull String argument3);
                 }
 
                 /**
@@ -1442,7 +1505,7 @@ public interface VirtualMachine {
                         /**
                          * A pointer to the operation argument.
                          */
-                        @Nullable
+                        @MaybeNull
                         public Pointer dataPointer;
 
                         /**
@@ -1453,7 +1516,7 @@ public interface VirtualMachine {
                         /**
                          * A pointer to the operation descriptor.
                          */
-                        @Nullable
+                        @MaybeNull
                         public Pointer descriptorPointer;
 
                         /**
@@ -1464,7 +1527,7 @@ public interface VirtualMachine {
                         /**
                          * A pointer to the operation result.
                          */
-                        @Nullable
+                        @UnknownNull
                         public Pointer resultPointer;
 
                         /**
@@ -1573,6 +1636,11 @@ public interface VirtualMachine {
         private static final String IBM_TEMPORARY_FOLDER = "com.ibm.tools.attach.directory";
 
         /**
+         * A secure random for generating randomized ids.
+         */
+        private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
+        /**
          * The socket on which this VM and the target VM communicate.
          */
         private final Socket socket;
@@ -1587,7 +1655,8 @@ public interface VirtualMachine {
         }
 
         /**
-         * Attaches to the supplied process id using the default JNA implementation.
+         * Attaches to the supplied process id using the default JNA implementation. This method will not consider
+         * attaching to VMs owned by different users than the current user.
          *
          * @param processId The process id.
          * @return A suitable virtual machine implementation.
@@ -1609,7 +1678,8 @@ public interface VirtualMachine {
          * @throws IOException If an IO exception occurs during establishing the connection.
          */
         public static VirtualMachine attach(String processId, int timeout, Dispatcher dispatcher) throws IOException {
-            File directory = new File(System.getProperty(IBM_TEMPORARY_FOLDER, dispatcher.getTemporaryFolder()), ".com_ibm_tools_attach");
+            File directory = new File(System.getProperty(IBM_TEMPORARY_FOLDER, dispatcher.getTemporaryFolder(processId)), ".com_ibm_tools_attach");
+            long userId = dispatcher.userId();
             RandomAccessFile attachLock = new RandomAccessFile(new File(directory, "_attachlock"), "rw");
             try {
                 FileLock attachLockLock = attachLock.getChannel().lock();
@@ -1623,10 +1693,9 @@ public interface VirtualMachine {
                             if (vmFolder == null) {
                                 throw new IllegalStateException("No descriptor files found in " + directory);
                             }
-                            long userId = dispatcher.userId();
                             virtualMachines = new ArrayList<Properties>();
                             for (File aVmFolder : vmFolder) {
-                                if (aVmFolder.isDirectory() && dispatcher.getOwnerIdOf(aVmFolder) == userId) {
+                                if (aVmFolder.isDirectory() && (userId == 0L || dispatcher.getOwnerIdOf(aVmFolder) == userId)) {
                                     File attachInfo = new File(aVmFolder, "attachInfo");
                                     if (attachInfo.isFile()) {
                                         Properties virtualMachine = new Properties();
@@ -1684,11 +1753,23 @@ public interface VirtualMachine {
                     try {
                         serverSocket.setSoTimeout(timeout);
                         File receiver = new File(directory, target.getProperty("vmId"));
-                        String key = Long.toHexString(new SecureRandom().nextLong());
+                        String key;
+                        synchronized (SECURE_RANDOM) {
+                            key = Long.toHexString(SECURE_RANDOM.nextLong());
+                        }
                         File reply = new File(receiver, "replyInfo");
+                        long targetUserId;
+                        try {
+                            targetUserId = Long.parseLong(target.getProperty("userUid"));
+                        } catch (NumberFormatException ignored) {
+                            targetUserId = 0L;
+                        }
                         try {
                             if (reply.createNewFile()) {
                                 dispatcher.setPermissions(reply, 0600);
+                            }
+                            if (userId == 0L && targetUserId != 0L) {
+                                dispatcher.chownFileToUser(reply, targetUserId);
                             }
                             FileOutputStream outputStream = new FileOutputStream(reply);
                             try {
@@ -1794,7 +1875,7 @@ public interface VirtualMachine {
         /**
          * {@inheritDoc}
          */
-        public void loadAgent(String jarFile, @Nullable String argument) throws IOException {
+        public void loadAgent(String jarFile, @MaybeNull String argument) throws IOException {
             write(socket, ("ATTACH_LOADAGENT(instrument," + jarFile + '=' + (argument == null ? "" : argument) + ')').getBytes("UTF-8"));
             String answer = new String(read(socket), "UTF-8");
             if (answer.startsWith("ATTACH_ERR")) {
@@ -1807,7 +1888,7 @@ public interface VirtualMachine {
         /**
          * {@inheritDoc}
          */
-        public void loadAgentPath(String path, @Nullable String argument) throws IOException {
+        public void loadAgentPath(String path, @MaybeNull String argument) throws IOException {
             write(socket, ("ATTACH_LOADAGENTPATH(" + path + (argument == null ? "" : (',' + argument)) + ')').getBytes("UTF-8"));
             String answer = new String(read(socket), "UTF-8");
             if (answer.startsWith("ATTACH_ERR")) {
@@ -1820,7 +1901,7 @@ public interface VirtualMachine {
         /**
          * {@inheritDoc}
          */
-        public void loadAgentLibrary(String library, @Nullable String argument) throws IOException {
+        public void loadAgentLibrary(String library, @MaybeNull String argument) throws IOException {
             write(socket, ("ATTACH_LOADAGENTLIBRARY(" + library + (argument == null ? "" : (',' + argument)) + ')').getBytes("UTF-8"));
             String answer = new String(read(socket), "UTF-8");
             if (answer.startsWith("ATTACH_ERR")) {
@@ -1918,9 +1999,10 @@ public interface VirtualMachine {
             /**
              * Returns this machine's temporary folder.
              *
+             * @param processId The target process's id.
              * @return The temporary folder.
              */
-            String getTemporaryFolder();
+            String getTemporaryFolder(String processId);
 
             /**
              * Returns the process id of this process.
@@ -1981,6 +2063,14 @@ public interface VirtualMachine {
             void decrementSemaphore(File directory, String name, boolean global, int count);
 
             /**
+             * Changes the ownership of a file. Can be called only if this process is owned by root.
+             *
+             * @param file   The path of the file to change ownership of.
+             * @param userId The user that should own the file.
+             */
+            void chownFileToUser(File file, long userId);
+
+            /**
              * A connector implementation for a POSIX environment using JNA.
              */
             class ForJnaPosixEnvironment implements Dispatcher {
@@ -1991,22 +2081,12 @@ public interface VirtualMachine {
                 private final PosixLibrary library;
 
                 /**
-                 * The maximum amount of attempts for checking the result of a foreign process.
+                 * The POSIX owner provider to use.
                  */
-                private final int attempts;
+                private final PosixOwnerProvider provider;
 
                 /**
-                 * The pause between two checks for another process to return.
-                 */
-                private final long pause;
-
-                /**
-                 * The time unit of the pause time.
-                 */
-                private final TimeUnit timeUnit;
-
-                /**
-                 * Creates a new connector for a POSIX enviornment using JNA.
+                 * Creates a new connector for a POSIX environment using JNA.
                  *
                  * @param attempts The maximum amount of attempts for checking the result of a foreign process.
                  * @param pause    The pause between two checks for another process to return.
@@ -2014,16 +2094,22 @@ public interface VirtualMachine {
                  */
                 @SuppressWarnings("deprecation")
                 public ForJnaPosixEnvironment(int attempts, long pause, TimeUnit timeUnit) {
-                    this.attempts = attempts;
-                    this.pause = pause;
-                    this.timeUnit = timeUnit;
+                    provider = Platform.isAIX()
+                            ? new PosixOwnerProvider.UsingIStat(attempts, pause, timeUnit)
+                            : new PosixOwnerProvider.UsingStat(attempts, pause, timeUnit);
                     library = Native.loadLibrary("c", PosixLibrary.class);
                 }
 
                 /**
                  * {@inheritDoc}
                  */
-                public String getTemporaryFolder() {
+                public String getTemporaryFolder(String processId) {
+                    if (Platform.isLinux()) {
+                        File file = new File("/proc/" + processId + "/root/tmp");
+                        if (file.isDirectory() && file.canRead()) {
+                            return file.getAbsolutePath();
+                        }
+                    }
                     String temporaryFolder = System.getenv("TMPDIR");
                     return temporaryFolder == null ? "/tmp" : temporaryFolder;
                 }
@@ -2054,38 +2140,7 @@ public interface VirtualMachine {
                  */
                 @SuppressFBWarnings(value = "OS_OPEN_STREAM", justification = "The stream life-cycle is bound to its process.")
                 public int getOwnerIdOf(File file) {
-                    try {
-                        // The binding for 'stat' is very platform dependant. To avoid the complexity of binding the correct method,
-                        // stat is called as a separate command. This is less efficient but more portable.
-                        String statUserSwitch = Platform.isMac() ? "-f" : "-c";
-                        Process process = Runtime.getRuntime().exec("stat " + statUserSwitch + " %u " + file.getAbsolutePath());
-                        int attempts = this.attempts;
-                        boolean exited = false;
-                        String line = new BufferedReader(new InputStreamReader(process.getInputStream(), "UTF-8")).readLine();
-                        do {
-                            try {
-                                if (process.exitValue() != 0) {
-                                    throw new IllegalStateException("Error while executing stat");
-                                }
-                                exited = true;
-                                break;
-                            } catch (IllegalThreadStateException ignored) {
-                                try {
-                                    Thread.sleep(timeUnit.toMillis(pause));
-                                } catch (InterruptedException exception) {
-                                    Thread.currentThread().interrupt();
-                                    throw new IllegalStateException(exception);
-                                }
-                            }
-                        } while (--attempts > 0);
-                        if (!exited) {
-                            process.destroy();
-                            throw new IllegalStateException("Command for stat did not exit in time");
-                        }
-                        return Integer.parseInt(line);
-                    } catch (IOException exception) {
-                        throw new IllegalStateException("Unable to execute stat command", exception);
-                    }
+                    return provider.getOwnerIdOf(file);
                 }
 
                 /**
@@ -2110,6 +2165,13 @@ public interface VirtualMachine {
                 }
 
                 /**
+                 * {@inheritDoc}
+                 */
+                public void chownFileToUser(File file, long userId) {
+                    library.chown(file.getAbsolutePath(), userId);
+                }
+
+                /**
                  * Notifies a POSIX semaphore.
                  *
                  * @param directory         The semaphore's directory.
@@ -2125,21 +2187,17 @@ public interface VirtualMachine {
                     PosixLibrary.SemaphoreOperation target = new PosixLibrary.SemaphoreOperation();
                     target.operation = operation;
                     target.flags = flags;
-                    try {
-                        while (count-- > 0) {
-                            try {
-                                library.semop(semaphore, target, 1);
-                            } catch (LastErrorException exception) {
-                                if (acceptUnavailable && (Native.getLastError() == PosixLibrary.EAGAIN
+                    while (count-- > 0) {
+                        try {
+                            library.semop(semaphore, target, 1);
+                        } catch (LastErrorException exception) {
+                            if (acceptUnavailable && (Native.getLastError() == PosixLibrary.EAGAIN
                                     || Native.getLastError() == PosixLibrary.EDEADLK)) {
-                                    break;
-                                } else {
-                                    throw exception;
-                                }
+                                break;
+                            } else {
+                                throw exception;
                             }
                         }
-                    } finally {
-                        target = null;
                     }
                 }
 
@@ -2215,6 +2273,16 @@ public interface VirtualMachine {
                     int chmod(String path, int mode) throws LastErrorException;
 
                     /**
+                     * Runs the {@code chown} command.
+                     *
+                     * @param path   The file path.
+                     * @param userId The user id to set.
+                     * @return The return code.
+                     * @throws LastErrorException If an error occurred.
+                     */
+                    int chown(String path, long userId) throws LastErrorException;
+
+                    /**
                      * Runs the {@code ftok} command.
                      *
                      * @param path The file path.
@@ -2273,6 +2341,186 @@ public interface VirtualMachine {
                         }
                     }
                 }
+
+                /**
+                 * Represents a system that supports POSIX ownership.
+                 */
+                protected interface PosixOwnerProvider {
+
+                    /**
+                     * Returns the user id of the owner of the supplied file.
+                     *
+                     * @param file The file for which to locate the owner.
+                     * @return The owner id of the supplied file.
+                     */
+                    int getOwnerIdOf(File file);
+
+                    /**
+                     * An implementation of reading POSIX ownership using {@code stat}.
+                     */
+                    class UsingStat implements PosixOwnerProvider {
+
+                        /**
+                         * The maximum amount of attempts for checking the result of a foreign process.
+                         */
+                        private final int attempts;
+
+                        /**
+                         * The pause between two checks for another process to return.
+                         */
+                        private final long pause;
+
+                        /**
+                         * The time unit of the pause time.
+                         */
+                        private final TimeUnit timeUnit;
+
+                        /**
+                         * Creates a new provider where an owner is derived using the {@code stat} command.
+                         *
+                         * @param attempts The maximum amount of attempts for checking the result of a foreign process.
+                         * @param pause    The pause between two checks for another process to return.
+                         * @param timeUnit The time unit of the pause time.
+                         */
+                        public UsingStat(int attempts, long pause, TimeUnit timeUnit) {
+                            this.attempts = attempts;
+                            this.pause = pause;
+                            this.timeUnit = timeUnit;
+                        }
+
+                        /**
+                         * {@inheritDoc}
+                         */
+                        public int getOwnerIdOf(File file) {
+                            try {
+                                // The binding for 'stat' is very platform dependant. To avoid the complexity of binding the correct method,
+                                // stat is called as a separate command. This is less efficient but more portable.
+                                Process process = Runtime.getRuntime().exec(new String[]{"stat",
+                                        Platform.isMac() ? "-f" : "-c",
+                                        "%u",
+                                        file.getAbsolutePath()});
+                                int attempts = this.attempts;
+                                String line = null;
+                                do {
+                                    try {
+                                        if (process.exitValue() != 0) {
+                                            throw new IllegalStateException("Error while executing stat");
+                                        }
+                                        BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), "UTF-8"));
+                                        try {
+                                            line = reader.readLine();
+                                        } finally {
+                                            reader.close();
+                                        }
+                                        break;
+                                    } catch (IllegalThreadStateException ignored) {
+                                        try {
+                                            Thread.sleep(timeUnit.toMillis(pause));
+                                        } catch (InterruptedException exception) {
+                                            Thread.currentThread().interrupt();
+                                            throw new IllegalStateException(exception);
+                                        }
+                                    }
+                                } while (--attempts > 0);
+                                if (line == null) {
+                                    process.destroy();
+                                    throw new IllegalStateException("Command for stat did not exit in time");
+                                }
+                                return Integer.parseInt(line);
+                            } catch (IOException exception) {
+                                throw new IllegalStateException("Unable to execute stat command", exception);
+                            }
+                        }
+                    }
+
+                    /**
+                     * An implementation for reading a POSIX owner using {@code istat}.
+                     */
+                    class UsingIStat implements PosixOwnerProvider {
+
+                        /**
+                         * A pattern to represent the owner on the console output.
+                         */
+                        private static final Pattern AIX_OWNER_PATTERN = Pattern.compile("Owner: (\\d+)\\(");
+
+                        /**
+                         * The maximum amount of attempts for checking the result of a foreign process.
+                         */
+                        private final int attempts;
+
+                        /**
+                         * The pause between two checks for another process to return.
+                         */
+                        private final long pause;
+
+                        /**
+                         * The time unit of the pause time.
+                         */
+                        private final TimeUnit timeUnit;
+
+                        /**
+                         * Creates a new provider for reading a POSIX owner using {@code istat}.
+                         *
+                         * @param attempts The maximum amount of attempts for checking the result of a foreign process.
+                         * @param pause    The pause between two checks for another process to return.
+                         * @param timeUnit The time unit of the pause time.
+                         */
+                        public UsingIStat(int attempts, long pause, TimeUnit timeUnit) {
+                            this.attempts = attempts;
+                            this.pause = pause;
+                            this.timeUnit = timeUnit;
+                        }
+
+                        /**
+                         * {@inheritDoc}
+                         */
+                        public int getOwnerIdOf(File file) {
+                            try {
+                                Process process = Runtime.getRuntime().exec(new String[]{"istat", file.getAbsolutePath()});
+                                int attempts = this.attempts;
+                                String lines = null;
+                                do {
+                                    try {
+                                        if (process.exitValue() != 0) {
+                                            throw new IllegalStateException("Error while executing istat");
+                                        }
+                                        StringBuilder output = new StringBuilder();
+                                        BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), "UTF-8"));
+                                        try {
+                                            String line;
+                                            while ((line = reader.readLine()) != null) {
+                                                output.append(line).append("\n");
+                                            }
+                                        } finally {
+                                            reader.close();
+                                        }
+                                        lines = output.toString();
+                                        break;
+                                    } catch (IllegalThreadStateException ignored) {
+                                        try {
+                                            Thread.sleep(timeUnit.toMillis(pause));
+                                        } catch (InterruptedException exception) {
+                                            Thread.currentThread().interrupt();
+                                            throw new IllegalStateException(exception);
+                                        }
+                                    }
+                                } while (--attempts > 0);
+                                if (lines == null) {
+                                    process.destroy();
+                                    throw new IllegalStateException("Command for istat did not exit in time");
+                                }
+                                Matcher matcher = AIX_OWNER_PATTERN.matcher(lines);
+                                if (matcher.find()) {
+                                    return Integer.parseInt(matcher.group(1));
+                                } else {
+                                    throw new IllegalStateException("Unable to parse response from istat command: " + lines);
+                                }
+                            } catch (IOException exception) {
+                                throw new IllegalStateException("Unable to execute istat command", exception);
+                            }
+                        }
+                    }
+                }
             }
 
             /**
@@ -2306,7 +2554,7 @@ public interface VirtualMachine {
                 /**
                  * {@inheritDoc}
                  */
-                public String getTemporaryFolder() {
+                public String getTemporaryFolder(String processId) {
                     WinDef.DWORD length = new WinDef.DWORD(WinDef.MAX_PATH);
                     char[] path = new char[length.intValue()];
                     if (Kernel32.INSTANCE.GetTempPath(length, path).intValue() == 0) {
@@ -2395,6 +2643,13 @@ public interface VirtualMachine {
                     } finally {
                         handle.close();
                     }
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public void chownFileToUser(File file, long userId) {
+                    /* do nothing */
                 }
 
                 /**
@@ -2490,7 +2745,7 @@ public interface VirtualMachine {
                      * @param name          The semaphore's name.
                      * @return The handle or {@code null} if the handle could not be created.
                      */
-                    @Nullable
+                    @MaybeNull
                     @SuppressWarnings("checkstyle:methodname")
                     WinNT.HANDLE OpenSemaphoreW(int access, boolean inheritHandle, String name);
 
@@ -2503,9 +2758,9 @@ public interface VirtualMachine {
                      * @param name               The semaphore's name.
                      * @return The handle or {@code null} if the handle could not be created.
                      */
-                    @Nullable
+                    @MaybeNull
                     @SuppressWarnings("checkstyle:methodname")
-                    WinNT.HANDLE CreateSemaphoreW(@Nullable WinBase.SECURITY_ATTRIBUTES securityAttributes,
+                    WinNT.HANDLE CreateSemaphoreW(@MaybeNull WinBase.SECURITY_ATTRIBUTES securityAttributes,
                                                   long count,
                                                   long maximumCount,
                                                   String name);
@@ -2519,7 +2774,7 @@ public interface VirtualMachine {
                      * @return {@code true} if the semaphore was successfully released.
                      */
                     @SuppressWarnings("checkstyle:methodname")
-                    boolean ReleaseSemaphore(WinNT.HANDLE handle, long count, @Nullable Long previousCount);
+                    boolean ReleaseSemaphore(WinNT.HANDLE handle, long count, @MaybeNull Long previousCount);
 
                     /**
                      * Create or opens a mutex.
@@ -2529,7 +2784,7 @@ public interface VirtualMachine {
                      * @param name       The mutex name.
                      * @return The handle to the mutex or {@code null} if the mutex could not be created.
                      */
-                    @Nullable
+                    @MaybeNull
                     @SuppressWarnings("checkstyle:methodname")
                     WinNT.HANDLE CreateMutex(SecurityAttributes attributes, boolean owner, String name);
 
@@ -2562,13 +2817,13 @@ public interface VirtualMachine {
                         /**
                          * The descriptor's length.
                          */
-                        @Nullable
+                        @MaybeNull
                         public WinDef.DWORD length;
 
                         /**
                          * A pointer to the descriptor.
                          */
-                        @Nullable
+                        @MaybeNull
                         public Pointer securityDescriptor;
 
                         /**

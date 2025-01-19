@@ -8,12 +8,19 @@ import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
 import net.bytebuddy.implementation.EqualsMethod;
+import org.hamcrest.CoreMatchers;
 import org.junit.Test;
 
+import java.lang.annotation.Annotation;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.reflect.Method;
 import java.util.Comparator;
+import java.util.HashSet;
 
 import static net.bytebuddy.test.utility.FieldByFieldComparison.hasPrototype;
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -26,7 +33,7 @@ public class HashCodeAndEqualsPluginTest {
     public void testPluginMatches() throws Exception {
         Plugin plugin = new HashCodeAndEqualsPlugin();
         assertThat(plugin.matches(TypeDescription.ForLoadedType.of(SimpleSample.class)), is(true));
-        assertThat(plugin.matches(TypeDescription.OBJECT), is(false));
+        assertThat(plugin.matches(TypeDescription.ForLoadedType.of(Object.class)), is(false));
     }
 
     @Test
@@ -61,6 +68,24 @@ public class HashCodeAndEqualsPluginTest {
         Object left = type.getDeclaredConstructor().newInstance(), right = type.getDeclaredConstructor().newInstance();
         type.getDeclaredField(FOO).set(left, FOO);
         type.getDeclaredField(FOO).set(right, BAR);
+        assertThat(left.hashCode(), is(right.hashCode()));
+        assertThat(left, is(right));
+    }
+
+    @Test
+    public void testPluginEnhanceIdentity() throws Exception {
+        Class<?> type = new HashCodeAndEqualsPlugin()
+                .apply(new ByteBuddy().redefine(IdentityFieldSample.class), TypeDescription.ForLoadedType.of(IdentityFieldSample.class), ClassFileLocator.ForClassLoader.of(IdentityFieldSample.class.getClassLoader()))
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+        Object left = type.getDeclaredConstructor().newInstance(), right = type.getDeclaredConstructor().newInstance();
+        Object leftValue = new HashSet<Object>(), rightValue = new HashSet<Object>();
+        type.getDeclaredField(FOO).set(left, leftValue);
+        type.getDeclaredField(FOO).set(right, rightValue);
+        assertThat(left.hashCode(), not(right.hashCode()));
+        assertThat(left, not(right));
+        type.getDeclaredField(FOO).set(right, leftValue);
         assertThat(left.hashCode(), is(right.hashCode()));
         assertThat(left, is(right));
     }
@@ -204,6 +229,20 @@ public class HashCodeAndEqualsPluginTest {
         assertThat(comparator.compare(left, right), is(1));
     }
 
+    @Test
+    public void testPluginEnhanceWithAnnotation() throws Exception {
+        Class<?> type = new HashCodeAndEqualsPlugin(SampleAnnotation.class.getName())
+                .apply(new ByteBuddy().redefine(SimpleSample.class), TypeDescription.ForLoadedType.of(SimpleSample.class), ClassFileLocator.ForClassLoader.of(SimpleSample.class.getClassLoader()))
+                .make()
+                .load(SampleAnnotation.class.getClassLoader(), ClassLoadingStrategy.Default.CHILD_FIRST)
+                .getLoaded();
+        Method method = type.getMethod("equals", Object.class);
+        assertThat(method.getParameterAnnotations()[0].length, is(1));
+        assertThat(method.getParameterAnnotations()[0][0], CoreMatchers.<Annotation>instanceOf(SampleAnnotation.class));
+        assertThat(type.getDeclaredConstructor().newInstance().hashCode(), is(type.getDeclaredConstructor().newInstance().hashCode()));
+        assertThat(type.getDeclaredConstructor().newInstance(), is(type.getDeclaredConstructor().newInstance()));
+    }
+
     @HashCodeAndEqualsPlugin.Enhance
     public static class SimpleSample {
 
@@ -262,6 +301,13 @@ public class HashCodeAndEqualsPluginTest {
     }
 
     @HashCodeAndEqualsPlugin.Enhance
+    public static class IdentityFieldSample {
+
+        @HashCodeAndEqualsPlugin.Identity
+        public Object foo;
+    }
+
+    @HashCodeAndEqualsPlugin.Enhance
     public static class FieldSortOrderSample {
 
         public String foo;
@@ -271,5 +317,10 @@ public class HashCodeAndEqualsPluginTest {
 
         @HashCodeAndEqualsPlugin.Sorted(1)
         public String qux;
+    }
+
+    @Retention(RetentionPolicy.RUNTIME)
+    public @interface SampleAnnotation {
+        /* empty */
     }
 }

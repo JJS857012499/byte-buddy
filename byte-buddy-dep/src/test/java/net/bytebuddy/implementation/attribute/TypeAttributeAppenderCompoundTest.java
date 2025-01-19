@@ -3,7 +3,8 @@ package net.bytebuddy.implementation.attribute;
 import org.junit.Test;
 import org.mockito.Mock;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 public class TypeAttributeAppenderCompoundTest extends AbstractTypeAttributeAppenderTest {
 
@@ -18,6 +19,6 @@ public class TypeAttributeAppenderCompoundTest extends AbstractTypeAttributeAppe
         verifyNoMoreInteractions(first);
         verify(second).apply(classVisitor, instrumentedType, annotationValueFilter);
         verifyNoMoreInteractions(second);
-        verifyZeroInteractions(instrumentedType);
+        verifyNoMoreInteractions(instrumentedType);
     }
 }

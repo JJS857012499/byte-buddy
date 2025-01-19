@@ -15,21 +15,22 @@
  */
 package net.bytebuddy.description.field;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.build.CachedReturnPlugin;
 import net.bytebuddy.description.ByteCodeElement;
 import net.bytebuddy.description.DeclaredByType;
 import net.bytebuddy.description.ModifierReviewable;
-import net.bytebuddy.description.NamedElement;
 import net.bytebuddy.description.annotation.AnnotationDescription;
 import net.bytebuddy.description.annotation.AnnotationList;
+import net.bytebuddy.description.type.TypeDefinition;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.matcher.ElementMatcher;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.signature.SignatureWriter;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.lang.reflect.Field;
 import java.lang.reflect.GenericSignatureFormatError;
 import java.lang.reflect.Modifier;
@@ -40,17 +41,22 @@ import java.util.List;
  * Implementations of this interface describe a Java field. Implementations of this interface must provide meaningful
  * {@code equal(Object)} and {@code hashCode()} implementations.
  */
-public interface FieldDescription extends ByteCodeElement,
+public interface FieldDescription extends ModifierReviewable.ForFieldDescription,
         DeclaredByType.WithMandatoryDeclaration,
-        ModifierReviewable.ForFieldDescription,
-        NamedElement.WithGenericName,
+        ByteCodeElement.Member,
         ByteCodeElement.TypeDependant<FieldDescription.InDefinedShape, FieldDescription.Token> {
 
     /**
      * A representative of a field's non-set default value.
      */
-    @Nonnull(when = When.NEVER)
+    @AlwaysNull
     Object NO_DEFAULT_VALUE = null;
+
+    /**
+     * {@inheritDoc}
+     */
+    @Nonnull
+    TypeDefinition getDeclaringType();
 
     /**
      * Returns the type of the described field.
@@ -140,7 +146,7 @@ public interface FieldDescription extends ByteCodeElement,
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public String getGenericSignature() {
             TypeDescription.Generic fieldType = getType();
             try {
@@ -155,6 +161,7 @@ public interface FieldDescription extends ByteCodeElement,
         /**
          * {@inheritDoc}
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming declaring type for type member.")
         public boolean isVisibleTo(TypeDescription typeDescription) {
             return getDeclaringType().asErasure().isVisibleTo(typeDescription)
                     && (isPublic()
@@ -167,6 +174,7 @@ public interface FieldDescription extends ByteCodeElement,
         /**
          * {@inheritDoc}
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming declaring type for type member.")
         public boolean isAccessibleTo(TypeDescription typeDescription) {
             return isPublic()
                     || typeDescription.equals(getDeclaringType().asErasure())
@@ -202,12 +210,14 @@ public interface FieldDescription extends ByteCodeElement,
 
         @Override
         @CachedReturnPlugin.Enhance("hashCode")
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming declaring type for type member.")
         public int hashCode() {
             return getDeclaringType().hashCode() + 31 * (17 + getName().hashCode());
         }
 
         @Override
-        public boolean equals(Object other) {
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming declaring type for type member.")
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (!(other instanceof FieldDescription)) {
@@ -220,6 +230,7 @@ public interface FieldDescription extends ByteCodeElement,
         /**
          * {@inheritDoc}
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming declaring type for type member.")
         public String toGenericString() {
             StringBuilder stringBuilder = new StringBuilder();
             if (getModifiers() != EMPTY_MASK) {
@@ -231,6 +242,7 @@ public interface FieldDescription extends ByteCodeElement,
         }
 
         @Override
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming declaring type for type member.")
         public String toString() {
             StringBuilder stringBuilder = new StringBuilder();
             if (getModifiers() != EMPTY_MASK) {
@@ -359,8 +371,8 @@ public interface FieldDescription extends ByteCodeElement,
          *
          * @param declaringType       The declaring type of the field.
          * @param name                The name of the field.
-         * @param fieldType           The field's modifiers.
-         * @param modifiers           The type of the field.
+         * @param fieldType           The type of the field.
+         * @param modifiers           The field's modifiers.
          * @param declaredAnnotations The annotations of this field.
          */
         public Latent(TypeDescription declaringType,
@@ -609,7 +621,7 @@ public interface FieldDescription extends ByteCodeElement,
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (other == null || getClass() != other.getClass()) {
@@ -676,7 +688,7 @@ public interface FieldDescription extends ByteCodeElement,
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (!(other instanceof SignatureToken)) {

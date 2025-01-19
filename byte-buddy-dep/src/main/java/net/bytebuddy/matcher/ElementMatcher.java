@@ -16,8 +16,9 @@
 package net.bytebuddy.matcher;
 
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
+import net.bytebuddy.utility.nullability.MaybeNull;
+import net.bytebuddy.utility.nullability.UnknownNull;
 
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -35,10 +36,10 @@ public interface ElementMatcher<T> {
     /**
      * Matches a target against this element matcher.
      *
-     * @param target The instance to be matched.
+     * @param target The instance to be matched or {@code null}.
      * @return {@code true} if the given element is matched by this matcher or {@code false} otherwise.
      */
-    boolean matches(@Nullable T target);
+    boolean matches(@UnknownNull T target);
 
     /**
      * A junctions allows to chain different {@link net.bytebuddy.matcher.ElementMatcher}s in a readable manner.
@@ -140,7 +141,7 @@ public interface ElementMatcher<T> {
             /**
              * {@inheritDoc}
              */
-            public boolean matches(@Nullable W target) {
+            public boolean matches(@UnknownNull W target) {
                 for (ElementMatcher<? super W> matcher : matchers) {
                     if (!matcher.matches(target)) {
                         return false;
@@ -166,7 +167,7 @@ public interface ElementMatcher<T> {
         }
 
         /**
-         * A disjunction matcher which only matches an element if both represented matchers constitute a match.
+         * A disjunction matcher which matches an element against matchers in order to constitute a successful match.
          *
          * @param <W> The type of the object that is being matched.
          */
@@ -208,7 +209,7 @@ public interface ElementMatcher<T> {
             /**
              * {@inheritDoc}
              */
-            public boolean matches(@Nullable W target) {
+            public boolean matches(@UnknownNull W target) {
                 for (ElementMatcher<? super W> matcher : matchers) {
                     if (matcher.matches(target)) {
                         return true;
@@ -244,7 +245,7 @@ public interface ElementMatcher<T> {
             /**
              * {@inheritDoc}
              */
-            public boolean matches(@Nullable W target) {
+            public boolean matches(@MaybeNull W target) {
                 return target != null && doMatch(target);
             }
 

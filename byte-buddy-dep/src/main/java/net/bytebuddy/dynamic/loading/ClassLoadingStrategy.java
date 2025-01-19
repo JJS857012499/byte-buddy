@@ -17,15 +17,12 @@ package net.bytebuddy.dynamic.loading;
 
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
 import net.bytebuddy.description.type.TypeDescription;
-import net.bytebuddy.utility.GraalImageCode;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.io.File;
 import java.lang.instrument.Instrumentation;
 import java.security.ProtectionDomain;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
@@ -39,13 +36,13 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
     /**
      * A type-safe constant representing the bootstrap class loader which is represented by {@code null} within Java.
      */
-    @Nonnull(when = When.NEVER)
+    @AlwaysNull
     ClassLoader BOOTSTRAP_LOADER = null;
 
     /**
      * An undefined protection domain.
      */
-    @Nonnull(when = When.NEVER)
+    @AlwaysNull
     ProtectionDomain NO_PROTECTION_DOMAIN = null;
 
     /**
@@ -58,7 +55,7 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
      * @return A collection of the loaded classes which will be initialized in the iteration order of the
      * returned collection.
      */
-    Map<TypeDescription, Class<?>> load(@Nullable T classLoader, Map<TypeDescription, byte[]> types);
+    Map<TypeDescription, Class<?>> load(@MaybeNull T classLoader, Map<TypeDescription, byte[]> types);
 
     /**
      * This class contains implementations of default class loading strategies.
@@ -147,7 +144,7 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
         /**
          * {@inheritDoc}
          */
-        public Map<TypeDescription, Class<?>> load(@Nullable ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
+        public Map<TypeDescription, Class<?>> load(@MaybeNull ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
             return dispatcher.load(classLoader, types);
         }
 
@@ -195,7 +192,7 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
             /**
              * The protection domain to apply or {@code null} if no protection domain is set.
              */
-            @Nullable
+            @MaybeNull
             @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
             private final ProtectionDomain protectionDomain;
 
@@ -223,7 +220,7 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
              * @param packageDefinitionStrategy The package definer to be used for querying information on package information.
              * @param forbidExisting            Determines if an exception should be thrown when attempting to load a type that already exists.
              */
-            private InjectionDispatcher(@Nullable ProtectionDomain protectionDomain,
+            private InjectionDispatcher(@MaybeNull ProtectionDomain protectionDomain,
                                         PackageDefinitionStrategy packageDefinitionStrategy,
                                         boolean forbidExisting) {
                 this.protectionDomain = protectionDomain;
@@ -234,7 +231,7 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
             /**
              * {@inheritDoc}
              */
-            public Map<TypeDescription, Class<?>> load(@Nullable ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
+            public Map<TypeDescription, Class<?>> load(@MaybeNull ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
                 if (classLoader == null) {
                     throw new IllegalArgumentException("Cannot inject classes into the bootstrap class loader");
                 }
@@ -293,7 +290,7 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
             /**
              * The protection domain to apply or {@code null} if no protection domain is set.
              */
-            @Nullable
+            @MaybeNull
             @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
             private final ProtectionDomain protectionDomain;
 
@@ -347,7 +344,7 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
              * @param forbidExisting            Determines if an exception should be thrown when attempting to load a type that already exists.
              * @param sealed                    {@code true} if the class loader should be sealed.
              */
-            private WrappingDispatcher(@Nullable ProtectionDomain protectionDomain,
+            private WrappingDispatcher(@MaybeNull ProtectionDomain protectionDomain,
                                        PackageDefinitionStrategy packageDefinitionStrategy,
                                        ByteArrayClassLoader.PersistenceHandler persistenceHandler,
                                        boolean childFirst,
@@ -364,7 +361,7 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
             /**
              * {@inheritDoc}
              */
-            public Map<TypeDescription, Class<?>> load(@Nullable ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
+            public Map<TypeDescription, Class<?>> load(@MaybeNull ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
                 return childFirst
                         ? ByteArrayClassLoader.ChildFirst.load(classLoader, types, protectionDomain, persistenceHandler, packageDefinitionStrategy, forbidExisting, sealed)
                         : ByteArrayClassLoader.load(classLoader, types, protectionDomain, persistenceHandler, packageDefinitionStrategy, forbidExisting, sealed);
@@ -484,9 +481,23 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
          * @return An appropriate class loading strategy for the current JVM that uses a method handles lookup if available.
          */
         public static ClassLoadingStrategy<ClassLoader> withFallback(Callable<?> lookup) {
-            if (GraalImageCode.getCurrent().isNativeImageExecution()) {
-                return ForPreloadedTypes.INSTANCE;
-            } else if (ClassInjector.UsingLookup.isAvailable()) {
+            return withFallback(lookup, false);
+        }
+
+        /**
+         * Resolves a class loading strategy using a lookup if available on the current JVM. If the current JVM supports method handles
+         * lookups, a lookup instance will be used. Alternatively, unsafe class definition is used, if supported. If neither strategy is
+         * supported, an exception is thrown. A common use case would be calling this method as in
+         * {@code ClassLoadingStrategy.UsingLookup.withFallback(MethodHandles::lookup)}. Note that the invocation of
+         * {@code MethodHandles.lookup()} is call site sensitive such that it cannot be invoked within Byte Buddy what requires this
+         * external invocation.
+         *
+         * @param lookup  A resolver for a lookup instance if the current JVM allows for lookup-based class injection.
+         * @param wrapper {@code true} if a {@link Default#WRAPPER} strategy should be used as a fallback in case that no injection strategy is available.
+         * @return An appropriate class loading strategy for the current JVM that uses a method handles lookup if available.
+         */
+        public static ClassLoadingStrategy<ClassLoader> withFallback(Callable<?> lookup, boolean wrapper) {
+            if (ClassInjector.UsingLookup.isAvailable()) {
                 try {
                     return of(lookup.call());
                 } catch (Exception exception) {
@@ -494,6 +505,8 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
                 }
             } else if (ClassInjector.UsingUnsafe.isAvailable()) {
                 return new ClassLoadingStrategy.ForUnsafeInjection();
+            } else if (wrapper) {
+                return Default.WRAPPER;
             } else {
                 throw new IllegalStateException("Neither lookup or unsafe class injection is available");
             }
@@ -502,7 +515,7 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
         /**
          * {@inheritDoc}
          */
-        public Map<TypeDescription, Class<?>> load(@Nullable ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
+        public Map<TypeDescription, Class<?>> load(@MaybeNull ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
             return classInjector.inject(types);
         }
     }
@@ -538,7 +551,7 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
         /**
          * {@inheritDoc}
          */
-        public Map<TypeDescription, Class<?>> load(@Nullable ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
+        public Map<TypeDescription, Class<?>> load(@MaybeNull ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
             ClassInjector classInjector = classLoader == null
                     ? ClassInjector.UsingInstrumentation.of(folder, ClassInjector.UsingInstrumentation.Target.BOOTSTRAP, instrumentation)
                     : new ClassInjector.UsingReflection(classLoader);
@@ -555,7 +568,7 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
         /**
          * The protection domain to use or {@code null} if no protection domain is set.
          */
-        @Nullable
+        @MaybeNull
         @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
         private final ProtectionDomain protectionDomain;
 
@@ -571,14 +584,14 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
          *
          * @param protectionDomain The protection domain to use or {@code null} if no protection domain is set.
          */
-        public ForUnsafeInjection(@Nullable ProtectionDomain protectionDomain) {
+        public ForUnsafeInjection(@MaybeNull ProtectionDomain protectionDomain) {
             this.protectionDomain = protectionDomain;
         }
 
         /**
          * {@inheritDoc}
          */
-        public Map<TypeDescription, Class<?>> load(@Nullable ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
+        public Map<TypeDescription, Class<?>> load(@MaybeNull ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
             return new ClassInjector.UsingUnsafe(classLoader, protectionDomain).inject(types);
         }
     }
@@ -593,7 +606,7 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
         /**
          * The protection domain to use or {@code null} if no protection domain is set.
          */
-        @Nullable
+        @MaybeNull
         @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
         private final ProtectionDomain protectionDomain;
 
@@ -609,43 +622,15 @@ public interface ClassLoadingStrategy<T extends ClassLoader> {
          *
          * @param protectionDomain The protection domain to use or {@code null} if no protection domain is set.
          */
-        public ForJnaInjection(@Nullable ProtectionDomain protectionDomain) {
+        public ForJnaInjection(@MaybeNull ProtectionDomain protectionDomain) {
             this.protectionDomain = protectionDomain;
         }
 
         /**
          * {@inheritDoc}
          */
-        public Map<TypeDescription, Class<?>> load(@Nullable ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
+        public Map<TypeDescription, Class<?>> load(@MaybeNull ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
             return new ClassInjector.UsingUnsafe(classLoader, protectionDomain).inject(types);
-        }
-    }
-
-    /**
-     * A class loading strategy that expects classes to already be available on the provided class loader.
-     * This strategy is mainly intended to work with Graal native images where classes cannot be loaded
-     * dynamically.
-     */
-    enum ForPreloadedTypes implements ClassLoadingStrategy<ClassLoader> {
-
-        /**
-         * The singleton instance.
-         */
-        INSTANCE;
-
-        /**
-         * {@inheritDoc}
-         */
-        public Map<TypeDescription, Class<?>> load(@Nullable ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
-            Map<TypeDescription, Class<?>> result = new LinkedHashMap<TypeDescription, Class<?>>();
-            for (TypeDescription typeDescription : types.keySet()) {
-                try {
-                    result.put(typeDescription, Class.forName(typeDescription.getName(), false, classLoader));
-                } catch (ClassNotFoundException exception) {
-                    throw new IllegalStateException("Cannot find preexisting class " + typeDescription, exception);
-                }
-            }
-            return result;
         }
     }
 }

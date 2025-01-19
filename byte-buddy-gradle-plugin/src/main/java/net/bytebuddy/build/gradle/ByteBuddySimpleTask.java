@@ -16,9 +16,9 @@
 package net.bytebuddy.build.gradle;
 
 import net.bytebuddy.build.Plugin;
-import net.bytebuddy.build.gradle.api.CompileClasspath;
-import net.bytebuddy.build.gradle.api.PathSensitive;
-import net.bytebuddy.build.gradle.api.PathSensitivity;
+import org.gradle.api.tasks.PathSensitive;
+import org.gradle.api.tasks.PathSensitivity;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.gradle.api.tasks.*;
 
 import javax.inject.Inject;
@@ -46,11 +46,18 @@ public class ByteBuddySimpleTask extends AbstractByteBuddyTask {
     private Iterable<File> classPath;
 
     /**
+     * A set of classes that is used for discovery of plugins.
+     */
+    @MaybeNull
+    private Iterable<File> discoverySet;
+
+    /**
      * Creates a new simple Byte Buddy task.
      */
     @Inject
+    @SuppressWarnings("this-escape")
     public ByteBuddySimpleTask() {
-        new ByteBuddySimpleTaskExtension().configure(this);
+        new ByteBuddySimpleTaskExtension(null).configure(this);
     }
 
     /**
@@ -112,6 +119,27 @@ public class ByteBuddySimpleTask extends AbstractByteBuddyTask {
         this.classPath = classPath;
     }
 
+    /**
+     * Returns the source set to resolve plugin names from or {@code null} if no such source set is used.
+     *
+     * @return The source set to resolve plugin names from or {@code null} if no such source set is used.
+     */
+    @MaybeNull
+    @InputFiles
+    @Optional
+    public Iterable<File> getDiscoverySet() {
+        return discoverySet;
+    }
+
+    /**
+     * Defines the source set to resolve plugin names from or {@code null} if no such source set is used.
+     *
+     * @param discoverySet The source set to resolve plugin names from or {@code null} if no such source set is used.
+     */
+    public void setDiscoverySet(@MaybeNull Iterable<File> discoverySet) {
+        this.discoverySet = discoverySet;
+    }
+
     @Override
     protected File source() {
         return getSource();
@@ -127,13 +155,20 @@ public class ByteBuddySimpleTask extends AbstractByteBuddyTask {
         return getClassPath();
     }
 
+    @Override
+    @MaybeNull
+    protected Iterable<File> discoverySet() {
+        return discoverySet;
+    }
+
     /**
      * Applies this task.
+     *
      * @throws IOException If an I/O exception is thrown.
      */
     @TaskAction
     public void apply() throws IOException {
-        if (!getSource().equals(getTarget()) && getProject().delete(getProject().fileTree(getTarget()))) {
+        if (!getSource().equals(getTarget()) && deleteRecursively(getProject().fileTree(getTarget()).getFiles())) {
             getLogger().debug("Deleted all target files in {}", getTarget());
         }
         doApply(new Plugin.Engine.Source.ForFolder(getSource()), new Plugin.Engine.Target.ForFolder(getTarget()));

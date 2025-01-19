@@ -19,6 +19,7 @@ import net.bytebuddy.description.annotation.AnnotationDescription;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.bind.MethodDelegationBinder;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
 import java.lang.annotation.*;
 
@@ -78,7 +79,7 @@ public @interface BindingPriority {
          * @param bindingPriority The annotation of the method or {@code null} if no such annotation was found.
          * @return The factual priority of the method under investigation.
          */
-        private static int resolve(AnnotationDescription.Loadable<BindingPriority> bindingPriority) {
+        private static int resolve(@MaybeNull AnnotationDescription.Loadable<BindingPriority> bindingPriority) {
             return bindingPriority == null
                     ? BindingPriority.DEFAULT
                     : bindingPriority.getValue(VALUE).resolve(Integer.class);

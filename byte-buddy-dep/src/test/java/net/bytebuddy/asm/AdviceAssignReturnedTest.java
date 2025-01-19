@@ -198,6 +198,20 @@ public class AdviceAssignReturnedTest {
         }
     }
 
+    @Test
+    public void testAssignReturnedToThrownSuppressScalar() throws Exception {
+        Class<?> type = new ByteBuddy()
+                .redefine(SampleThrowing.class)
+                .visit(Advice.withCustomMapping()
+                        .with(new Advice.AssignReturned.Factory())
+                        .to(ToThrownSuppressScalar.class)
+                        .on(named(BAR)))
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+        assertThat(type.getMethod(BAR).invoke(type.getConstructor().newInstance()), nullValue(Object.class));
+    }
+
     @Test(expected = RuntimeException.class)
     public void testAssignReturnedToThrownArray() throws Exception {
         Class<?> type = new ByteBuddy()
@@ -215,6 +229,20 @@ public class AdviceAssignReturnedTest {
         } catch (InvocationTargetException exception) {
             throw (Exception) exception.getTargetException();
         }
+    }
+
+    @Test
+    public void testAssignReturnedToThrownSuppressedArray() throws Exception {
+        Class<?> type = new ByteBuddy()
+                .redefine(SampleThrowing.class)
+                .visit(Advice.withCustomMapping()
+                        .with(new Advice.AssignReturned.Factory())
+                        .to(ToThrownSuppressedArray.class)
+                        .on(named(BAR)))
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+        assertThat(type.getMethod(BAR).invoke(type.getConstructor().newInstance()), nullValue(Object.class));
     }
 
     @Test
@@ -517,7 +545,7 @@ public class AdviceAssignReturnedTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void testHandledNotThrowable() {
-        new Advice.AssignReturned.Factory().withSuppressed(TypeDescription.OBJECT);
+        new Advice.AssignReturned.Factory().withSuppressed(TypeDescription.ForLoadedType.of(Object.class));
     }
 
     public static class Sample {
@@ -562,6 +590,10 @@ public class AdviceAssignReturnedTest {
     public static class SampleThrowing {
 
         public String foo(String value) {
+            throw new RuntimeException();
+        }
+
+        public void bar() {
             throw new RuntimeException();
         }
     }
@@ -780,6 +812,16 @@ public class AdviceAssignReturnedTest {
         }
     }
 
+    public static class ToThrownSuppressScalar {
+
+        @Advice.OnMethodExit(onThrowable = Throwable.class)
+        @Advice.AssignReturned.ToThrown
+        @Advice.AssignReturned.AsScalar(skipOnDefaultValue = false)
+        public static RuntimeException exit() {
+            return null;
+        }
+    }
+
     public static class ToThrownArray {
 
         @Advice.OnMethodExit(onThrowable = Throwable.class)
@@ -789,6 +831,15 @@ public class AdviceAssignReturnedTest {
                 throw new AssertionError();
             }
             return new Throwable[]{new RuntimeException()};
+        }
+    }
+
+    public static class ToThrownSuppressedArray {
+
+        @Advice.OnMethodExit(onThrowable = Throwable.class)
+        @Advice.AssignReturned.ToThrown(index = 0)
+        public static Throwable[] exit() {
+            return new Throwable[1];
         }
     }
 

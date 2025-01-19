@@ -29,10 +29,10 @@ import net.bytebuddy.implementation.MethodAccessorFactory;
 import net.bytebuddy.implementation.auxiliary.AuxiliaryType;
 import net.bytebuddy.implementation.auxiliary.TrivialType;
 import net.bytebuddy.utility.CompoundList;
+import net.bytebuddy.utility.nullability.AlwaysNull;
 import org.objectweb.asm.Opcodes;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.util.*;
 
 /**
@@ -281,7 +281,7 @@ public interface MethodRebaseResolver {
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @AlwaysNull
                 public AnnotationValue<?, ?> getDefaultValue() {
                     return AnnotationValue.UNDEFINED;
                 }
@@ -416,7 +416,7 @@ public interface MethodRebaseResolver {
                  * {@inheritDoc}
                  */
                 public TypeDescription.Generic getReturnType() {
-                    return TypeDescription.Generic.VOID;
+                    return TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(void.class);
                 }
 
                 /**
@@ -436,7 +436,7 @@ public interface MethodRebaseResolver {
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @AlwaysNull
                 public AnnotationValue<?, ?> getDefaultValue() {
                     return AnnotationValue.UNDEFINED;
                 }
@@ -511,7 +511,7 @@ public interface MethodRebaseResolver {
          * Creates a new method rebase resolver.
          *
          * @param instrumentedType            The instrumented type.
-         * @param rebaseables      Tokens describing all methods that can possibly be rebased.
+         * @param rebaseables                 Tokens describing all methods that can possibly be rebased.
          * @param classFileVersion            The class file version for the instrumentation.
          * @param auxiliaryTypeNamingStrategy The naming strategy for naming a potential auxiliary type.
          * @param methodNameTransformer       A transformer for method names.

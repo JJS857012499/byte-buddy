@@ -24,14 +24,20 @@ import org.objectweb.asm.Opcodes;
 import java.security.PrivilegedAction;
 
 /**
- * A {@link ClassReader} that does not apply a class file version check if the {@code net.bytebuddy.experimental} property is set.
+ * A factory for a {@link ClassReader} that does not apply a class file version check if the
+ * {@code net.bytebuddy.experimental} property is set.
  */
-public class OpenedClassReader {
+public class OpenedClassReader implements AsmClassReader.Factory {
 
     /**
      * Indicates that Byte Buddy should not validate the maximum supported class file version.
      */
     public static final String EXPERIMENTAL_PROPERTY = "net.bytebuddy.experimental";
+
+    /**
+     * Indicates what processor Byte Buddy is supposed to use if no processor is configured explicitly.
+     */
+    public static final String PROCESSOR_PROPERTY = "net.bytebuddy.processor";
 
     /**
      * {@code true} if Byte Buddy is executed in experimental mode.
@@ -58,10 +64,17 @@ public class OpenedClassReader {
     }
 
     /**
-     * Not intended for construction.
+     * {@inheritDoc}
      */
-    private OpenedClassReader() {
-        throw new UnsupportedOperationException("This class is a utility class and not supposed to be instantiated");
+    public AsmClassReader make(byte[] binaryRepresentation) {
+        return new AsmClassReader.ForAsm(of(binaryRepresentation));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public AsmClassReader make(byte[] binaryRepresentation, boolean experimental) {
+        return new AsmClassReader.ForAsm(of(binaryRepresentation, experimental));
     }
 
     /**
@@ -76,6 +89,7 @@ public class OpenedClassReader {
         return action.run();
     }
 
+
     /**
      * Creates a class reader for the given binary representation of a class file.
      *
@@ -83,12 +97,27 @@ public class OpenedClassReader {
      * @return An appropriate class reader.
      */
     public static ClassReader of(byte[] binaryRepresentation) {
+        return of(binaryRepresentation, EXPERIMENTAL);
+    }
+
+    /**
+     * Creates a class reader for the given binary representation of a class file.
+     *
+     * @param binaryRepresentation The binary representation of a class file to read.
+     * @param experimental         {@code true} if unknown class file versions should also be processed.
+     * @return An appropriate class reader.
+     */
+    public static ClassReader of(byte[] binaryRepresentation, boolean experimental) {
         ClassFileVersion classFileVersion = ClassFileVersion.ofClassFile(binaryRepresentation), latest = ClassFileVersion.latest();
         if (classFileVersion.isGreaterThan(latest)) {
-            if (EXPERIMENTAL) {
+            if (experimental) {
+                binaryRepresentation[4] = (byte) (latest.getMinorVersion() >>> 8);
+                binaryRepresentation[5] = (byte) latest.getMinorVersion();
                 binaryRepresentation[6] = (byte) (latest.getMajorVersion() >>> 8);
                 binaryRepresentation[7] = (byte) latest.getMajorVersion();
                 ClassReader classReader = new ClassReader(binaryRepresentation);
+                binaryRepresentation[4] = (byte) (classFileVersion.getMinorVersion() >>> 8);
+                binaryRepresentation[5] = (byte) classFileVersion.getMinorVersion();
                 binaryRepresentation[6] = (byte) (classFileVersion.getMajorVersion() >>> 8);
                 binaryRepresentation[7] = (byte) classFileVersion.getMajorVersion();
                 return classReader;

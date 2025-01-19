@@ -17,22 +17,30 @@ package net.bytebuddy.utility.dispatcher;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.ClassFileVersion;
+import net.bytebuddy.asm.AsmVisitorWrapper;
 import net.bytebuddy.build.AccessControllerPlugin;
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
 import net.bytebuddy.description.method.MethodDescription;
+import net.bytebuddy.dynamic.scaffold.TypeWriter;
+import net.bytebuddy.utility.GraalImageCode;
 import net.bytebuddy.utility.Invoker;
+import net.bytebuddy.utility.MethodComparator;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import net.bytebuddy.utility.privilege.GetSystemPropertyAction;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
-import javax.annotation.Nullable;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
 import java.lang.annotation.*;
 import java.lang.reflect.*;
 import java.security.Permission;
 import java.security.PrivilegedAction;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -87,7 +95,7 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
     /**
      * The class loader to resolve the proxied type from or {@code null} if the bootstrap loader should be used.
      */
-    @Nullable
+    @MaybeNull
     @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
     private final ClassLoader classLoader;
 
@@ -103,7 +111,7 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
      * @param classLoader The class loader to resolve the proxied type from or {@code null} if the bootstrap loader should be used.
      * @param generate    {@code true} if a proxy class should be manually generated.
      */
-    protected JavaDispatcher(Class<T> proxy, @Nullable ClassLoader classLoader, boolean generate) {
+    protected JavaDispatcher(Class<T> proxy, @MaybeNull ClassLoader classLoader, boolean generate) {
         this.proxy = proxy;
         this.classLoader = classLoader;
         this.generate = generate;
@@ -140,7 +148,7 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
      * @param <T>         The resolved type.
      * @return An action for creating an appropriate dispatcher.
      */
-    protected static <T> PrivilegedAction<T> of(Class<T> type, @Nullable ClassLoader classLoader) {
+    public static <T> PrivilegedAction<T> of(Class<T> type, @MaybeNull ClassLoader classLoader) {
         return of(type, classLoader, GENERATE);
     }
 
@@ -153,7 +161,7 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
      * @param <T>         The resolved type.
      * @return An action for creating an appropriate dispatcher.
      */
-    protected static <T> PrivilegedAction<T> of(Class<T> type, @Nullable ClassLoader classLoader, boolean generate) {
+    protected static <T> PrivilegedAction<T> of(Class<T> type, @MaybeNull ClassLoader classLoader, boolean generate) {
         if (!type.isInterface()) {
             throw new IllegalArgumentException("Expected an interface instead of " + type);
         } else if (!type.isAnnotationPresent(Proxied.class)) {
@@ -191,14 +199,18 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
         } catch (IllegalAccessException exception) {
             throw new IllegalStateException("Failed to access security manager", exception);
         }
-        Map<Method, Dispatcher> dispatchers = new HashMap<Method, Dispatcher>();
+        Map<Method, Dispatcher> dispatchers = generate
+                ? new LinkedHashMap<Method, Dispatcher>()
+                : new HashMap<Method, Dispatcher>();
         boolean defaults = proxy.isAnnotationPresent(Defaults.class);
         String name = proxy.getAnnotation(Proxied.class).value();
         Class<?> target;
         try {
             target = Class.forName(name, false, classLoader);
         } catch (ClassNotFoundException exception) {
-            for (Method method : proxy.getMethods()) {
+            for (Method method : generate
+                    ? GraalImageCode.getCurrent().sorted(proxy.getMethods(), MethodComparator.INSTANCE)
+                    : proxy.getMethods()) {
                 if (method.getDeclaringClass() == Object.class) {
                     continue;
                 }
@@ -225,7 +237,9 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
             }
         }
         boolean generate = this.generate;
-        for (Method method : proxy.getMethods()) {
+        for (Method method : generate
+                ? GraalImageCode.getCurrent().sorted(proxy.getMethods(), MethodComparator.INSTANCE)
+                : proxy.getMethods()) {
             if (method.getDeclaringClass() == Object.class) {
                 continue;
             }
@@ -464,7 +478,7 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
         /**
          * {@inheritDoc}
          */
-        public Object invoke(Method method, @Nullable Object instance, Object[] argument) throws IllegalAccessException, InvocationTargetException {
+        public Object invoke(Method method, @MaybeNull Object instance, @MaybeNull Object[] argument) throws IllegalAccessException, InvocationTargetException {
             return method.invoke(instance, argument);
         }
     }
@@ -481,7 +495,7 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
          * @return The return value.
          * @throws Throwable If any error occurs.
          */
-        @Nullable
+        @MaybeNull
         Object invoke(Object[] argument) throws Throwable;
 
         /**
@@ -632,7 +646,7 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
             /**
              * The default value.
              */
-            @Nullable
+            @MaybeNull
             private final Object value;
 
             /**
@@ -658,7 +672,7 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
              * @param returned The opcode to return the default value.
              * @param size     The operand stack size of default value.
              */
-            ForDefaultValue(@Nullable Object value, int load, int returned, int size) {
+            ForDefaultValue(@MaybeNull Object value, int load, int returned, int size) {
                 this.value = value;
                 this.load = load;
                 this.returned = returned;
@@ -718,7 +732,7 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public Object invoke(Object[] argument) {
                 return value;
             }
@@ -951,7 +965,7 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public Object invoke(Object[] argument) throws Throwable {
                 return INVOKER.invoke(method, null, argument);
             }
@@ -1125,8 +1139,8 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
         /**
          * {@inheritDoc}
          */
-        @Nullable
-        public Object invoke(Object proxy, Method method, @Nullable Object[] argument) throws Throwable {
+        @MaybeNull
+        public Object invoke(Object proxy, Method method, @MaybeNull Object[] argument) throws Throwable {
             if (method.getDeclaringClass() == Object.class) {
                 if (method.getName().equals("hashCode")) {
                     return hashCode();
@@ -1155,6 +1169,8 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
                 }
             } catch (RuntimeException exception) {
                 throw exception;
+            } catch (Error error) {
+                throw error;
             } catch (Throwable throwable) {
                 for (Class<?> type : method.getExceptionTypes()) {
                     if (type.isInstance(throwable)) {
@@ -1172,6 +1188,12 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
     protected static class DynamicClassLoader extends ClassLoader {
 
         /**
+         * The dump folder that is defined by the {@link TypeWriter#DUMP_PROPERTY} property or {@code null} if not set.
+         */
+        @MaybeNull
+        private static final String DUMP_FOLDER;
+
+        /**
          * Indicates that a constructor does not declare any parameters.
          */
         private static final Class<?>[] NO_PARAMETER = new Class<?>[0];
@@ -1180,6 +1202,19 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
          * Indicates that a constructor does not require any arguments.
          */
         private static final Object[] NO_ARGUMENT = new Object[0];
+
+        /*
+         * Resolves the currently set dump folder.
+         */
+        static {
+            String dumpFolder;
+            try {
+                dumpFolder = doPrivileged(new GetSystemPropertyAction(TypeWriter.DUMP_PROPERTY));
+            } catch (Throwable ignored) {
+                dumpFolder = null;
+            }
+            DUMP_FOLDER = dumpFolder;
+        }
 
         /**
          * Creates a new dynamic class loader.
@@ -1198,10 +1233,10 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
          * @param dispatchers The dispatchers to implement.
          * @return An instance of the proxied type.
          */
-        @SuppressFBWarnings(value = {"REC_CATCH_EXCEPTION", "DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED"}, justification = "Expected internal invocation")
+        @SuppressFBWarnings(value = {"REC_CATCH_EXCEPTION", "DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED"}, justification = "Expected internal invocation.")
         protected static Object proxy(Class<?> proxy, Map<Method, Dispatcher> dispatchers) {
-            ClassWriter classWriter = new ClassWriter(0);
-            classWriter.visit(ClassFileVersion.ofThisVm(ClassFileVersion.JAVA_V5).getMinorMajorVersion(),
+            ClassWriter classWriter = new ClassWriter(AsmVisitorWrapper.NO_FLAGS);
+            classWriter.visit(ClassFileVersion.JAVA_V5.getMinorMajorVersion(),
                     Opcodes.ACC_PUBLIC,
                     Type.getInternalName(proxy) + "$Proxy",
                     null,
@@ -1243,6 +1278,18 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
             methodVisitor.visitEnd();
             classWriter.visitEnd();
             byte[] binaryRepresentation = classWriter.toByteArray();
+            if (DUMP_FOLDER != null) {
+                try {
+                    OutputStream outputStream = new FileOutputStream(new File(DUMP_FOLDER, proxy.getName() + "$Proxy.class"));
+                    try {
+                        outputStream.write(binaryRepresentation);
+                    } finally {
+                        outputStream.close();
+                    }
+                } catch (Throwable ignored) {
+                    /* do nothing */
+                }
+            }
             try {
                 return new DynamicClassLoader(proxy)
                         .defineClass(proxy.getName() + "$Proxy",
@@ -1262,16 +1309,16 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
          *
          * @return The created {@link Invoker}.
          */
-        @SuppressFBWarnings(value = {"REC_CATCH_EXCEPTION", "DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED"}, justification = "Expected internal invocation")
+        @SuppressFBWarnings(value = {"REC_CATCH_EXCEPTION", "DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED"}, justification = "Expected internal invocation.")
         protected static Invoker invoker() {
-            ClassWriter classWriter = new ClassWriter(0);
-            classWriter.visit(ClassFileVersion.ofThisVm(ClassFileVersion.JAVA_V5).getMinorMajorVersion(),
+            ClassWriter classWriter = new ClassWriter(AsmVisitorWrapper.NO_FLAGS);
+            classWriter.visit(ClassFileVersion.JAVA_V5.getMinorMajorVersion(),
                     Opcodes.ACC_PUBLIC,
                     Type.getInternalName(Invoker.class) + "$Dispatcher",
                     null,
                     Type.getInternalName(Object.class),
                     new String[]{Type.getInternalName(Invoker.class)});
-            for (Method method : Invoker.class.getMethods()) {
+            for (Method method : GraalImageCode.getCurrent().sorted(Invoker.class.getMethods(), MethodComparator.INSTANCE)) {
                 Class<?>[] exceptionType = method.getExceptionTypes();
                 String[] exceptionTypeName = new String[exceptionType.length];
                 for (int index = 0; index < exceptionType.length; index++) {
@@ -1320,6 +1367,19 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
             classWriter.visitEnd();
             byte[] binaryRepresentation = classWriter.toByteArray();
             try {
+                String dumpFolder = System.getProperty(TypeWriter.DUMP_PROPERTY);
+                if (dumpFolder != null) {
+                    OutputStream outputStream = new FileOutputStream(new File(dumpFolder, Invoker.class.getName() + "$Dispatcher.class"));
+                    try {
+                        outputStream.write(binaryRepresentation);
+                    } finally {
+                        outputStream.close();
+                    }
+                }
+            } catch (Throwable ignored) {
+                /* do nothing */
+            }
+            try {
                 return (Invoker) new DynamicClassLoader(Invoker.class)
                         .defineClass(Invoker.class.getName() + "$Dispatcher",
                                 binaryRepresentation,
@@ -1346,7 +1406,7 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
              * @param classLoader The class loader to adjust.
              * @param target      The targeted class for which a proxy is created.
              */
-            void accept(@Nullable ClassLoader classLoader, Class<?> target);
+            void accept(@MaybeNull ClassLoader classLoader, Class<?> target);
 
             /**
              * An action to create a resolver.
@@ -1361,7 +1421,7 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
                 /**
                  * {@inheritDoc}
                  */
-                @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not be rethrown but trigger a fallback")
+                @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not be rethrown but trigger a fallback.")
                 public Resolver run() {
                     try {
                         Class<?> module = Class.forName("java.lang.Module", false, null);
@@ -1388,7 +1448,7 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
                 /**
                  * {@inheritDoc}
                  */
-                public void accept(@Nullable ClassLoader classLoader, Class<?> target) {
+                public void accept(@MaybeNull ClassLoader classLoader, Class<?> target) {
                     /* do nothing */
                 }
             }
@@ -1440,8 +1500,8 @@ public class JavaDispatcher<T> implements PrivilegedAction<T> {
                 /**
                  * {@inheritDoc}
                  */
-                @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should always be wrapped for clarity")
-                public void accept(@Nullable ClassLoader classLoader, Class<?> target) {
+                @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should always be wrapped for clarity.")
+                public void accept(@MaybeNull ClassLoader classLoader, Class<?> target) {
                     Package location = target.getPackage();
                     if (location != null) {
                         try {

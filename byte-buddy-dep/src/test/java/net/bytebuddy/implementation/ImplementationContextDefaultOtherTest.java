@@ -17,13 +17,26 @@ import static org.mockito.Mockito.mock;
 
 public class ImplementationContextDefaultOtherTest {
 
+    private static final String FOO = "foo";
+
     @Test
     public void testFactory() throws Exception {
         assertThat(Implementation.Context.Default.Factory.INSTANCE.make(mock(TypeDescription.class),
                 mock(AuxiliaryType.NamingStrategy.class),
                 mock(TypeInitializer.class),
                 mock(ClassFileVersion.class),
-                mock(ClassFileVersion.class)), instanceOf(Implementation.Context.Default.class));
+                mock(ClassFileVersion.class),
+                Implementation.Context.FrameGeneration.DISABLED), instanceOf(Implementation.Context.Default.class));
+    }
+
+    @Test
+    public void testFactoryWithFixedSuffix() throws Exception {
+        assertThat(new Implementation.Context.Default.Factory.WithFixedSuffix(FOO).make(mock(TypeDescription.class),
+                mock(AuxiliaryType.NamingStrategy.class),
+                mock(TypeInitializer.class),
+                mock(ClassFileVersion.class),
+                mock(ClassFileVersion.class),
+                Implementation.Context.FrameGeneration.DISABLED), instanceOf(Implementation.Context.Default.class));
     }
 
     @Test
@@ -32,7 +45,9 @@ public class ImplementationContextDefaultOtherTest {
                 mock(ClassFileVersion.class),
                 mock(AuxiliaryType.NamingStrategy.class),
                 mock(TypeInitializer.class),
-                mock(ClassFileVersion.class)).isEnabled(), is(true));
+                mock(ClassFileVersion.class),
+                Implementation.Context.FrameGeneration.DISABLED,
+                FOO).isEnabled(), is(true));
     }
 
     @Test
@@ -42,7 +57,9 @@ public class ImplementationContextDefaultOtherTest {
                 mock(ClassFileVersion.class),
                 mock(AuxiliaryType.NamingStrategy.class),
                 mock(TypeInitializer.class),
-                mock(ClassFileVersion.class)).getInstrumentedType(), is(instrumentedType));
+                mock(ClassFileVersion.class),
+                Implementation.Context.FrameGeneration.DISABLED,
+                FOO).getInstrumentedType(), is(instrumentedType));
     }
 
     @Test(expected = UnsupportedOperationException.class)

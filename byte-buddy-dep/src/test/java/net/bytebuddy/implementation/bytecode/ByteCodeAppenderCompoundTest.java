@@ -2,17 +2,17 @@ package net.bytebuddy.implementation.bytecode;
 
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.implementation.Implementation;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 import org.objectweb.asm.MethodVisitor;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.mockito.Mockito.verifyZeroInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 public class ByteCodeAppenderCompoundTest {
@@ -20,7 +20,7 @@ public class ByteCodeAppenderCompoundTest {
     private static final int MINIMUM = 3, MAXIMUM = 5;
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private ByteCodeAppender first, second;
@@ -48,7 +48,7 @@ public class ByteCodeAppenderCompoundTest {
         ByteCodeAppender.Size size = compound.apply(methodVisitor, implementationContext, methodDescription);
         assertThat(size.getLocalVariableSize(), is(MAXIMUM));
         assertThat(size.getOperandStackSize(), is(MAXIMUM));
-        verifyZeroInteractions(methodVisitor);
-        verifyZeroInteractions(implementationContext);
+        verifyNoMoreInteractions(methodVisitor);
+        verifyNoMoreInteractions(implementationContext);
     }
 }

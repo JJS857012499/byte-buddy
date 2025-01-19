@@ -18,6 +18,7 @@ package net.bytebuddy.description.enumeration;
 import net.bytebuddy.build.CachedReturnPlugin;
 import net.bytebuddy.description.NamedElement;
 import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,7 +71,7 @@ public interface EnumerationDescription extends NamedElement {
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (!(other instanceof EnumerationDescription)) {

@@ -24,8 +24,8 @@ import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.implementation.ToStringMethod;
 import net.bytebuddy.matcher.ElementMatchers;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nullable;
 import java.lang.annotation.*;
 
 import static net.bytebuddy.matcher.ElementMatchers.*;
@@ -66,7 +66,7 @@ public class ToStringPlugin implements Plugin, Plugin.Factory {
     /**
      * {@inheritDoc}
      */
-    public boolean matches(@Nullable TypeDescription target) {
+    public boolean matches(@MaybeNull TypeDescription target) {
         return target != null && target.getDeclaredAnnotations().isAnnotationPresent(Enhance.class);
     }
 

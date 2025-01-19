@@ -1,15 +1,21 @@
 package net.bytebuddy.implementation.auxiliary;
 
+import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.test.utility.CallTraceable;
+import net.bytebuddy.utility.RandomString;
 import org.junit.Test;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Type;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.concurrent.Callable;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.mockito.Mockito.when;
 
 public class MethodCallProxyTest extends AbstractMethodCallProxyTest {
 
@@ -20,6 +26,13 @@ public class MethodCallProxyTest extends AbstractMethodCallProxyTest {
     private static final int INT_VALUE = 21;
 
     private static final boolean BOOLEAN_VALUE = true;
+
+    @Test
+    public void testSignature() throws Exception {
+        MethodDescription methodDescription = new MethodDescription.ForLoadedMethod(Object.class.getMethod("toString"));
+        when(specialMethodInvocation.getMethodDescription()).thenReturn(methodDescription);
+        assertThat(new MethodCallProxy(specialMethodInvocation, true).getSuffix(), is(RandomString.hashOf(methodDescription.hashCode()) + "S"));
+    }
 
     @Test
     public void testNoParameterMethod() throws Exception {
@@ -71,8 +84,21 @@ public class MethodCallProxyTest extends AbstractMethodCallProxyTest {
         Class<?> auxiliaryType = proxyOnlyDeclaredMethodOf(GenericType.class);
         assertThat(auxiliaryType.getTypeParameters().length, is(0));
         assertThat(auxiliaryType.getDeclaredMethod("call").getGenericReturnType(), is((Type) Object.class));
-        assertThat(auxiliaryType.getDeclaredFields()[1].getGenericType(), is((Type) Object.class));
-        assertThat(auxiliaryType.getDeclaredFields()[2].getGenericType(), is((Type) Number.class));
+        Field[] field = auxiliaryType.getDeclaredFields();
+        Arrays.sort(field, new Comparator<Field>() {
+            public int compare(Field left, Field right) {
+                return left.getName().compareTo(right.getName());
+            }
+        });
+        assertThat(field[1].getGenericType(), is((Type) Object.class));
+        assertThat(field[2].getGenericType(), is((Type) Number.class));
+    }
+
+    @Test
+    public void testSuffix() throws Exception {
+        MethodDescription methodDescription = new MethodDescription.ForLoadedMethod(Object.class.getMethod("toString"));
+        when(specialMethodInvocation.getMethodDescription()).thenReturn(methodDescription);
+        assertThat(new MethodCallProxy(specialMethodInvocation, false).getSuffix(), is("4cscpe10"));
     }
 
     @SuppressWarnings("unused")

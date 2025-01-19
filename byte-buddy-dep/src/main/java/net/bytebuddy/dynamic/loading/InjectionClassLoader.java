@@ -17,8 +17,8 @@ package net.bytebuddy.dynamic.loading;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nullable;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.HashMap;
@@ -46,7 +46,7 @@ public abstract class InjectionClassLoader extends ClassLoader {
     /**
      * Registers class loader as parallel capable if possible.
      */
-    @SuppressFBWarnings(value = "DP_DO_INSIDE_DO_PRIVILEGED", justification = "Must be invoked from targeting ClassLoader class.")
+    @SuppressFBWarnings(value = "DP_DO_INSIDE_DO_PRIVILEGED", justification = "Must be invoked from targeting class loader type.")
     private static void doRegisterAsParallelCapable() {
         try {
             Method method = ClassLoader.class.getDeclaredMethod("registerAsParallelCapable");
@@ -68,7 +68,7 @@ public abstract class InjectionClassLoader extends ClassLoader {
      * @param parent The class loader's parent.
      * @param sealed Indicates if this class loader is sealed, i.e. forbids runtime injection.
      */
-    protected InjectionClassLoader(@Nullable ClassLoader parent, boolean sealed) {
+    protected InjectionClassLoader(@MaybeNull ClassLoader parent, boolean sealed) {
         super(parent);
         this.sealed = new AtomicBoolean(sealed);
     }
@@ -139,7 +139,7 @@ public abstract class InjectionClassLoader extends ClassLoader {
         /**
          * {@inheritDoc}
          */
-        public Map<TypeDescription, Class<?>> load(@Nullable InjectionClassLoader classLoader, Map<TypeDescription, byte[]> types) {
+        public Map<TypeDescription, Class<?>> load(@MaybeNull InjectionClassLoader classLoader, Map<TypeDescription, byte[]> types) {
             if (classLoader == null) {
                 throw new IllegalArgumentException("Cannot add types to bootstrap class loader: " + types);
             }

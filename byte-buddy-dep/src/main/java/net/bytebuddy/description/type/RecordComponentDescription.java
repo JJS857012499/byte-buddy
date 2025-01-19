@@ -26,10 +26,10 @@ import net.bytebuddy.description.annotation.AnnotationSource;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.utility.dispatcher.JavaDispatcher;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.objectweb.asm.signature.SignatureWriter;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.GenericSignatureFormatError;
 import java.lang.reflect.Method;
@@ -142,7 +142,7 @@ public interface RecordComponentDescription extends DeclaredByType.WithMandatory
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public String getGenericSignature() {
             TypeDescription.Generic recordComponentType = getType();
             try {
@@ -160,7 +160,7 @@ public interface RecordComponentDescription extends DeclaredByType.WithMandatory
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (!(other instanceof RecordComponentDescription)) {
@@ -253,7 +253,7 @@ public interface RecordComponentDescription extends DeclaredByType.WithMandatory
         }
 
         @Override
-        @Nullable
+        @MaybeNull
         public String getGenericSignature() {
             return RECORD_COMPONENT.getGenericSignature(recordComponent);
         }
@@ -326,7 +326,7 @@ public interface RecordComponentDescription extends DeclaredByType.WithMandatory
              * @param value The record component to resolve the generic signature for.
              * @return The record component type's generic signature or {@code null} if no signature is defined.
              */
-            @Nullable
+            @MaybeNull
             String getGenericSignature(Object value);
 
             /**
@@ -588,7 +588,7 @@ public interface RecordComponentDescription extends DeclaredByType.WithMandatory
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (other == null || getClass() != other.getClass()) {

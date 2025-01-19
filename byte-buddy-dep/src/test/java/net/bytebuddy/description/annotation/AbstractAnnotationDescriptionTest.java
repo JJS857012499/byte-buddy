@@ -187,10 +187,14 @@ public abstract class AbstractAnnotationDescriptionTest {
                         ClassFileVersion.ofThisVm().isAtLeast(ClassFileVersion.JAVA_V17),
                         ClassFileVersion.ofThisVm().isAtLeast(ClassFileVersion.JAVA_V17)))
                 .make()
+                .include(new ByteBuddy().decorate(AbstractAnnotationDescriptionTest.class).make())
+                .include(new ByteBuddy().decorate(IncompatibleAnnotationProperty.class).make())
+                .include(new ByteBuddy().decorate(IncompatibleEnumerationProperty.class).make())
+                .include(new ByteBuddy().decorate(SampleEnumeration.class).make())
                 .include(new ByteBuddy().decorate(DefectiveAnnotation.class).make())
                 .include(new ByteBuddy().subclass(Object.class).name(BrokenAnnotationProperty.class.getName()).make())
                 .include(new ByteBuddy().subclass(Object.class).name(BrokenEnumerationProperty.class.getName()).make())
-                .load(getClassLoader(), ClassLoadingStrategy.Default.CHILD_FIRST_PERSISTENT)
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
                 .getLoaded();
         broken = brokenCarrier.getAnnotations()[0];
     }
@@ -219,7 +223,9 @@ public abstract class AbstractAnnotationDescriptionTest {
     }
 
     private void assertToString(String toString, Annotation actual) throws Exception {
-        String prefix = "@" + actual.annotationType().getName() + "(";
+        String prefix = "@" + (ClassFileVersion.ofThisVm().isAtLeast(ClassFileVersion.JAVA_V19)
+                ? actual.annotationType().getCanonicalName()
+                : actual.annotationType().getName()) + "(";
         assertThat(toString, startsWith(prefix));
         assertThat(toString, endsWith(")"));
         String actualString = actual.toString();
@@ -781,6 +787,17 @@ public abstract class AbstractAnnotationDescriptionTest {
     }
 
     @Test
+    public void testIsSupportedOn() throws Exception {
+        for (ElementType elementType : ElementType.values()) {
+            assertThat(describe(first).isSupportedOn(elementType), is(!elementType.name().equals("TYPE_PARAMETER")));
+        }
+        assertThat(describe(explicitTarget).isSupportedOn(ElementType.TYPE), is(true));
+        assertThat(describe(explicitTarget).isSupportedOn(ElementType.ANNOTATION_TYPE), is(false));
+        assertThat(describe(explicitTarget).isSupportedOn(ElementType.TYPE.name()), is(true));
+        assertThat(describe(explicitTarget).isSupportedOn(ElementType.ANNOTATION_TYPE.name()), is(false));
+    }
+
+    @Test
     public void testInheritance() throws Exception {
         assertThat(describe(first).isInherited(), is(false));
         assertThat(describe(defaultFirst).isInherited(), is(true));
@@ -1185,7 +1202,7 @@ public abstract class AbstractAnnotationDescriptionTest {
                 if (allowIncompatibleDeclaration) {
                     annotationVisitor.visitAnnotation("incompatibleEnumerationDeclaration", Type.getDescriptor(IncompatibleAnnotationProperty.class)).visitEnd();
                     AnnotationVisitor incompatibleAnnotationDeclarationArray = annotationVisitor.visitArray("incompatibleEnumerationDeclarationArray");
-                    incompatibleAnnotationDeclarationArray.visitAnnotation(null, Type.getDescriptor(IncompatibleAnnotationProperty.class));
+                    incompatibleAnnotationDeclarationArray.visitAnnotation(null, Type.getDescriptor(IncompatibleAnnotationProperty.class)).visitEnd();
                     incompatibleAnnotationDeclarationArray.visitEnd();
                     annotationVisitor.visitArray("incompatibleEnumerationDeclarationEmptyArray").visitEnd();
                     annotationVisitor.visitEnum("incompatibleAnnotationDeclaration", Type.getDescriptor(IncompatibleEnumerationProperty.class), FOO.toUpperCase());

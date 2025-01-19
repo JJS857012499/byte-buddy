@@ -17,13 +17,13 @@ package net.bytebuddy.dynamic.loading;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
@@ -101,7 +101,7 @@ public interface PackageDefinitionStrategy {
          *
          * @return The package specification's title.
          */
-        @Nullable
+        @MaybeNull
         String getSpecificationTitle();
 
         /**
@@ -110,7 +110,7 @@ public interface PackageDefinitionStrategy {
          *
          * @return The package specification's version.
          */
-        @Nullable
+        @MaybeNull
         String getSpecificationVersion();
 
         /**
@@ -119,7 +119,7 @@ public interface PackageDefinitionStrategy {
          *
          * @return The package specification's vendor.
          */
-        @Nullable
+        @MaybeNull
         String getSpecificationVendor();
 
         /**
@@ -128,7 +128,7 @@ public interface PackageDefinitionStrategy {
          *
          * @return The package implementation's title.
          */
-        @Nullable
+        @MaybeNull
         String getImplementationTitle();
 
         /**
@@ -137,7 +137,7 @@ public interface PackageDefinitionStrategy {
          *
          * @return The package implementation's version.
          */
-        @Nullable
+        @MaybeNull
         String getImplementationVersion();
 
         /**
@@ -146,7 +146,7 @@ public interface PackageDefinitionStrategy {
          *
          * @return The package implementation's vendor.
          */
-        @Nullable
+        @MaybeNull
         String getImplementationVendor();
 
         /**
@@ -154,7 +154,7 @@ public interface PackageDefinitionStrategy {
          *
          * @return The seal base of the package.
          */
-        @Nullable
+        @MaybeNull
         URL getSealBase();
 
         /**
@@ -253,13 +253,13 @@ public interface PackageDefinitionStrategy {
             /**
              * An empty value of a package's property.
              */
-            @Nonnull(when = When.NEVER)
+            @AlwaysNull
             private static final String NO_VALUE = null;
 
             /**
              * Represents an unsealed package.
              */
-            @Nonnull(when = When.NEVER)
+            @AlwaysNull
             private static final URL NOT_SEALED = null;
 
             /**
@@ -272,7 +272,7 @@ public interface PackageDefinitionStrategy {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public String getSpecificationTitle() {
                 return NO_VALUE;
             }
@@ -280,7 +280,7 @@ public interface PackageDefinitionStrategy {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public String getSpecificationVersion() {
                 return NO_VALUE;
             }
@@ -288,7 +288,7 @@ public interface PackageDefinitionStrategy {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public String getSpecificationVendor() {
                 return NO_VALUE;
             }
@@ -296,7 +296,7 @@ public interface PackageDefinitionStrategy {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public String getImplementationTitle() {
                 return NO_VALUE;
             }
@@ -304,7 +304,7 @@ public interface PackageDefinitionStrategy {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public String getImplementationVersion() {
                 return NO_VALUE;
             }
@@ -319,7 +319,7 @@ public interface PackageDefinitionStrategy {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public URL getSealBase() {
                 return NOT_SEALED;
             }
@@ -340,43 +340,43 @@ public interface PackageDefinitionStrategy {
             /**
              * The seal base or {@code null} if the package is not sealed.
              */
-            @Nullable
+            @MaybeNull
             protected final URL sealBase;
 
             /**
              * The package specification's title or {@code null} if no such title exists.
              */
-            @Nullable
+            @MaybeNull
             private final String specificationTitle;
 
             /**
              * The package specification's version or {@code null} if no such version exists.
              */
-            @Nullable
+            @MaybeNull
             private final String specificationVersion;
 
             /**
              * The package specification's vendor or {@code null} if no such vendor exists.
              */
-            @Nullable
+            @MaybeNull
             private final String specificationVendor;
 
             /**
              * The package implementation's title or {@code null} if no such title exists.
              */
-            @Nullable
+            @MaybeNull
             private final String implementationTitle;
 
             /**
              * The package implementation's version or {@code null} if no such version exists.
              */
-            @Nullable
+            @MaybeNull
             private final String implementationVersion;
 
             /**
              * The package implementation's vendor or {@code null} if no such vendor exists.
              */
-            @Nullable
+            @MaybeNull
             private final String implementationVendor;
 
             /**
@@ -390,13 +390,13 @@ public interface PackageDefinitionStrategy {
              * @param implementationVendor  The package implementation's vendor or {@code null} if no such vendor exists.
              * @param sealBase              The seal base or {@code null} if the package is not sealed.
              */
-            public Simple(@Nullable String specificationTitle,
-                          @Nullable String specificationVersion,
-                          @Nullable String specificationVendor,
-                          @Nullable String implementationTitle,
-                          @Nullable String implementationVersion,
-                          @Nullable String implementationVendor,
-                          @Nullable URL sealBase) {
+            public Simple(@MaybeNull String specificationTitle,
+                          @MaybeNull String specificationVersion,
+                          @MaybeNull String specificationVendor,
+                          @MaybeNull String implementationTitle,
+                          @MaybeNull String implementationVersion,
+                          @MaybeNull String implementationVendor,
+                          @MaybeNull URL sealBase) {
                 this.specificationTitle = specificationTitle;
                 this.specificationVersion = specificationVersion;
                 this.specificationVendor = specificationVendor;
@@ -416,7 +416,7 @@ public interface PackageDefinitionStrategy {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public String getSpecificationTitle() {
                 return specificationTitle;
             }
@@ -424,7 +424,7 @@ public interface PackageDefinitionStrategy {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public String getSpecificationVersion() {
                 return specificationVersion;
             }
@@ -432,7 +432,7 @@ public interface PackageDefinitionStrategy {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public String getSpecificationVendor() {
                 return specificationVendor;
             }
@@ -440,7 +440,7 @@ public interface PackageDefinitionStrategy {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public String getImplementationTitle() {
                 return implementationTitle;
             }
@@ -448,7 +448,7 @@ public interface PackageDefinitionStrategy {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public String getImplementationVersion() {
                 return implementationVersion;
             }
@@ -456,7 +456,7 @@ public interface PackageDefinitionStrategy {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public String getImplementationVendor() {
                 return implementationVendor;
             }
@@ -464,7 +464,7 @@ public interface PackageDefinitionStrategy {
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public URL getSealBase() {
                 return sealBase;
             }
@@ -481,7 +481,7 @@ public interface PackageDefinitionStrategy {
             }
 
             @Override
-            @SuppressFBWarnings(value = "DMI_BLOCKING_METHODS_ON_URL", justification = "Package sealing relies on URL equality")
+            @SuppressFBWarnings(value = "DMI_BLOCKING_METHODS_ON_URL", justification = "Package sealing relies on URL equality.")
             public int hashCode() {
                 int result = specificationTitle != null ? specificationTitle.hashCode() : 0;
                 result = 31 * result + (specificationVersion != null ? specificationVersion.hashCode() : 0);
@@ -494,8 +494,8 @@ public interface PackageDefinitionStrategy {
             }
 
             @Override
-            @SuppressFBWarnings(value = "DMI_BLOCKING_METHODS_ON_URL", justification = "Package sealing relies on URL equality")
-            public boolean equals(Object other) {
+            @SuppressFBWarnings(value = "DMI_BLOCKING_METHODS_ON_URL", justification = "Package sealing relies on URL equality.")
+            public boolean equals(@MaybeNull Object other) {
                 if (this == other) {
                     return true;
                 } else if (other == null || getClass() != other.getClass()) {
@@ -522,7 +522,7 @@ public interface PackageDefinitionStrategy {
         /**
          * A URL defined a non-sealed package.
          */
-        @Nonnull(when = When.NEVER)
+        @AlwaysNull
         private static final URL NOT_SEALED = null;
 
         /**
@@ -616,7 +616,7 @@ public interface PackageDefinitionStrategy {
              * @param typeName    The name of the type being loaded that triggered the package definition.
              * @return The URL that is used for sealing a package or {@code null} if the package should not be sealed.
              */
-            @Nullable
+            @MaybeNull
             URL findSealBase(ClassLoader classLoader, String typeName);
 
             /**
@@ -632,7 +632,7 @@ public interface PackageDefinitionStrategy {
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public URL findSealBase(ClassLoader classLoader, String typeName) {
                     return NOT_SEALED;
                 }
@@ -647,7 +647,7 @@ public interface PackageDefinitionStrategy {
                 /**
                  * The seal base URL.
                  */
-                @Nullable
+                @MaybeNull
                 @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
                 private final URL sealBase;
 
@@ -656,20 +656,20 @@ public interface PackageDefinitionStrategy {
                  *
                  * @param sealBase The seal base URL.
                  */
-                public ForFixedValue(@Nullable URL sealBase) {
+                public ForFixedValue(@MaybeNull URL sealBase) {
                     this.sealBase = sealBase;
                 }
 
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public URL findSealBase(ClassLoader classLoader, String typeName) {
                     return sealBase;
                 }
 
                 @Override
-                @SuppressFBWarnings(value = "DMI_BLOCKING_METHODS_ON_URL", justification = "Package sealing relies on URL equality")
+                @SuppressFBWarnings(value = "DMI_BLOCKING_METHODS_ON_URL", justification = "Package sealing relies on URL equality.")
                 public int hashCode() {
                     return sealBase == null
                             ? 17
@@ -677,8 +677,8 @@ public interface PackageDefinitionStrategy {
                 }
 
                 @Override
-                @SuppressFBWarnings(value = "DMI_BLOCKING_METHODS_ON_URL", justification = "Package sealing relies on URL equality")
-                public boolean equals(Object other) {
+                @SuppressFBWarnings(value = "DMI_BLOCKING_METHODS_ON_URL", justification = "Package sealing relies on URL equality.")
+                public boolean equals(@MaybeNull Object other) {
                     if (this == other) {
                         return true;
                     } else if (other == null || getClass() != other.getClass()) {
@@ -749,13 +749,13 @@ public interface PackageDefinitionStrategy {
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public URL findSealBase(ClassLoader classLoader, String typeName) {
                     URL url = classLoader.getResource(typeName.replace('.', '/') + CLASS_FILE_EXTENSION);
                     if (url != null) {
                         try {
                             if (url.getProtocol().equals(JAR_FILE)) {
-                                return new URL(url.getPath().substring(0, url.getPath().indexOf('!')));
+                                return URI.create(url.getPath().substring(0, url.getPath().indexOf('!'))).toURL();
                             } else if (url.getProtocol().equals(FILE_SYSTEM)) {
                                 return url;
                             } else if (url.getProtocol().equals(RUNTIME_IMAGE)) {
@@ -763,7 +763,7 @@ public interface PackageDefinitionStrategy {
                                 int modulePathIndex = path.indexOf('/', EXCLUDE_INITIAL_SLASH);
                                 return modulePathIndex == -1
                                         ? url
-                                        : new URL(RUNTIME_IMAGE + ":" + path.substring(0, modulePathIndex));
+                                        : URI.create(RUNTIME_IMAGE + ":" + path.substring(0, modulePathIndex)).toURL();
                             }
                         } catch (MalformedURLException exception) {
                             throw new IllegalStateException("Unexpected URL: " + url, exception);

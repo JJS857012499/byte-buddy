@@ -1,0 +1,26 @@
+buildscript {
+    ext {
+        outerPom = new groovy.xml.XmlSlurper().parse(rootProject.file('../pom.xml'))
+        byteBuddyVersion = outerPom.parent.version.text().toString()
+    }
+    repositories {
+        mavenCentral()
+        google()
+    }
+    dependencies {
+        classpath group: 'com.android.tools.build', name: 'gradle', version: '7.4.0'
+        def byteBuddyPlugin = new File("${rootDir}/../build/libs/byte-buddy-gradle-plugin-${byteBuddyVersion}.jar").canonicalFile
+        def byteBuddyLib = new File("$rootDir/../../byte-buddy/target/byte-buddy-${byteBuddyVersion}.jar").canonicalFile
+        classpath files(byteBuddyPlugin)
+        classpath files(byteBuddyLib.absolutePath)
+    }
+}
+
+ext.javaVersion = JavaVersion.VERSION_11
+
+subprojects {
+    repositories {
+        mavenCentral()
+        google()
+    }
+}

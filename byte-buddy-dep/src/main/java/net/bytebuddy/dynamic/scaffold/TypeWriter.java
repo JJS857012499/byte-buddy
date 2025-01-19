@@ -49,9 +49,15 @@ import net.bytebuddy.implementation.bytecode.member.MethodInvocation;
 import net.bytebuddy.implementation.bytecode.member.MethodReturn;
 import net.bytebuddy.implementation.bytecode.member.MethodVariableAccess;
 import net.bytebuddy.pool.TypePool;
+import net.bytebuddy.utility.AsmClassReader;
+import net.bytebuddy.utility.AsmClassWriter;
 import net.bytebuddy.utility.CompoundList;
 import net.bytebuddy.utility.OpenedClassReader;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
+import net.bytebuddy.utility.nullability.UnknownNull;
 import net.bytebuddy.utility.privilege.GetSystemPropertyAction;
+import net.bytebuddy.utility.visitor.ContextClassVisitor;
 import net.bytebuddy.utility.visitor.MetadataAwareClassVisitor;
 import org.objectweb.asm.*;
 import org.objectweb.asm.commons.ClassRemapper;
@@ -59,8 +65,6 @@ import org.objectweb.asm.commons.Remapper;
 import org.objectweb.asm.commons.SimpleRemapper;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -92,6 +96,16 @@ public interface TypeWriter<T> {
      * @return An unloaded dynamic type that describes the created type.
      */
     DynamicType.Unloaded<T> make(TypeResolutionStrategy.Resolved typeResolver);
+
+    /**
+     * Wraps another ASM class visitor with a visitor that represents this ASM class writer.
+     *
+     * @param classVisitor The class visitor to wrap.
+     * @param writerFlags  The ASM writer flags to consider.
+     * @param readerFlags  The ASM reader flags to consider.
+     * @return The supplied class visitor wrapped by this type writer.
+     */
+    ContextClassVisitor wrap(ClassVisitor classVisitor, int writerFlags, int readerFlags);
 
     /**
      * An field pool that allows a lookup for how to implement a field.
@@ -140,8 +154,8 @@ public interface TypeWriter<T> {
              * @param defaultValue The default value that was defined previously or {@code null} if no default value is defined.
              * @return The default value for the represented field or {@code null} if no default value is to be defined.
              */
-            @Nullable
-            Object resolveDefault(@Nullable Object defaultValue);
+            @MaybeNull
+            Object resolveDefault(@MaybeNull Object defaultValue);
 
             /**
              * Writes this entry to a given class visitor.
@@ -203,7 +217,7 @@ public interface TypeWriter<T> {
                 /**
                  * {@inheritDoc}
                  */
-                public Object resolveDefault(@Nullable Object defaultValue) {
+                public Object resolveDefault(@MaybeNull Object defaultValue) {
                     throw new IllegalStateException("An implicit field record does not expose a default value: " + this);
                 }
 
@@ -246,7 +260,7 @@ public interface TypeWriter<T> {
                 /**
                  * The field's default value.
                  */
-                @Nullable
+                @MaybeNull
                 @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
                 private final Object defaultValue;
 
@@ -263,7 +277,7 @@ public interface TypeWriter<T> {
                  * @param fieldDescription  The implemented field.
                  */
                 public ForExplicitField(FieldAttributeAppender attributeAppender,
-                                        @Nullable Object defaultValue,
+                                        @MaybeNull Object defaultValue,
                                         FieldDescription fieldDescription) {
                     this.attributeAppender = attributeAppender;
                     this.defaultValue = defaultValue;
@@ -294,8 +308,8 @@ public interface TypeWriter<T> {
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
-                public Object resolveDefault(@Nullable Object defaultValue) {
+                @MaybeNull
+                public Object resolveDefault(@MaybeNull Object defaultValue) {
                     return this.defaultValue == null
                             ? defaultValue
                             : this.defaultValue;
@@ -987,6 +1001,9 @@ public interface TypeWriter<T> {
                         // Non-default method or default method that is inherited by a super class.
                         if (bridgeType == null) {
                             bridgeType = instrumentedType.getSuperClass();
+                            if (bridgeType == null) {
+                                bridgeType = TypeDescription.ForLoadedType.of(Object.class);
+                            }
                         }
                         return new OfVisibilityBridge(new VisibilityBridge(instrumentedType, bridgeTarget),
                                 bridgeTarget,
@@ -1125,7 +1142,7 @@ public interface TypeWriter<T> {
                         /**
                          * {@inheritDoc}
                          */
-                        @Nullable
+                        @MaybeNull
                         public AnnotationValue<?, ?> getDefaultValue() {
                             return AnnotationValue.UNDEFINED;
                         }
@@ -1396,7 +1413,7 @@ public interface TypeWriter<T> {
                     /**
                      * {@inheritDoc}
                      */
-                    @Nullable
+                    @MaybeNull
                     public AnnotationValue<?, ?> getDefaultValue() {
                         return AnnotationValue.UNDEFINED;
                     }
@@ -1488,7 +1505,7 @@ public interface TypeWriter<T> {
                     /**
                      * {@inheritDoc}
                      */
-                    @Nullable
+                    @MaybeNull
                     public AnnotationValue<?, ?> getDefaultValue() {
                         return bridgeTarget.getDefaultValue();
                     }
@@ -1746,13 +1763,13 @@ public interface TypeWriter<T> {
         /**
          * Indicates an empty reference in a class file which is expressed by {@code null}.
          */
-        @Nonnull(when = When.NEVER)
+        @AlwaysNull
         private static final String NO_REFERENCE = null;
 
         /**
          * A folder for dumping class files or {@code null} if no dump should be generated.
          */
-        @Nullable
+        @MaybeNull
         protected static final String DUMP_FOLDER;
 
         /*
@@ -1859,9 +1876,14 @@ public interface TypeWriter<T> {
         protected final TypeValidation typeValidation;
 
         /**
-         * The class writer strategy to use.
+         * The class reader factory to use.
          */
-        protected final ClassWriterStrategy classWriterStrategy;
+        protected final AsmClassReader.Factory classReaderFactory;
+
+        /**
+         * The class writer factory to use.
+         */
+        protected final AsmClassWriter.Factory classWriterFactory;
 
         /**
          * The type pool to use for computing stack map frames, if required.
@@ -1889,7 +1911,8 @@ public interface TypeWriter<T> {
          * @param auxiliaryTypeNamingStrategy  The naming strategy for auxiliary types to apply.
          * @param implementationContextFactory The implementation context factory to apply.
          * @param typeValidation               Determines if a type should be explicitly validated.
-         * @param classWriterStrategy          The class writer strategy to use.
+         * @param classReaderFactory           The class reader factory to use.
+         * @param classWriterFactory           The class writer factory to use.
          * @param typePool                     The type pool to use for computing stack map frames, if required.
          */
         protected Default(TypeDescription instrumentedType,
@@ -1910,7 +1933,8 @@ public interface TypeWriter<T> {
                           AuxiliaryType.NamingStrategy auxiliaryTypeNamingStrategy,
                           Implementation.Context.Factory implementationContextFactory,
                           TypeValidation typeValidation,
-                          ClassWriterStrategy classWriterStrategy,
+                          AsmClassReader.Factory classReaderFactory,
+                          AsmClassWriter.Factory classWriterFactory,
                           TypePool typePool) {
             this.instrumentedType = instrumentedType;
             this.classFileVersion = classFileVersion;
@@ -1930,7 +1954,8 @@ public interface TypeWriter<T> {
             this.annotationRetention = annotationRetention;
             this.implementationContextFactory = implementationContextFactory;
             this.typeValidation = typeValidation;
-            this.classWriterStrategy = classWriterStrategy;
+            this.classReaderFactory = classReaderFactory;
+            this.classWriterFactory = classWriterFactory;
             this.typePool = typePool;
         }
 
@@ -1974,7 +1999,8 @@ public interface TypeWriter<T> {
          * @param auxiliaryTypeNamingStrategy  The naming strategy for auxiliary types to apply.
          * @param implementationContextFactory The implementation context factory to apply.
          * @param typeValidation               Determines if a type should be explicitly validated.
-         * @param classWriterStrategy          The class writer strategy to use.
+         * @param classReaderFactory           The class reader factory to use.
+         * @param classWriterFactory           The class writer factory to use.
          * @param typePool                     The type pool to use for computing stack map frames, if required.
          * @param <U>                          A loaded type that the instrumented type guarantees to subclass.
          * @return A suitable type writer.
@@ -1991,7 +2017,8 @@ public interface TypeWriter<T> {
                                                     AuxiliaryType.NamingStrategy auxiliaryTypeNamingStrategy,
                                                     Implementation.Context.Factory implementationContextFactory,
                                                     TypeValidation typeValidation,
-                                                    ClassWriterStrategy classWriterStrategy,
+                                                    AsmClassReader.Factory classReaderFactory,
+                                                    AsmClassWriter.Factory classWriterFactory,
                                                     TypePool typePool) {
             return new ForCreation<U>(methodRegistry.getInstrumentedType(),
                     classFileVersion,
@@ -2012,7 +2039,8 @@ public interface TypeWriter<T> {
                     auxiliaryTypeNamingStrategy,
                     implementationContextFactory,
                     typeValidation,
-                    classWriterStrategy,
+                    classReaderFactory,
+                    classWriterFactory,
                     typePool);
         }
 
@@ -2031,7 +2059,8 @@ public interface TypeWriter<T> {
          * @param auxiliaryTypeNamingStrategy  The naming strategy for auxiliary types to apply.
          * @param implementationContextFactory The implementation context factory to apply.
          * @param typeValidation               Determines if a type should be explicitly validated.
-         * @param classWriterStrategy          The class writer strategy to use.
+         * @param classReaderFactory           The class reader factory to use.
+         * @param classWriterFactory           The class writer factory to use.
          * @param typePool                     The type pool to use for computing stack map frames, if required.
          * @param originalType                 The original type that is being redefined or rebased.
          * @param classFileLocator             The class file locator for locating the original type's class file.
@@ -2050,7 +2079,8 @@ public interface TypeWriter<T> {
                                                         AuxiliaryType.NamingStrategy auxiliaryTypeNamingStrategy,
                                                         Implementation.Context.Factory implementationContextFactory,
                                                         TypeValidation typeValidation,
-                                                        ClassWriterStrategy classWriterStrategy,
+                                                        AsmClassReader.Factory classReaderFactory,
+                                                        AsmClassWriter.Factory classWriterFactory,
                                                         TypePool typePool,
                                                         TypeDescription originalType,
                                                         ClassFileLocator classFileLocator) {
@@ -2072,7 +2102,8 @@ public interface TypeWriter<T> {
                     auxiliaryTypeNamingStrategy,
                     implementationContextFactory,
                     typeValidation,
-                    classWriterStrategy,
+                    classReaderFactory,
+                    classWriterFactory,
                     typePool,
                     originalType,
                     classFileLocator,
@@ -2096,7 +2127,8 @@ public interface TypeWriter<T> {
          * @param auxiliaryTypeNamingStrategy  The naming strategy for auxiliary types to apply.
          * @param implementationContextFactory The implementation context factory to apply.
          * @param typeValidation               Determines if a type should be explicitly validated.
-         * @param classWriterStrategy          The class writer strategy to use.
+         * @param classReaderFactory           The class reader factory to use.
+         * @param classWriterFactory           The class writer factory to use.
          * @param typePool                     The type pool to use for computing stack map frames, if required.
          * @param originalType                 The original type that is being redefined or rebased.
          * @param classFileLocator             The class file locator for locating the original type's class file.
@@ -2116,7 +2148,8 @@ public interface TypeWriter<T> {
                                                     AuxiliaryType.NamingStrategy auxiliaryTypeNamingStrategy,
                                                     Implementation.Context.Factory implementationContextFactory,
                                                     TypeValidation typeValidation,
-                                                    ClassWriterStrategy classWriterStrategy,
+                                                    AsmClassReader.Factory classReaderFactory,
+                                                    AsmClassWriter.Factory classWriterFactory,
                                                     TypePool typePool,
                                                     TypeDescription originalType,
                                                     ClassFileLocator classFileLocator,
@@ -2139,7 +2172,8 @@ public interface TypeWriter<T> {
                     auxiliaryTypeNamingStrategy,
                     implementationContextFactory,
                     typeValidation,
-                    classWriterStrategy,
+                    classReaderFactory,
+                    classWriterFactory,
                     typePool,
                     originalType,
                     classFileLocator,
@@ -2162,7 +2196,8 @@ public interface TypeWriter<T> {
          * @param auxiliaryTypeNamingStrategy  The naming strategy for auxiliary types to apply.
          * @param implementationContextFactory The implementation context factory to apply.
          * @param typeValidation               Determines if a type should be explicitly validated.
-         * @param classWriterStrategy          The class writer strategy to use.
+         * @param classReaderFactory           The class reader factory to use.
+         * @param classWriterFactory           The class writer factory to use.
          * @param typePool                     The type pool to use for computing stack map frames, if required.
          * @param classFileLocator             The class file locator for locating the original type's class file.
          * @param <U>                          A loaded type that the instrumented type guarantees to subclass.
@@ -2179,7 +2214,8 @@ public interface TypeWriter<T> {
                                                       AuxiliaryType.NamingStrategy auxiliaryTypeNamingStrategy,
                                                       Implementation.Context.Factory implementationContextFactory,
                                                       TypeValidation typeValidation,
-                                                      ClassWriterStrategy classWriterStrategy,
+                                                      AsmClassReader.Factory classReaderFactory,
+                                                      AsmClassWriter.Factory classWriterFactory,
                                                       TypePool typePool,
                                                       ClassFileLocator classFileLocator) {
             return new ForInlining.WithDecorationOnly<U>(instrumentedType,
@@ -2193,7 +2229,8 @@ public interface TypeWriter<T> {
                     auxiliaryTypeNamingStrategy,
                     implementationContextFactory,
                     typeValidation,
-                    classWriterStrategy,
+                    classReaderFactory,
+                    classWriterFactory,
                     typePool,
                     classFileLocator);
         }
@@ -2201,7 +2238,7 @@ public interface TypeWriter<T> {
         /**
          * {@inheritDoc}
          */
-        @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Setting a debugging property should never change the program outcome")
+        @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Setting a debugging property should never change the program outcome.")
         public DynamicType.Unloaded<S> make(TypeResolutionStrategy.Resolved typeResolutionStrategy) {
             ClassDumpAction.Dispatcher dispatcher = DUMP_FOLDER == null
                     ? ClassDumpAction.Dispatcher.Disabled.INSTANCE
@@ -2272,6 +2309,46 @@ public interface TypeWriter<T> {
         }
 
         /**
+         * A key to represent a unique signature.
+         */
+        protected static class SignatureKey {
+
+            /**
+             * The represented internal name.
+             */
+            private final String internalName;
+
+            /**
+             * The represented descriptor.
+             */
+            private final String descriptor;
+
+            /**
+             * Creates a new signature key.
+             *
+             * @param internalName The represented internal name.
+             * @param descriptor   The represented descriptor.
+             */
+            public SignatureKey(String internalName, String descriptor) {
+                this.internalName = internalName;
+                this.descriptor = descriptor;
+            }
+
+            @Override
+            public boolean equals(@MaybeNull Object other) {
+                if (this == other) return true;
+                if (other == null || getClass() != other.getClass()) return false;
+                SignatureKey that = (SignatureKey) other;
+                return internalName.equals(that.internalName) && descriptor.equals(that.descriptor);
+            }
+
+            @Override
+            public int hashCode() {
+                return 17 + internalName.hashCode() + 31 * descriptor.hashCode();
+            }
+        }
+
+        /**
          * A class validator that validates that a class only defines members that are appropriate for the sort of the generated class.
          */
         protected static class ValidatingClassVisitor extends ClassVisitor {
@@ -2294,19 +2371,19 @@ public interface TypeWriter<T> {
             /**
              * Indicates that a field is ignored.
              */
-            @Nonnull(when = When.NEVER)
+            @AlwaysNull
             private static final FieldVisitor IGNORE_FIELD = null;
 
             /**
              * Indicates that a method is ignored.
              */
-            @Nonnull(when = When.NEVER)
+            @AlwaysNull
             private static final MethodVisitor IGNORE_METHOD = null;
 
             /**
              * The constraint to assert the members against. The constraint is first defined when the general class information is visited.
              */
-            @Nullable
+            @UnknownNull
             private Constraint constraint;
 
             /**
@@ -2332,7 +2409,7 @@ public interface TypeWriter<T> {
             }
 
             @Override
-            public void visit(int version, int modifiers, String name, @Nullable String signature, @Nullable String superName, @Nullable String[] interfaceInternalName) {
+            public void visit(int version, int modifiers, String name, @MaybeNull String signature, @MaybeNull String superName, @MaybeNull String[] interfaceInternalName) {
                 ClassFileVersion classFileVersion = ClassFileVersion.ofMinorMajor(version);
                 List<Constraint> constraints = new ArrayList<Constraint>();
                 constraints.add(new Constraint.ForClassFileVersion(classFileVersion));
@@ -2376,15 +2453,15 @@ public interface TypeWriter<T> {
             }
 
             @Override
-            @Nullable
+            @MaybeNull
             public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
                 constraint.assertAnnotation();
                 return super.visitAnnotation(descriptor, visible);
             }
 
             @Override
-            @Nullable
-            public AnnotationVisitor visitTypeAnnotation(int typeReference, @Nullable TypePath typePath, String descriptor, boolean visible) {
+            @MaybeNull
+            public AnnotationVisitor visitTypeAnnotation(int typeReference, @MaybeNull TypePath typePath, String descriptor, boolean visible) {
                 constraint.assertTypeAnnotation();
                 return super.visitTypeAnnotation(typeReference, typePath, descriptor, visible);
             }
@@ -2402,8 +2479,8 @@ public interface TypeWriter<T> {
             }
 
             @Override
-            @Nullable
-            public FieldVisitor visitField(int modifiers, String name, String descriptor, @Nullable String signature, @Nullable Object value) {
+            @MaybeNull
+            public FieldVisitor visitField(int modifiers, String name, String descriptor, @MaybeNull String signature, @MaybeNull Object value) {
                 if (value != null) {
                     Class<?> type;
                     switch (descriptor.charAt(0)) {
@@ -2430,31 +2507,26 @@ public interface TypeWriter<T> {
                             type = String.class;
                     }
                     if (!type.isInstance(value)) {
-                        throw new IllegalStateException("Field " + name + " defines an incompatible default value " + value);
+                        throw new IllegalStateException("Field " + name + " defines an incompatible default value " + value + " (" + value.getClass().getName() + ")");
                     } else if (type == Integer.class) {
-                        int minimum, maximum;
+                        boolean outOfRange;
                         switch (descriptor.charAt(0)) {
                             case 'Z':
-                                minimum = 0;
-                                maximum = 1;
+                                outOfRange = (Integer) value < 0 || (Integer) value > 1;
                                 break;
                             case 'B':
-                                minimum = Byte.MIN_VALUE;
-                                maximum = Byte.MAX_VALUE;
-                                break;
-                            case 'C':
-                                minimum = Character.MIN_VALUE;
-                                maximum = Character.MAX_VALUE;
+                                outOfRange = (Integer) value < Byte.MIN_VALUE || (Integer) value > Byte.MAX_VALUE;
                                 break;
                             case 'S':
-                                minimum = Short.MIN_VALUE;
-                                maximum = Short.MAX_VALUE;
+                                outOfRange = (Integer) value < Short.MIN_VALUE || (Integer) value > Short.MAX_VALUE;
+                                break;
+                            case 'C':
+                                outOfRange = (Integer) value < Character.MIN_VALUE || (Integer) value > Character.MAX_VALUE;
                                 break;
                             default:
-                                minimum = Integer.MIN_VALUE;
-                                maximum = Integer.MAX_VALUE;
+                                outOfRange = false;
                         }
-                        if ((Integer) value < minimum || (Integer) value > maximum) {
+                        if (outOfRange) {
                             throw new IllegalStateException("Field " + name + " defines an incompatible default value " + value);
                         }
                     }
@@ -2471,8 +2543,8 @@ public interface TypeWriter<T> {
             }
 
             @Override
-            @Nullable
-            public MethodVisitor visitMethod(int modifiers, String name, String descriptor, @Nullable String signature, @Nullable String[] exceptionInternalName) {
+            @MaybeNull
+            public MethodVisitor visitMethod(int modifiers, String name, String descriptor, @MaybeNull String signature, @MaybeNull String[] exceptionInternalName) {
                 constraint.assertMethod(name,
                         (modifiers & Opcodes.ACC_ABSTRACT) != 0,
                         (modifiers & Opcodes.ACC_PUBLIC) != 0,
@@ -3756,21 +3828,21 @@ public interface TypeWriter<T> {
                 }
 
                 @Override
-                @Nullable
+                @MaybeNull
                 public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
                     constraint.assertAnnotation();
                     return super.visitAnnotation(descriptor, visible);
                 }
 
                 @Override
-                @Nullable
+                @MaybeNull
                 public AnnotationVisitor visitAnnotationDefault() {
                     constraint.assertDefaultValue(name);
                     return super.visitAnnotationDefault();
                 }
 
                 @Override
-                @SuppressFBWarnings(value = "SF_SWITCH_NO_DEFAULT", justification = "Fall through to default case is intentional")
+                @SuppressFBWarnings(value = "SF_SWITCH_NO_DEFAULT", justification = "Fall through to default case is intentional.")
                 public void visitLdcInsn(Object value) {
                     if (value instanceof Type) {
                         Type type = (Type) value;
@@ -3831,25 +3903,25 @@ public interface TypeWriter<T> {
             /**
              * Indicates that a field should be ignored.
              */
-            @Nonnull(when = When.NEVER)
+            @AlwaysNull
             private static final FieldVisitor IGNORE_FIELD = null;
 
             /**
              * Indicates that a method should be ignored.
              */
-            @Nonnull(when = When.NEVER)
+            @AlwaysNull
             private static final MethodVisitor IGNORE_METHOD = null;
 
             /**
              * Indicates that a record component should be ignored.
              */
-            @Nonnull(when = When.NEVER)
+            @AlwaysNull
             private static final RecordComponentVisitor IGNORE_RECORD_COMPONENT = null;
 
             /**
              * Indicates that an annotation should be ignored.
              */
-            @Nonnull(when = When.NEVER)
+            @AlwaysNull
             private static final AnnotationVisitor IGNORE_ANNOTATION = null;
 
             /**
@@ -3883,7 +3955,8 @@ public interface TypeWriter<T> {
              * @param auxiliaryTypeNamingStrategy  The naming strategy for auxiliary types to apply.
              * @param implementationContextFactory The implementation context factory to apply.
              * @param typeValidation               Determines if a type should be explicitly validated.
-             * @param classWriterStrategy          The class writer strategy to use.
+             * @param classReaderFactory           The class reader factory to use.
+             * @param classWriterFactory           The class writer factory to use.
              * @param typePool                     The type pool to use for computing stack map frames, if required.
              * @param originalType                 The original type's description.
              * @param classFileLocator             The class file locator for locating the original type's class file.
@@ -3906,7 +3979,8 @@ public interface TypeWriter<T> {
                                   AuxiliaryType.NamingStrategy auxiliaryTypeNamingStrategy,
                                   Implementation.Context.Factory implementationContextFactory,
                                   TypeValidation typeValidation,
-                                  ClassWriterStrategy classWriterStrategy,
+                                  AsmClassReader.Factory classReaderFactory,
+                                  AsmClassWriter.Factory classWriterFactory,
                                   TypePool typePool,
                                   TypeDescription originalType,
                                   ClassFileLocator classFileLocator) {
@@ -3928,10 +4002,23 @@ public interface TypeWriter<T> {
                         auxiliaryTypeNamingStrategy,
                         implementationContextFactory,
                         typeValidation,
-                        classWriterStrategy,
+                        classReaderFactory,
+                        classWriterFactory,
                         typePool);
                 this.originalType = originalType;
                 this.classFileLocator = classFileLocator;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            public ContextClassVisitor wrap(ClassVisitor classVisitor, int writerFlags, int readerFlags) {
+                ContextRegistry contextRegistry = new ContextRegistry();
+                return new RegistryContextClassVisitor(writeTo(ValidatingClassVisitor.of(classVisitor, typeValidation),
+                        typeInitializer,
+                        contextRegistry,
+                        asmVisitorWrapper.mergeWriter(writerFlags),
+                        asmVisitorWrapper.mergeReader(readerFlags)), contextRegistry);
             }
 
             @Override
@@ -3941,15 +4028,15 @@ public interface TypeWriter<T> {
                     int readerFlags = asmVisitorWrapper.mergeReader(AsmVisitorWrapper.NO_FLAGS);
                     byte[] binaryRepresentation = classFileLocator.locate(originalType.getName()).resolve();
                     dispatcher.dump(instrumentedType, true, binaryRepresentation);
-                    ClassReader classReader = OpenedClassReader.of(binaryRepresentation);
-                    ClassWriter classWriter = classWriterStrategy.resolve(writerFlags, typePool, classReader);
+                    AsmClassReader classReader = classReaderFactory.make(binaryRepresentation);
+                    AsmClassWriter classWriter = classWriterFactory.make(writerFlags, classReader, typePool);
                     ContextRegistry contextRegistry = new ContextRegistry();
-                    classReader.accept(writeTo(ValidatingClassVisitor.of(classWriter, typeValidation),
+                    classReader.accept(writeTo(ValidatingClassVisitor.of(classWriter.getVisitor(), typeValidation),
                             typeInitializer,
                             contextRegistry,
                             writerFlags,
                             readerFlags), readerFlags);
-                    return new UnresolvedType(classWriter.toByteArray(), contextRegistry.getAuxiliaryTypes());
+                    return new UnresolvedType(classWriter.getBinaryRepresentation(), contextRegistry.getAuxiliaryTypes());
                 } catch (IOException exception) {
                     throw new RuntimeException("The class file could not be written", exception);
                 }
@@ -3972,6 +4059,38 @@ public interface TypeWriter<T> {
                                                     int readerFlags);
 
             /**
+             * A context class visitor based on a {@link ContextRegistry}.
+             */
+            protected class RegistryContextClassVisitor extends ContextClassVisitor {
+
+                /**
+                 * The context registry to use.
+                 */
+                private final ContextRegistry contextRegistry;
+
+                /**
+                 * Creates a new context class visitor based on a {@link ContextRegistry}.
+                 *
+                 * @param classVisitor    The class visitor to delegate to.
+                 * @param contextRegistry The context registry to use.
+                 */
+                protected RegistryContextClassVisitor(ClassVisitor classVisitor, ContextRegistry contextRegistry) {
+                    super(classVisitor);
+                    this.contextRegistry = contextRegistry;
+                }
+
+                @Override
+                public List<DynamicType> getAuxiliaryTypes() {
+                    return CompoundList.of(auxiliaryTypes, contextRegistry.getAuxiliaryTypes());
+                }
+
+                @Override
+                public LoadedTypeInitializer getLoadedTypeInitializer() {
+                    return loadedTypeInitializer;
+                }
+            }
+
+            /**
              * A context registry allows to extract auxiliary types from a lazily created implementation context.
              */
             protected static class ContextRegistry {
@@ -3979,7 +4098,7 @@ public interface TypeWriter<T> {
                 /**
                  * The implementation context that is used for creating a class or {@code null} if it was not registered.
                  */
-                @Nullable
+                @UnknownNull
                 private Implementation.Context.ExtractableView implementationContext;
 
                 /**
@@ -3997,7 +4116,7 @@ public interface TypeWriter<T> {
                  *
                  * @return The auxiliary types that were registered during class creation
                  */
-                @SuppressFBWarnings(value = "UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR", justification = "Lazy value definition is intended")
+                @SuppressFBWarnings(value = "UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR", justification = "Lazy value definition is intended.")
                 public List<DynamicType> getAuxiliaryTypes() {
                     return implementationContext.getAuxiliaryTypes();
                 }
@@ -4052,7 +4171,8 @@ public interface TypeWriter<T> {
                  * @param auxiliaryTypeNamingStrategy  The naming strategy for auxiliary types to apply.
                  * @param implementationContextFactory The implementation context factory to apply.
                  * @param typeValidation               Determines if a type should be explicitly validated.
-                 * @param classWriterStrategy          The class writer strategy to use.
+                 * @param classReaderFactory           The class reader factory to use.
+                 * @param classWriterFactory           The class writer factory to use.
                  * @param typePool                     The type pool to use for computing stack map frames, if required.
                  * @param originalType                 The original type's description.
                  * @param classFileLocator             The class file locator for locating the original type's class file.
@@ -4077,7 +4197,8 @@ public interface TypeWriter<T> {
                                              AuxiliaryType.NamingStrategy auxiliaryTypeNamingStrategy,
                                              Implementation.Context.Factory implementationContextFactory,
                                              TypeValidation typeValidation,
-                                             ClassWriterStrategy classWriterStrategy,
+                                             AsmClassReader.Factory classReaderFactory,
+                                             AsmClassWriter.Factory classWriterFactory,
                                              TypePool typePool,
                                              TypeDescription originalType,
                                              ClassFileLocator classFileLocator,
@@ -4102,7 +4223,8 @@ public interface TypeWriter<T> {
                             auxiliaryTypeNamingStrategy,
                             implementationContextFactory,
                             typeValidation,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             typePool,
                             originalType,
                             classFileLocator);
@@ -4323,7 +4445,7 @@ public interface TypeWriter<T> {
                         protected abstract void onStart();
 
                         @Override
-                        public void visitFrame(int type, int localVariableLength, @Nullable Object[] localVariable, int stackSize, @Nullable Object[] stack) {
+                        public void visitFrame(int type, int localVariableLength, @MaybeNull Object[] localVariable, int stackSize, @MaybeNull Object[] stack) {
                             super.visitFrame(type, localVariableLength, localVariable, stackSize, stack);
                             frameWriter.onFrame(type, localVariableLength);
                         }
@@ -4751,7 +4873,7 @@ public interface TypeWriter<T> {
                 /**
                  * A class visitor which is capable of applying a redefinition of an existing class file.
                  */
-                @SuppressFBWarnings(value = "UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR", justification = "Field access order is implied by ASM")
+                @SuppressFBWarnings(value = "UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR", justification = "Field access order is implied by ASM.")
                 protected class RedefinitionClassVisitor extends MetadataAwareClassVisitor {
 
                     /**
@@ -4802,25 +4924,25 @@ public interface TypeWriter<T> {
                     /**
                      * A list of internal names of permitted subclasses to include.
                      */
-                    @Nullable
+                    @MaybeNull
                     private final Set<String> permittedSubclasses;
 
                     /**
                      * The method pool to use or {@code null} if the pool was not yet initialized.
                      */
-                    @Nullable
+                    @UnknownNull
                     private MethodPool methodPool;
 
                     /**
                      * The initialization handler to use or {@code null} if the handler was not yet initialized.
                      */
-                    @Nullable
+                    @UnknownNull
                     private InitializationHandler initializationHandler;
 
                     /**
                      * The implementation context for this class creation or {@code null} if it was not yet created.
                      */
-                    @Nullable
+                    @UnknownNull
                     private Implementation.Context.ExtractableView implementationContext;
 
                     /**
@@ -4882,6 +5004,7 @@ public interface TypeWriter<T> {
                     }
 
                     @Override
+                    @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Relying on correlated type properties.")
                     public void visit(int classFileVersionNumber,
                                       int modifiers,
                                       String internalName,
@@ -4895,7 +5018,10 @@ public interface TypeWriter<T> {
                                 auxiliaryTypeNamingStrategy,
                                 typeInitializer,
                                 classFileVersion,
-                                WithFullProcessing.this.classFileVersion);
+                                WithFullProcessing.this.classFileVersion,
+                                (writerFlags & ClassWriter.COMPUTE_FRAMES) == 0 && classFileVersion.isAtLeast(ClassFileVersion.JAVA_V6)
+                                        ? ((readerFlags & ClassReader.EXPAND_FRAMES) == 0 ? Implementation.Context.FrameGeneration.GENERATE : Implementation.Context.FrameGeneration.EXPAND)
+                                        : Implementation.Context.FrameGeneration.DISABLED);
                         retainDeprecationModifiers = classFileVersion.isLessThan(ClassFileVersion.JAVA_V5);
                         contextRegistry.setImplementationContext(implementationContext);
                         cv = asmVisitorWrapper.wrap(instrumentedType,
@@ -4916,7 +5042,7 @@ public interface TypeWriter<T> {
                                         ? genericSignature
                                         : instrumentedType.getGenericSignature(),
                                 instrumentedType.getSuperClass() == null
-                                        ? (instrumentedType.isInterface() ? TypeDescription.OBJECT.getInternalName() : NO_REFERENCE)
+                                        ? (instrumentedType.isInterface() ? TypeDescription.ForLoadedType.of(Object.class).getInternalName() : NO_REFERENCE)
                                         : instrumentedType.getSuperClass().asErasure().getInternalName(),
                                 instrumentedType.getInterfaces().asErasures().toInternalNames());
                     }
@@ -4941,7 +5067,7 @@ public interface TypeWriter<T> {
                     }
 
                     @Override
-                    protected void onVisitOuterClass(String owner, @Nullable String name, @Nullable String descriptor) {
+                    protected void onVisitOuterClass(String owner, @MaybeNull String name, @MaybeNull String descriptor) {
                         try { // The Groovy compiler often gets this attribute wrong such that this safety just retains it.
                             onOuterType();
                         } catch (Throwable ignored) {
@@ -4950,6 +5076,7 @@ public interface TypeWriter<T> {
                     }
 
                     @Override
+                    @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH", justification = "Relying on correlated type properties.")
                     protected void onOuterType() {
                         MethodDescription.InDefinedShape enclosingMethod = instrumentedType.getEnclosingMethod();
                         if (enclosingMethod != null) {
@@ -4967,7 +5094,7 @@ public interface TypeWriter<T> {
                     }
 
                     @Override
-                    @Nullable
+                    @MaybeNull
                     protected AnnotationVisitor onVisitTypeAnnotation(int typeReference, TypePath typePath, String descriptor, boolean visible) {
                         return annotationRetention.isEnabled()
                                 ? cv.visitTypeAnnotation(typeReference, typePath, descriptor, visible)
@@ -4975,7 +5102,7 @@ public interface TypeWriter<T> {
                     }
 
                     @Override
-                    @Nullable
+                    @MaybeNull
                     protected AnnotationVisitor onVisitAnnotation(String descriptor, boolean visible) {
                         return annotationRetention.isEnabled()
                                 ? cv.visitAnnotation(descriptor, visible)
@@ -4983,8 +5110,8 @@ public interface TypeWriter<T> {
                     }
 
                     @Override
-                    @Nullable
-                    protected RecordComponentVisitor onVisitRecordComponent(String name, String descriptor, @Nullable String genericSignature) {
+                    @MaybeNull
+                    protected RecordComponentVisitor onVisitRecordComponent(String name, String descriptor, @MaybeNull String genericSignature) {
                         RecordComponentDescription recordComponentDescription = declarableRecordComponents.remove(name);
                         if (recordComponentDescription != null) {
                             RecordComponentPool.Record record = recordComponentPool.target(recordComponentDescription);
@@ -5002,8 +5129,8 @@ public interface TypeWriter<T> {
                      * @param genericSignature The record component's original generic signature which can be {@code null}.
                      * @return A record component visitor for visiting the existing record component definition.
                      */
-                    @Nullable
-                    protected RecordComponentVisitor redefine(RecordComponentPool.Record record, @Nullable String genericSignature) {
+                    @MaybeNull
+                    protected RecordComponentVisitor redefine(RecordComponentPool.Record record, @MaybeNull String genericSignature) {
                         RecordComponentDescription recordComponentDescription = record.getRecordComponent();
                         RecordComponentVisitor recordComponentVisitor = cv.visitRecordComponent(recordComponentDescription.getActualName(),
                                 recordComponentDescription.getDescriptor(),
@@ -5016,12 +5143,12 @@ public interface TypeWriter<T> {
                     }
 
                     @Override
-                    @Nullable
+                    @MaybeNull
                     protected FieldVisitor onVisitField(int modifiers,
                                                         String internalName,
                                                         String descriptor,
-                                                        @Nullable String genericSignature,
-                                                        @Nullable Object value) {
+                                                        @MaybeNull String genericSignature,
+                                                        @MaybeNull Object value) {
                         FieldDescription fieldDescription = declarableFields.remove(new SignatureKey(internalName, descriptor));
                         if (fieldDescription != null) {
                             FieldPool.Record record = fieldPool.target(fieldDescription);
@@ -5041,8 +5168,8 @@ public interface TypeWriter<T> {
                      * @param genericSignature The field's original generic signature which can be {@code null}.
                      * @return A field visitor for visiting the existing field definition.
                      */
-                    @Nullable
-                    protected FieldVisitor redefine(FieldPool.Record record, @Nullable Object value, int modifiers, @Nullable String genericSignature) {
+                    @MaybeNull
+                    protected FieldVisitor redefine(FieldPool.Record record, @MaybeNull Object value, int modifiers, @MaybeNull String genericSignature) {
                         FieldDescription instrumentedField = record.getField();
                         FieldVisitor fieldVisitor = cv.visitField(instrumentedField.getActualModifiers() | resolveDeprecationModifiers(modifiers),
                                 instrumentedField.getInternalName(),
@@ -5057,12 +5184,12 @@ public interface TypeWriter<T> {
                     }
 
                     @Override
-                    @Nullable
+                    @MaybeNull
                     protected MethodVisitor onVisitMethod(int modifiers,
                                                           String internalName,
                                                           String descriptor,
-                                                          @Nullable String genericSignature,
-                                                          @Nullable String[] exceptionName) {
+                                                          @MaybeNull String genericSignature,
+                                                          @MaybeNull String[] exceptionName) {
                         if (internalName.equals(MethodDescription.TYPE_INITIALIZER_INTERNAL_NAME)) {
                             MethodVisitor methodVisitor = cv.visitMethod(modifiers, internalName, descriptor, genericSignature, exceptionName);
                             return methodVisitor == null
@@ -5092,8 +5219,8 @@ public interface TypeWriter<T> {
                      * @param genericSignature  The method's original generic signature which can be {@code null}.
                      * @return A method visitor which is capable of consuming the original method.
                      */
-                    @Nullable
-                    protected MethodVisitor redefine(MethodDescription methodDescription, boolean abstractOrigin, int modifiers, @Nullable String genericSignature) {
+                    @MaybeNull
+                    protected MethodVisitor redefine(MethodDescription methodDescription, boolean abstractOrigin, int modifiers, @MaybeNull String genericSignature) {
                         MethodPool.Record record = methodPool.target(methodDescription);
                         if (!record.getSort().isDefined()) {
                             return cv.visitMethod(methodDescription.getActualModifiers() | resolveDeprecationModifiers(modifiers),
@@ -5140,7 +5267,7 @@ public interface TypeWriter<T> {
                     }
 
                     @Override
-                    protected void onVisitInnerClass(String internalName, @Nullable String outerName, @Nullable String innerName, int modifiers) {
+                    protected void onVisitInnerClass(String internalName, @MaybeNull String outerName, @MaybeNull String innerName, int modifiers) {
                         if (!internalName.equals(instrumentedType.getInternalName())) {
                             TypeDescription declaredType = declaredTypes.remove(internalName);
                             if (declaredType == null) {
@@ -5253,15 +5380,15 @@ public interface TypeWriter<T> {
                         }
 
                         @Override
-                        @Nullable
-                        public AnnotationVisitor visitTypeAnnotation(int typeReference, @Nullable TypePath typePath, String descriptor, boolean visible) {
+                        @MaybeNull
+                        public AnnotationVisitor visitTypeAnnotation(int typeReference, @MaybeNull TypePath typePath, String descriptor, boolean visible) {
                             return annotationRetention.isEnabled()
                                     ? super.visitTypeAnnotation(typeReference, typePath, descriptor, visible)
                                     : IGNORE_ANNOTATION;
                         }
 
                         @Override
-                        @Nullable
+                        @MaybeNull
                         public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
                             return annotationRetention.isEnabled()
                                     ? super.visitAnnotation(descriptor, visible)
@@ -5357,21 +5484,21 @@ public interface TypeWriter<T> {
                         }
 
                         @Override
-                        @Nullable
+                        @MaybeNull
                         public AnnotationVisitor visitAnnotationDefault() {
                             return IGNORE_ANNOTATION; // Annotation types can never be rebased.
                         }
 
                         @Override
-                        @Nullable
-                        public AnnotationVisitor visitTypeAnnotation(int typeReference, @Nullable TypePath typePath, String descriptor, boolean visible) {
+                        @MaybeNull
+                        public AnnotationVisitor visitTypeAnnotation(int typeReference, @MaybeNull TypePath typePath, String descriptor, boolean visible) {
                             return annotationRetention.isEnabled()
                                     ? super.visitTypeAnnotation(typeReference, typePath, descriptor, visible)
                                     : IGNORE_ANNOTATION;
                         }
 
                         @Override
-                        @Nullable
+                        @MaybeNull
                         public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
                             return annotationRetention.isEnabled()
                                     ? super.visitAnnotation(descriptor, visible)
@@ -5386,7 +5513,7 @@ public interface TypeWriter<T> {
                         }
 
                         @Override
-                        @Nullable
+                        @MaybeNull
                         public AnnotationVisitor visitParameterAnnotation(int index, String descriptor, boolean visible) {
                             return annotationRetention.isEnabled()
                                     ? super.visitParameterAnnotation(index, descriptor, visible)
@@ -5404,10 +5531,8 @@ public interface TypeWriter<T> {
                                         resolution.getResolvedMethod().getGenericSignature(),
                                         resolution.getResolvedMethod().getExceptionTypes().asErasures().toInternalNames());
                                 super.visitCode();
-                                if (!resolution.getAppendedParameters().isEmpty()
-                                        && (writerFlags & ClassWriter.COMPUTE_FRAMES) == 0
-                                        && implementationContext.getClassFileVersion().isAtLeast(ClassFileVersion.JAVA_V6)) {
-                                    if ((readerFlags & ClassReader.EXPAND_FRAMES) == 0 && resolution.getAppendedParameters().size() < 4) {
+                                if (!resolution.getAppendedParameters().isEmpty() && implementationContext.getFrameGeneration().isActive()) {
+                                    if (implementationContext.getFrameGeneration() == Implementation.Context.FrameGeneration.GENERATE && resolution.getAppendedParameters().size() < 4) {
                                         super.visitFrame(Opcodes.F_CHOP, resolution.getAppendedParameters().size(), EMPTY, EMPTY.length, EMPTY);
                                     } else {
                                         Object[] frame = new Object[resolution.getResolvedMethod().getParameters().size()
@@ -5483,21 +5608,21 @@ public interface TypeWriter<T> {
                         }
 
                         @Override
-                        @Nullable
+                        @MaybeNull
                         public AnnotationVisitor visitAnnotationDefault() {
                             return IGNORE_ANNOTATION;
                         }
 
                         @Override
-                        @Nullable
-                        public AnnotationVisitor visitTypeAnnotation(int typeReference, @Nullable TypePath typePath, String descriptor, boolean visible) {
+                        @MaybeNull
+                        public AnnotationVisitor visitTypeAnnotation(int typeReference, @MaybeNull TypePath typePath, String descriptor, boolean visible) {
                             return annotationRetention.isEnabled()
                                     ? super.visitTypeAnnotation(typeReference, typePath, descriptor, visible)
                                     : IGNORE_ANNOTATION;
                         }
 
                         @Override
-                        @Nullable
+                        @MaybeNull
                         public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
                             return annotationRetention.isEnabled()
                                     ? super.visitAnnotation(descriptor, visible)
@@ -5512,7 +5637,7 @@ public interface TypeWriter<T> {
                         }
 
                         @Override
-                        @Nullable
+                        @MaybeNull
                         public AnnotationVisitor visitParameterAnnotation(int index, String descriptor, boolean visible) {
                             return annotationRetention.isEnabled()
                                     ? super.visitParameterAnnotation(index, descriptor, visible)
@@ -5529,46 +5654,6 @@ public interface TypeWriter<T> {
                             record.applyBody(actualMethodVisitor, implementationContext, annotationValueFilterFactory);
                             actualMethodVisitor.visitEnd();
                         }
-                    }
-                }
-
-                /**
-                 * A key to represent a unique signature.
-                 */
-                protected static class SignatureKey {
-
-                    /**
-                     * The represented internal name.
-                     */
-                    private final String internalName;
-
-                    /**
-                     * The represented descriptor.
-                     */
-                    private final String descriptor;
-
-                    /**
-                     * Creates a new signature key.
-                     *
-                     * @param internalName The represented internal name.
-                     * @param descriptor   The represented descriptor.
-                     */
-                    public SignatureKey(String internalName, String descriptor) {
-                        this.internalName = internalName;
-                        this.descriptor = descriptor;
-                    }
-
-                    @Override
-                    public boolean equals(Object other) {
-                        if (this == other) return true;
-                        if (other == null || getClass() != other.getClass()) return false;
-                        SignatureKey that = (SignatureKey) other;
-                        return internalName.equals(that.internalName) && descriptor.equals(that.descriptor);
-                    }
-
-                    @Override
-                    public int hashCode() {
-                        return 17 + internalName.hashCode() + 31 * descriptor.hashCode();
                     }
                 }
             }
@@ -5594,7 +5679,8 @@ public interface TypeWriter<T> {
                  * @param auxiliaryTypeNamingStrategy  The naming strategy for auxiliary types to apply.
                  * @param implementationContextFactory The implementation context factory to apply.
                  * @param typeValidation               Determines if a type should be explicitly validated.
-                 * @param classWriterStrategy          The class writer strategy to use.
+                 * @param classReaderFactory           The class reader factory to use.
+                 * @param classWriterFactory           The class writer factory to use.
                  * @param typePool                     The type pool to use for computing stack map frames, if required.
                  * @param classFileLocator             The class file locator for locating the original type's class file.
                  */
@@ -5609,7 +5695,8 @@ public interface TypeWriter<T> {
                                              AuxiliaryType.NamingStrategy auxiliaryTypeNamingStrategy,
                                              Implementation.Context.Factory implementationContextFactory,
                                              TypeValidation typeValidation,
-                                             ClassWriterStrategy classWriterStrategy,
+                                             AsmClassReader.Factory classReaderFactory,
+                                             AsmClassWriter.Factory classWriterFactory,
                                              TypePool typePool,
                                              ClassFileLocator classFileLocator) {
                     super(instrumentedType,
@@ -5630,7 +5717,8 @@ public interface TypeWriter<T> {
                             auxiliaryTypeNamingStrategy,
                             implementationContextFactory,
                             typeValidation,
-                            classWriterStrategy,
+                            classReaderFactory,
+                            classWriterFactory,
                             typePool,
                             instrumentedType,
                             classFileLocator);
@@ -5687,7 +5775,7 @@ public interface TypeWriter<T> {
                 /**
                  * A class visitor that decorates an existing type.
                  */
-                @SuppressFBWarnings(value = "UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR", justification = "Field access order is implied by ASM")
+                @SuppressFBWarnings(value = "UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR", justification = "Field access order is implied by ASM.")
                 protected class DecorationClassVisitor extends MetadataAwareClassVisitor implements TypeInitializer.Drain {
 
                     /**
@@ -5708,7 +5796,7 @@ public interface TypeWriter<T> {
                     /**
                      * The implementation context to use or {@code null} if the context is not yet initialized.
                      */
-                    @Nullable
+                    @UnknownNull
                     private Implementation.Context.ExtractableView implementationContext;
 
                     /**
@@ -5738,7 +5826,10 @@ public interface TypeWriter<T> {
                                 auxiliaryTypeNamingStrategy,
                                 typeInitializer,
                                 classFileVersion,
-                                WithDecorationOnly.this.classFileVersion);
+                                WithDecorationOnly.this.classFileVersion,
+                                (writerFlags & ClassWriter.COMPUTE_FRAMES) == 0 && classFileVersion.isAtLeast(ClassFileVersion.JAVA_V6)
+                                        ? ((readerFlags & ClassReader.EXPAND_FRAMES) == 0 ? Implementation.Context.FrameGeneration.GENERATE : Implementation.Context.FrameGeneration.EXPAND)
+                                        : Implementation.Context.FrameGeneration.DISABLED);
                         contextRegistry.setImplementationContext(implementationContext);
                         cv = asmVisitorWrapper.wrap(instrumentedType,
                                 cv,
@@ -5752,7 +5843,7 @@ public interface TypeWriter<T> {
                     }
 
                     @Override
-                    @Nullable
+                    @MaybeNull
                     protected AnnotationVisitor onVisitTypeAnnotation(int typeReference, TypePath typePath, String descriptor, boolean visible) {
                         return annotationRetention.isEnabled()
                                 ? cv.visitTypeAnnotation(typeReference, typePath, descriptor, visible)
@@ -5760,7 +5851,7 @@ public interface TypeWriter<T> {
                     }
 
                     @Override
-                    @Nullable
+                    @MaybeNull
                     protected AnnotationVisitor onVisitAnnotation(String descriptor, boolean visible) {
                         return annotationRetention.isEnabled()
                                 ? cv.visitAnnotation(descriptor, visible)
@@ -5823,7 +5914,8 @@ public interface TypeWriter<T> {
              * @param auxiliaryTypeNamingStrategy  The naming strategy for auxiliary types to apply.
              * @param implementationContextFactory The implementation context factory to apply.
              * @param typeValidation               Determines if a type should be explicitly validated.
-             * @param classWriterStrategy          The class writer strategy to use.
+             * @param classReaderFactory           The class reader factory to use.
+             * @param classWriterFactory           The class writer factory to use.
              * @param typePool                     The type pool to use for computing stack map frames, if required.
              */
             protected ForCreation(TypeDescription instrumentedType,
@@ -5845,7 +5937,8 @@ public interface TypeWriter<T> {
                                   AuxiliaryType.NamingStrategy auxiliaryTypeNamingStrategy,
                                   Implementation.Context.Factory implementationContextFactory,
                                   TypeValidation typeValidation,
-                                  ClassWriterStrategy classWriterStrategy,
+                                  AsmClassReader.Factory classReaderFactory,
+                                  AsmClassWriter.Factory classWriterFactory,
                                   TypePool typePool) {
                 super(instrumentedType,
                         classFileVersion,
@@ -5865,34 +5958,61 @@ public interface TypeWriter<T> {
                         auxiliaryTypeNamingStrategy,
                         implementationContextFactory,
                         typeValidation,
-                        classWriterStrategy,
+                        classReaderFactory,
+                        classWriterFactory,
                         typePool);
                 this.methodPool = methodPool;
             }
 
-            @Override
-            protected UnresolvedType create(TypeInitializer typeInitializer, ClassDumpAction.Dispatcher dispatcher) {
-                int writerFlags = asmVisitorWrapper.mergeWriter(AsmVisitorWrapper.NO_FLAGS);
-                ClassWriter classWriter = classWriterStrategy.resolve(writerFlags, typePool);
+            /**
+             * {@inheritDoc}
+             */
+            public ContextClassVisitor wrap(ClassVisitor classVisitor, int writerFlags, int readerFlags) {
                 Implementation.Context.ExtractableView implementationContext = implementationContextFactory.make(instrumentedType,
                         auxiliaryTypeNamingStrategy,
                         typeInitializer,
                         classFileVersion,
-                        classFileVersion);
+                        classFileVersion,
+                        (writerFlags & ClassWriter.COMPUTE_FRAMES) == 0 && classFileVersion.isAtLeast(ClassFileVersion.JAVA_V6)
+                                ? ((readerFlags & ClassReader.EXPAND_FRAMES) == 0 ? Implementation.Context.FrameGeneration.GENERATE : Implementation.Context.FrameGeneration.EXPAND)
+                                : Implementation.Context.FrameGeneration.DISABLED);
+                return new ImplementationContextClassVisitor(new CreationClassVisitor(asmVisitorWrapper.wrap(instrumentedType,
+                        ValidatingClassVisitor.of(classVisitor, typeValidation),
+                        implementationContext,
+                        typePool,
+                        fields,
+                        methods,
+                        asmVisitorWrapper.mergeWriter(writerFlags),
+                        asmVisitorWrapper.mergeReader(readerFlags)), implementationContext), implementationContext);
+            }
+
+            @Override
+            @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Relying on correlated type properties.")
+            protected UnresolvedType create(TypeInitializer typeInitializer, ClassDumpAction.Dispatcher dispatcher) {
+                int writerFlags = asmVisitorWrapper.mergeWriter(AsmVisitorWrapper.NO_FLAGS), readerFlags = asmVisitorWrapper.mergeReader(AsmVisitorWrapper.NO_FLAGS);
+                AsmClassWriter classWriter = classWriterFactory.make(writerFlags, typePool);
+                Implementation.Context.ExtractableView implementationContext = implementationContextFactory.make(instrumentedType,
+                        auxiliaryTypeNamingStrategy,
+                        typeInitializer,
+                        classFileVersion,
+                        classFileVersion,
+                        (writerFlags & ClassWriter.COMPUTE_FRAMES) == 0 && classFileVersion.isAtLeast(ClassFileVersion.JAVA_V6)
+                                ? ((readerFlags & ClassReader.EXPAND_FRAMES) == 0 ? Implementation.Context.FrameGeneration.GENERATE : Implementation.Context.FrameGeneration.EXPAND)
+                                : Implementation.Context.FrameGeneration.DISABLED);
                 ClassVisitor classVisitor = asmVisitorWrapper.wrap(instrumentedType,
-                        ValidatingClassVisitor.of(classWriter, typeValidation),
+                        ValidatingClassVisitor.of(classWriter.getVisitor(), typeValidation),
                         implementationContext,
                         typePool,
                         fields,
                         methods,
                         writerFlags,
-                        asmVisitorWrapper.mergeReader(AsmVisitorWrapper.NO_FLAGS));
+                        readerFlags);
                 classVisitor.visit(classFileVersion.getMinorMajorVersion(),
                         instrumentedType.getActualModifiers(!instrumentedType.isInterface()),
                         instrumentedType.getInternalName(),
                         instrumentedType.getGenericSignature(),
                         (instrumentedType.getSuperClass() == null
-                                ? TypeDescription.OBJECT
+                                ? TypeDescription.ForLoadedType.of(Object.class)
                                 : instrumentedType.getSuperClass().asErasure()).getInternalName(),
                         instrumentedType.getInterfaces().asErasures().toInternalNames());
                 if (!instrumentedType.isNestHost()) {
@@ -5955,7 +6075,131 @@ public interface TypeWriter<T> {
                         methodPool,
                         annotationValueFilterFactory), classVisitor, annotationValueFilterFactory);
                 classVisitor.visitEnd();
-                return new UnresolvedType(classWriter.toByteArray(), implementationContext.getAuxiliaryTypes());
+                return new UnresolvedType(classWriter.getBinaryRepresentation(), implementationContext.getAuxiliaryTypes());
+            }
+
+            /**
+             * A class visitor that applies the subclass creation as a wrapper.
+             */
+            protected class CreationClassVisitor extends MetadataAwareClassVisitor {
+
+                /**
+                 * The implementation context to apply.
+                 */
+                private final Implementation.Context.ExtractableView implementationContext;
+
+                /**
+                 * The declared types that have been visited.
+                 */
+                private final Set<String> declaredTypes = new HashSet<String>();
+
+                /**
+                 * The signatures of all fields that were explicitly visited.
+                 */
+                private final Set<SignatureKey> visitedFields = new HashSet<SignatureKey>();
+
+                /**
+                 * The signature of all methods that were explicitly visited.
+                 */
+                private final Set<SignatureKey> visitedMethods = new HashSet<SignatureKey>();
+
+                /**
+                 * Creates a new wrapper visitor.
+                 *
+                 * @param classVisitor          The class visitor being wrapped.
+                 * @param implementationContext The implementation context to apply.
+                 */
+                protected CreationClassVisitor(ClassVisitor classVisitor, Implementation.Context.ExtractableView implementationContext) {
+                    super(OpenedClassReader.ASM_API, classVisitor);
+                    this.implementationContext = implementationContext;
+                }
+
+                @Override
+                protected void onAfterAttributes() {
+                    typeAttributeAppender.apply(cv, instrumentedType, annotationValueFilterFactory.on(instrumentedType));
+                }
+
+                @Override
+                protected void onVisitInnerClass(String internalName, @MaybeNull String outerName, @MaybeNull String innerName, int modifiers) {
+                    declaredTypes.add(internalName);
+                    super.onVisitInnerClass(internalName, outerName, innerName, modifiers);
+                }
+
+                @Override
+                @MaybeNull
+                protected FieldVisitor onVisitField(int modifiers, String name, String descriptor, @MaybeNull String signature, @MaybeNull Object value) {
+                    visitedFields.add(new SignatureKey(name, descriptor));
+                    return super.onVisitField(modifiers, name, descriptor, signature, value);
+                }
+
+                @Override
+                @MaybeNull
+                protected MethodVisitor onVisitMethod(int modifiers, String internalName, String descriptor, @MaybeNull String signature, @MaybeNull String[] exception) {
+                    visitedMethods.add(new SignatureKey(internalName, descriptor));
+                    return super.onVisitMethod(modifiers, internalName, descriptor, signature, exception);
+                }
+
+                @Override
+                protected void onVisitEnd() {
+                    for (TypeDescription typeDescription : instrumentedType.getDeclaredTypes()) {
+                        if (!declaredTypes.contains(typeDescription.getInternalName())) {
+                            cv.visitInnerClass(typeDescription.getInternalName(),
+                                    typeDescription.isMemberType()
+                                            ? instrumentedType.getInternalName()
+                                            : NO_REFERENCE,
+                                    typeDescription.isAnonymousType()
+                                            ? NO_REFERENCE
+                                            : typeDescription.getSimpleName(),
+                                    typeDescription.getModifiers());
+                        }
+                    }
+                    for (FieldDescription fieldDescription : fields) {
+                        if (!visitedFields.contains(new SignatureKey(fieldDescription.getName(), fieldDescription.getDescriptor()))) {
+                            fieldPool.target(fieldDescription).apply(cv, annotationValueFilterFactory);
+                        }
+                    }
+                    for (MethodDescription methodDescription : instrumentedMethods) {
+                        if (!visitedMethods.contains(new SignatureKey(methodDescription.getInternalName(), methodDescription.getDescriptor()))) {
+                            methodPool.target(methodDescription).apply(cv, implementationContext, annotationValueFilterFactory);
+                        }
+                    }
+                    implementationContext.drain(new TypeInitializer.Drain.Default(instrumentedType,
+                            methodPool,
+                            annotationValueFilterFactory), cv, annotationValueFilterFactory);
+                    super.onVisitEnd();
+                }
+            }
+
+            /**
+             * A context class visitor based on an {@link Implementation.Context}.
+             */
+            protected class ImplementationContextClassVisitor extends ContextClassVisitor {
+
+                /**
+                 * The implementation context to use.
+                 */
+                private final Implementation.Context.ExtractableView implementationContext;
+
+                /**
+                 * Creates a context class loader based on an {@link Implementation.Context}.
+                 *
+                 * @param classVisitor          The class visitor to delegate to.
+                 * @param implementationContext The implementation context to use.
+                 */
+                protected ImplementationContextClassVisitor(ClassVisitor classVisitor, Implementation.Context.ExtractableView implementationContext) {
+                    super(classVisitor);
+                    this.implementationContext = implementationContext;
+                }
+
+                @Override
+                public List<DynamicType> getAuxiliaryTypes() {
+                    return CompoundList.of(auxiliaryTypes, implementationContext.getAuxiliaryTypes());
+                }
+
+                @Override
+                public LoadedTypeInitializer getLoadedTypeInitializer() {
+                    return loadedTypeInitializer;
+                }
             }
         }
 
@@ -5968,7 +6212,7 @@ public interface TypeWriter<T> {
             /**
              * Indicates that nothing is returned from this action.
              */
-            @Nonnull(when = When.NEVER)
+            @AlwaysNull
             private static final Void NOTHING = null;
 
             /**

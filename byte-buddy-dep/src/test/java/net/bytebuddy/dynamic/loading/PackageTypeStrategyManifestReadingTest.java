@@ -1,20 +1,21 @@
 package net.bytebuddy.dynamic.loading;
 
+import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.test.utility.IntegrationRule;
 import net.bytebuddy.test.utility.JavaVersionRule;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.MethodRule;
-import org.junit.rules.TestRule;
 import org.mockito.Mock;
 import org.mockito.invocation.InvocationOnMock;
+import org.mockito.junit.MockitoJUnit;
 import org.mockito.stubbing.Answer;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.net.URI;
 import java.net.URL;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
@@ -36,7 +37,7 @@ public class PackageTypeStrategyManifestReadingTest {
     public MethodRule javaVersionRule = new JavaVersionRule();
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private PackageDefinitionStrategy.ManifestReading.SealBaseLocator sealBaseLocator;
@@ -48,7 +49,7 @@ public class PackageTypeStrategyManifestReadingTest {
 
     @Before
     public void setUp() throws Exception {
-        url = new URL("file:/foo");
+        url = URI.create("file:/foo").toURL();
     }
 
     @Test
@@ -64,7 +65,7 @@ public class PackageTypeStrategyManifestReadingTest {
         assertThat(definition.getSpecificationVendor(), nullValue(String.class));
         assertThat(definition.getSealBase(), nullValue(URL.class));
         assertThat(definition.isCompatibleTo(getClass().getPackage()), is(true));
-        verifyZeroInteractions(sealBaseLocator);
+        verifyNoMoreInteractions(sealBaseLocator);
     }
 
     @Test
@@ -96,7 +97,7 @@ public class PackageTypeStrategyManifestReadingTest {
         assertThat(definition.getImplementationVendor(), is(QUX + BAZ));
         assertThat(definition.getSealBase(), nullValue(URL.class));
         assertThat(definition.isCompatibleTo(getClass().getPackage()), is(true));
-        verifyZeroInteractions(sealBaseLocator);
+        verifyNoMoreInteractions(sealBaseLocator);
     }
 
     @Test
@@ -136,7 +137,7 @@ public class PackageTypeStrategyManifestReadingTest {
         assertThat(definition.getImplementationVendor(), is(QUX + BAZ));
         assertThat(definition.getSealBase(), nullValue(URL.class));
         assertThat(definition.isCompatibleTo(getClass().getPackage()), is(true));
-        verifyZeroInteractions(sealBaseLocator);
+        verifyNoMoreInteractions(sealBaseLocator);
     }
 
     @Test
@@ -208,42 +209,42 @@ public class PackageTypeStrategyManifestReadingTest {
     @Test
     @IntegrationRule.Enforce
     public void testSealBaseLocatorForTypeResourceUrlFileUrl() throws Exception {
-        URL url = new URL("file:/foo");
-        when(classLoader.getResource(FOO + "/" + BAR + ".class")).thenReturn(url);
+        URL url = URI.create("file:/foo").toURL();
+        when(classLoader.getResource(FOO + "/" + BAR + ClassFileLocator.CLASS_FILE_EXTENSION)).thenReturn(url);
         assertThat(new PackageDefinitionStrategy.ManifestReading.SealBaseLocator.ForTypeResourceUrl(sealBaseLocator)
                 .findSealBase(classLoader, FOO + "." + BAR), is(url));
-        verifyZeroInteractions(sealBaseLocator);
+        verifyNoMoreInteractions(sealBaseLocator);
     }
 
     @Test
     @IntegrationRule.Enforce
     public void testSealBaseLocatorForTypeResourceUrlJarUrl() throws Exception {
-        URL url = new URL("jar:file:/foo.jar!/bar");
-        when(classLoader.getResource(FOO + "/" + BAR + ".class")).thenReturn(url);
+        URL url = URI.create("jar:file:/foo.jar!/bar").toURL();
+        when(classLoader.getResource(FOO + "/" + BAR + ClassFileLocator.CLASS_FILE_EXTENSION)).thenReturn(url);
         assertThat(new PackageDefinitionStrategy.ManifestReading.SealBaseLocator.ForTypeResourceUrl(sealBaseLocator)
-                .findSealBase(classLoader, FOO + "." + BAR), is(new URL("file:/foo.jar")));
-        verifyZeroInteractions(sealBaseLocator);
+                .findSealBase(classLoader, FOO + "." + BAR), is(URI.create("file:/foo.jar").toURL()));
+        verifyNoMoreInteractions(sealBaseLocator);
     }
 
     @Test
     @IntegrationRule.Enforce
     @JavaVersionRule.Enforce(9)
     public void testSealBaseLocatorForTypeResourceUrlJavaRuntimeImageUrl() throws Exception {
-        URL url = new URL("jrt:/foo/bar");
-        when(classLoader.getResource(FOO + "/" + BAR + ".class")).thenReturn(url);
+        URL url = URI.create("jrt:/foo/bar").toURL();
+        when(classLoader.getResource(FOO + "/" + BAR + ClassFileLocator.CLASS_FILE_EXTENSION)).thenReturn(url);
         assertThat(new PackageDefinitionStrategy.ManifestReading.SealBaseLocator.ForTypeResourceUrl(sealBaseLocator)
-                .findSealBase(classLoader, FOO + "." + BAR), is(new URL("jrt:/foo")));
-        verifyZeroInteractions(sealBaseLocator);
+                .findSealBase(classLoader, FOO + "." + BAR), is(URI.create("jrt:/foo").toURL()));
+        verifyNoMoreInteractions(sealBaseLocator);
     }
 
     @Test
     @IntegrationRule.Enforce
     @JavaVersionRule.Enforce(9)
     public void testSealBaseLocatorForTypeResourceUrlJavaRuntimeImageUrlRawModule() throws Exception {
-        URL url = new URL("jrt:/foo");
-        when(classLoader.getResource(FOO + "/" + BAR + ".class")).thenReturn(url);
+        URL url = URI.create("jrt:/foo").toURL();
+        when(classLoader.getResource(FOO + "/" + BAR + ClassFileLocator.CLASS_FILE_EXTENSION)).thenReturn(url);
         assertThat(new PackageDefinitionStrategy.ManifestReading.SealBaseLocator.ForTypeResourceUrl(sealBaseLocator)
-                .findSealBase(classLoader, FOO + "." + BAR), is(new URL("jrt:/foo")));
-        verifyZeroInteractions(sealBaseLocator);
+                .findSealBase(classLoader, FOO + "." + BAR), is(URI.create("jrt:/foo").toURL()));
+        verifyNoMoreInteractions(sealBaseLocator);
     }
 }

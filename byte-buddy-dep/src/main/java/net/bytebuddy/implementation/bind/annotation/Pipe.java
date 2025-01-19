@@ -15,7 +15,6 @@
  */
 package net.bytebuddy.implementation.bind.annotation;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
@@ -46,6 +45,7 @@ import net.bytebuddy.implementation.bytecode.member.MethodInvocation;
 import net.bytebuddy.implementation.bytecode.member.MethodReturn;
 import net.bytebuddy.implementation.bytecode.member.MethodVariableAccess;
 import net.bytebuddy.matcher.ElementMatchers;
+import net.bytebuddy.utility.RandomString;
 import org.objectweb.asm.MethodVisitor;
 
 import java.io.Serializable;
@@ -197,7 +197,7 @@ public @interface Pipe {
             } else if (source.isStatic()) {
                 return MethodDelegationBinder.ParameterBinding.Illegal.INSTANCE;
             }
-            return new MethodDelegationBinder.ParameterBinding.Anonymous(new Redirection(forwardingMethod.getDeclaringType().asErasure(),
+            return new MethodDelegationBinder.ParameterBinding.Anonymous(new RedirectionProxy(forwardingMethod.getDeclaringType().asErasure(),
                     source,
                     assigner,
                     annotation.getValue(SERIALIZABLE_PROXY).resolve(Boolean.class)));
@@ -208,7 +208,7 @@ public @interface Pipe {
          * {@link net.bytebuddy.implementation.bind.annotation.Pipe} annotation.
          */
         @HashCodeAndEqualsPlugin.Enhance
-        protected static class Redirection extends StackManipulation.AbstractBase implements AuxiliaryType {
+        protected static class RedirectionProxy extends StackManipulation.AbstractBase implements AuxiliaryType {
 
             /**
              * The prefix for naming fields to store method arguments.
@@ -243,10 +243,10 @@ public @interface Pipe {
              * @param assigner          The assigner to use.
              * @param serializableProxy Determines if the generated proxy should be {@link java.io.Serializable}.
              */
-            protected Redirection(TypeDescription forwardingType,
-                                  MethodDescription sourceMethod,
-                                  Assigner assigner,
-                                  boolean serializableProxy) {
+            protected RedirectionProxy(TypeDescription forwardingType,
+                                       MethodDescription sourceMethod,
+                                       Assigner assigner,
+                                       boolean serializableProxy) {
                 this.forwardingType = forwardingType;
                 this.sourceMethod = sourceMethod;
                 this.assigner = assigner;
@@ -278,6 +278,15 @@ public @interface Pipe {
              */
             private static String fieldName(int index) {
                 return FIELD_NAME_PREFIX + index;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            public String getSuffix() {
+                return RandomString.hashOf(forwardingType.hashCode())
+                        + RandomString.hashOf(sourceMethod.hashCode())
+                        + (serializableProxy ? "S" : "0");
             }
 
             /**
@@ -317,11 +326,8 @@ public @interface Pipe {
             }
 
             /**
-             * The implementation to implement a
-             * {@link net.bytebuddy.implementation.bind.annotation.Pipe.Binder.Redirection}'s
-             * constructor.
+             * The implementation to implement a {@link RedirectionProxy}'s constructor.
              */
-            @SuppressFBWarnings(value = "SE_BAD_FIELD", justification = "Fields of enumerations are never serialized")
             protected enum ConstructorCall implements Implementation {
 
                 /**
@@ -332,13 +338,13 @@ public @interface Pipe {
                 /**
                  * A reference of the {@link Object} type default constructor.
                  */
-                private final MethodDescription.InDefinedShape objectTypeDefaultConstructor;
+                private final transient MethodDescription.InDefinedShape objectTypeDefaultConstructor;
 
                 /**
                  * Creates the constructor call singleton.
                  */
                 ConstructorCall() {
-                    objectTypeDefaultConstructor = TypeDescription.OBJECT.getDeclaredMethods().filter(isConstructor()).getOnly();
+                    objectTypeDefaultConstructor = TypeDescription.ForLoadedType.of(Object.class).getDeclaredMethods().filter(isConstructor()).getOnly();
                 }
 
                 /**
@@ -356,8 +362,7 @@ public @interface Pipe {
                 }
 
                 /**
-                 * The appender for implementing the
-                 * {@link net.bytebuddy.implementation.bind.annotation.Pipe.Binder.Redirection.ConstructorCall}.
+                 * The appender for implementing the {@link RedirectionProxy.ConstructorCall}.
                  */
                 @HashCodeAndEqualsPlugin.Enhance
                 private static class Appender implements ByteCodeAppender {
@@ -403,9 +408,7 @@ public @interface Pipe {
             }
 
             /**
-             * The implementation to implement a
-             * {@link net.bytebuddy.implementation.bind.annotation.Pipe.Binder.Redirection}'s
-             * forwarding method.
+             * The implementation to implement a {@link RedirectionProxy}'s forwarding method.
              */
             @HashCodeAndEqualsPlugin.Enhance
             protected static class MethodCall implements Implementation {
@@ -449,8 +452,7 @@ public @interface Pipe {
                 }
 
                 /**
-                 * The appender for implementing the
-                 * {@link net.bytebuddy.implementation.bind.annotation.Pipe.Binder.Redirection.MethodCall}.
+                 * The appender for implementing the {@link RedirectionProxy.MethodCall}.
                  */
                 @HashCodeAndEqualsPlugin.Enhance(includeSyntheticFields = true)
                 private class Appender implements ByteCodeAppender {
@@ -483,7 +485,7 @@ public @interface Pipe {
                         }
                         StackManipulation.Size stackSize = new StackManipulation.Compound(
                                 MethodVariableAccess.REFERENCE.loadFrom(1),
-                                assigner.assign(TypeDescription.Generic.OBJECT, redirectedMethod.getDeclaringType().asGenericType(), Assigner.Typing.DYNAMIC),
+                                assigner.assign(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class), redirectedMethod.getDeclaringType().asGenericType(), Assigner.Typing.DYNAMIC),
                                 new StackManipulation.Compound(fieldLoading),
                                 MethodInvocation.invoke(redirectedMethod),
                                 assigner.assign(redirectedMethod.getReturnType(), instrumentedMethod.getReturnType(), Assigner.Typing.DYNAMIC),

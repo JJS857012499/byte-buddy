@@ -82,7 +82,7 @@ public class RebaseImplementationTargetTest extends AbstractImplementationTarget
         StackManipulation.Size size = specialMethodInvocation.apply(methodVisitor, implementationContext);
         verify(methodVisitor).visitMethodInsn(Opcodes.INVOKESPECIAL, BAZ, FOO, QUX, false);
         verifyNoMoreInteractions(methodVisitor);
-        verifyZeroInteractions(implementationContext);
+        verifyNoMoreInteractions(implementationContext);
         assertThat(size.getSizeImpact(), is(0));
         assertThat(size.getMaximalSize(), is(0));
     }
@@ -103,7 +103,7 @@ public class RebaseImplementationTargetTest extends AbstractImplementationTarget
         StackManipulation.Size size = specialMethodInvocation.apply(methodVisitor, implementationContext);
         verify(methodVisitor).visitMethodInsn(Opcodes.INVOKESPECIAL, BAZ, QUX, FOO, false);
         verifyNoMoreInteractions(methodVisitor);
-        verifyZeroInteractions(implementationContext);
+        verifyNoMoreInteractions(implementationContext);
         assertThat(size.getSizeImpact(), is(0));
         assertThat(size.getMaximalSize(), is(0));
     }
@@ -114,7 +114,7 @@ public class RebaseImplementationTargetTest extends AbstractImplementationTarget
         when(invokableMethod.getDeclaringType()).thenReturn(instrumentedType);
         when(resolution.isRebased()).thenReturn(true);
         when(resolution.getResolvedMethod()).thenReturn(rebasedMethod);
-        when(resolution.getAppendedParameters()).thenReturn(new TypeList.Explicit(TypeDescription.OBJECT));
+        when(resolution.getAppendedParameters()).thenReturn(new TypeList.Explicit(TypeDescription.ForLoadedType.of(Object.class)));
         when(rebasedMethod.isSpecializableFor(instrumentedType)).thenReturn(true);
         Implementation.SpecialMethodInvocation specialMethodInvocation = makeImplementationTarget().invokeSuper(rebasedSignatureToken);
         assertThat(specialMethodInvocation.isValid(), is(true));
@@ -126,7 +126,7 @@ public class RebaseImplementationTargetTest extends AbstractImplementationTarget
         verify(methodVisitor).visitInsn(Opcodes.ACONST_NULL);
         verify(methodVisitor).visitMethodInsn(Opcodes.INVOKESPECIAL, BAZ, QUX, FOO, false);
         verifyNoMoreInteractions(methodVisitor);
-        verifyZeroInteractions(implementationContext);
+        verifyNoMoreInteractions(implementationContext);
         assertThat(size.getSizeImpact(), is(1));
         assertThat(size.getMaximalSize(), is(1));
     }
@@ -154,7 +154,7 @@ public class RebaseImplementationTargetTest extends AbstractImplementationTarget
         StackManipulation.Size size = specialMethodInvocation.apply(methodVisitor, implementationContext);
         verify(methodVisitor).visitMethodInsn(Opcodes.INVOKESPECIAL, BAR, FOO, QUX, false);
         verifyNoMoreInteractions(methodVisitor);
-        verifyZeroInteractions(implementationContext);
+        verifyNoMoreInteractions(implementationContext);
         assertThat(size.getSizeImpact(), is(0));
         assertThat(size.getMaximalSize(), is(0));
     }

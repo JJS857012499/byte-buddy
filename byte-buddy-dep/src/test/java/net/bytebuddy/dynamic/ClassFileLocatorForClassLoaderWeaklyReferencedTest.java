@@ -1,10 +1,10 @@
 package net.bytebuddy.dynamic;
 
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import java.io.ByteArrayInputStream;
 import java.io.Closeable;
@@ -20,7 +20,7 @@ public class ClassFileLocatorForClassLoaderWeaklyReferencedTest {
     private static final String FOOBAR = "foo/bar";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private ClosableClassLoader classLoader;
@@ -36,11 +36,11 @@ public class ClassFileLocatorForClassLoaderWeaklyReferencedTest {
     @Test
     public void testLocatable() throws Exception {
         ByteArrayInputStream inputStream = new ByteArrayInputStream(new byte[]{1, 2, 3});
-        when(classLoader.getResourceAsStream(FOOBAR + ".class")).thenReturn(inputStream);
+        when(classLoader.getResourceAsStream(FOOBAR + ClassFileLocator.CLASS_FILE_EXTENSION)).thenReturn(inputStream);
         ClassFileLocator.Resolution resolution = new ClassFileLocator.ForClassLoader.WeaklyReferenced(classLoader).locate(FOOBAR);
         assertThat(resolution.isResolved(), is(true));
         assertThat(resolution.resolve(), is(new byte[]{1, 2, 3}));
-        verify(classLoader).getResourceAsStream(FOOBAR + ".class");
+        verify(classLoader).getResourceAsStream(FOOBAR + ClassFileLocator.CLASS_FILE_EXTENSION);
         verifyNoMoreInteractions(classLoader);
     }
 
@@ -48,7 +48,7 @@ public class ClassFileLocatorForClassLoaderWeaklyReferencedTest {
     public void testNonLocatable() throws Exception {
         ClassFileLocator.Resolution resolution = new ClassFileLocator.ForClassLoader.WeaklyReferenced(classLoader).locate(FOOBAR);
         assertThat(resolution.isResolved(), is(false));
-        verify(classLoader).getResourceAsStream(FOOBAR + ".class");
+        verify(classLoader).getResourceAsStream(FOOBAR + ClassFileLocator.CLASS_FILE_EXTENSION);
         verifyNoMoreInteractions(classLoader);
         resolution.resolve();
         fail();
@@ -57,7 +57,7 @@ public class ClassFileLocatorForClassLoaderWeaklyReferencedTest {
     @Test
     public void testClose() throws Exception {
         ClassFileLocator.ForClassLoader.WeaklyReferenced.of(classLoader).close();
-        verifyZeroInteractions(classLoader);
+        verifyNoMoreInteractions(classLoader);
     }
 
     private abstract static class ClosableClassLoader extends ClassLoader implements Closeable {

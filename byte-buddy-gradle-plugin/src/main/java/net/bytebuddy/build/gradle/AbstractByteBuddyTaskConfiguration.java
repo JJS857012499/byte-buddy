@@ -22,9 +22,9 @@ import org.gradle.api.Task;
 import org.gradle.api.execution.TaskExecutionGraph;
 import org.gradle.api.file.SourceDirectorySet;
 import org.gradle.api.tasks.SourceSet;
-import org.gradle.api.tasks.compile.JavaCompile;
+import org.gradle.api.tasks.compile.AbstractCompile;
 
-import javax.annotation.Nullable;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
 /**
  * An abstract configuration for a Byte Buddy task and extension.
@@ -37,9 +37,9 @@ public abstract class AbstractByteBuddyTaskConfiguration<
         S extends AbstractByteBuddyTaskExtension<T>> implements Action<Project> {
 
     /**
-     * The relative path to the raw folder.
+     * The folder name suffix for untransformed classes.
      */
-    protected static final String RAW_FOLDER = "../raw";
+    protected static final String RAW_FOLDER_SUFFIX = "ByteBuddyRaw";
 
     /**
      * The name of the task.
@@ -65,14 +65,15 @@ public abstract class AbstractByteBuddyTaskConfiguration<
     /**
      * {@inheritDoc}
      */
-    public void execute(final Project project) {
-        @SuppressWarnings("unchecked") final S extension = (S) project.getExtensions().getByName(name);
-        if (extension.getTransformations().isEmpty()) {
-            project.getLogger().debug("Not configuring task for source set '{}' as no transformations are defined", sourceSet.getName());
+    public void execute(Project project) {
+        @SuppressWarnings("unchecked")
+        S extension = (S) project.getExtensions().getByName(name);
+        if (extension.getTransformations().isEmpty() && (extension.getDiscovery() == Discovery.NONE || extension.isEmptyDiscovery())) {
+            project.getLogger().debug("Not configuring task for source set '{}' as no transformations are defined and discovery is disabled", sourceSet.getName());
         } else {
             project.getLogger().debug("Configuring Byte Buddy task for source set '{}' as '{}'", sourceSet.getName(), name);
-            final JavaCompile compileTask = (JavaCompile) project.getTasks().getByName(sourceSet.getCompileJavaTaskName());
-            final T byteBuddyTask = project.getTasks().create(name, extension.toType());
+            AbstractCompile compileTask = (AbstractCompile) project.getTasks().getByName(sourceSet.getCompileJavaTaskName());
+            T byteBuddyTask = project.getTasks().create(name, extension.toType());
             byteBuddyTask.setGroup("Byte Buddy");
             byteBuddyTask.setDescription("Transforms the classes compiled by " + compileTask.getName());
             byteBuddyTask.dependsOn(compileTask);
@@ -100,7 +101,7 @@ public abstract class AbstractByteBuddyTaskConfiguration<
      * @param compileTask   The compile task.
      * @param byteBuddyTask The Byte Buddy task.
      */
-    protected abstract void configureDirectories(SourceDirectorySet source, JavaCompile compileTask, T byteBuddyTask);
+    protected abstract void configureDirectories(SourceDirectorySet source, AbstractCompile compileTask, T byteBuddyTask);
 
     /**
      * An action to adjust the task execution graph to depend on the injected Byte Buddy task if a task
@@ -198,6 +199,7 @@ public abstract class AbstractByteBuddyTaskConfiguration<
      * A closure to execute an action on the {@link TaskExecutionGraph}. Older Gradle versions do not offer an overloaded method that accepts an
      * action such that a dispatch requires an explicit wrapping with a {@link Closure}.
      */
+    @SuppressWarnings("serial")
     protected static class TaskExecutionGraphClosure extends Closure<Void> {
 
         /**
@@ -230,7 +232,7 @@ public abstract class AbstractByteBuddyTaskConfiguration<
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public Void call(Object... argument) {
             action.execute(taskExecutionGraph);
             return null;

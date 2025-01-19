@@ -8,12 +8,12 @@ import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.Implementation;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.pool.TypePool;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.FieldVisitor;
 
@@ -28,7 +28,7 @@ public class AsmVisitorWrapperForDeclaredFieldsTest {
     private static final String FOO = "foo", BAR = "bar", QUX = "qux", BAZ = "baz";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private ElementMatcher<? super FieldDescription.InDefinedShape> matcher;
@@ -99,7 +99,7 @@ public class AsmVisitorWrapperForDeclaredFieldsTest {
                 .visitField(MODIFIERS, BAR, QUX, BAZ, QUX + BAZ), is(fieldVisitor));
         verify(matcher).matches(bar);
         verifyNoMoreInteractions(matcher);
-        verifyZeroInteractions(fieldVisitorWrapper);
+        verifyNoMoreInteractions(fieldVisitorWrapper);
     }
 
     @Test
@@ -115,7 +115,7 @@ public class AsmVisitorWrapperForDeclaredFieldsTest {
                         IRRELEVANT,
                         IRRELEVANT)
                 .visitField(MODIFIERS, FOO + BAR, QUX, BAZ, QUX + BAZ), is(fieldVisitor));
-        verifyZeroInteractions(matcher);
-        verifyZeroInteractions(fieldVisitorWrapper);
+        verifyNoMoreInteractions(matcher);
+        verifyNoMoreInteractions(fieldVisitorWrapper);
     }
 }

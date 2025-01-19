@@ -15,6 +15,7 @@
  */
 package net.bytebuddy.utility;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.build.AccessControllerPlugin;
 import net.bytebuddy.description.enumeration.EnumerationDescription;
@@ -23,12 +24,14 @@ import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.description.type.TypeList;
 import net.bytebuddy.dynamic.ClassFileLocator;
+import net.bytebuddy.implementation.bytecode.StackManipulation;
+import net.bytebuddy.implementation.bytecode.constant.*;
 import net.bytebuddy.pool.TypePool;
 import net.bytebuddy.utility.dispatcher.JavaDispatcher;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
-import javax.annotation.Nullable;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -36,10 +39,9 @@ import java.security.PrivilegedAction;
 import java.util.*;
 
 /**
- * Returns a Java instance of an object that has a special meaning to the Java virtual machine and that is not
- * available to Java in versions 6.
+ * Represents a constant-pool constant within a Java class file.
  */
-public interface JavaConstant {
+public interface JavaConstant extends ConstantValue {
 
     /**
      * Returns this constant as a Java {@code java.lang.constant.ConstantDesc} if the current VM is of at least version 12.
@@ -48,13 +50,6 @@ public interface JavaConstant {
      * @return This constant as a Java {@code java.lang.constant.ConstantDesc}.
      */
     Object toDescription();
-
-    /**
-     * Returns a description of the type of the represented instance or at least a stub.
-     *
-     * @return A description of the type of the represented instance or at least a stub.
-     */
-    TypeDescription getTypeDescription();
 
     /**
      * Applies the supplied visitor to this constant type with its respective callback.
@@ -242,24 +237,40 @@ public interface JavaConstant {
          * @return An appropriate Java constant representation.
          */
         public static JavaConstant ofLoaded(Object value) {
+            JavaConstant constant = ofLoadedOrNull(value);
+            if (constant == null) {
+                throw new IllegalArgumentException("Not a constant: " + value);
+            } else {
+                return constant;
+            }
+        }
+
+        /**
+         * Resolves a loaded Java value to a Java constant representation.
+         *
+         * @param value The value to represent.
+         * @return An appropriate Java constant representation or {@code null} if the supplied argument is not a compile-time constant.
+         */
+        @MaybeNull
+        protected static JavaConstant ofLoadedOrNull(Object value) {
             if (value instanceof Integer) {
-                return new OfTrivialValue<Integer>((Integer) value, TypeDescription.ForLoadedType.of(int.class));
+                return new OfTrivialValue.ForInteger((Integer) value);
             } else if (value instanceof Long) {
-                return new OfTrivialValue<Long>((Long) value, TypeDescription.ForLoadedType.of(long.class));
+                return new OfTrivialValue.ForLong((Long) value);
             } else if (value instanceof Float) {
-                return new OfTrivialValue<Float>((Float) value, TypeDescription.ForLoadedType.of(float.class));
+                return new OfTrivialValue.ForFloat((Float) value);
             } else if (value instanceof Double) {
-                return new OfTrivialValue<Double>((Double) value, TypeDescription.ForLoadedType.of(double.class));
+                return new OfTrivialValue.ForDouble((Double) value);
             } else if (value instanceof String) {
-                return new OfTrivialValue<String>((String) value, TypeDescription.STRING);
+                return new OfTrivialValue.ForString((String) value);
             } else if (value instanceof Class<?>) {
-                return Simple.of(TypeDescription.ForLoadedType.of((Class<?>) value));
+                return JavaConstant.Simple.of(TypeDescription.ForLoadedType.of((Class<?>) value));
             } else if (JavaType.METHOD_HANDLE.isInstance(value)) {
                 return MethodHandle.ofLoaded(value);
             } else if (JavaType.METHOD_TYPE.isInstance(value)) {
                 return MethodType.ofLoaded(value);
             } else {
-                throw new IllegalArgumentException("Not a loaded Java constant value: " + value);
+                return null;
             }
         }
 
@@ -270,7 +281,7 @@ public interface JavaConstant {
          * @param classLoader The class loader to use for resolving type information from the supplied value.
          * @return An appropriate Java constant representation.
          */
-        public static JavaConstant ofDescription(Object value, @Nullable ClassLoader classLoader) {
+        public static JavaConstant ofDescription(Object value, @MaybeNull ClassLoader classLoader) {
             return ofDescription(value, ClassFileLocator.ForClassLoader.of(classLoader));
         }
 
@@ -294,18 +305,18 @@ public interface JavaConstant {
          */
         public static JavaConstant ofDescription(Object value, TypePool typePool) {
             if (value instanceof Integer) {
-                return new Simple.OfTrivialValue<Integer>((Integer) value, TypeDescription.ForLoadedType.of(int.class));
+                return new JavaConstant.Simple.OfTrivialValue.ForInteger((Integer) value);
             } else if (value instanceof Long) {
-                return new Simple.OfTrivialValue<Long>((Long) value, TypeDescription.ForLoadedType.of(long.class));
+                return new JavaConstant.Simple.OfTrivialValue.ForLong((Long) value);
             } else if (value instanceof Float) {
-                return new Simple.OfTrivialValue<Float>((Float) value, TypeDescription.ForLoadedType.of(float.class));
+                return new JavaConstant.Simple.OfTrivialValue.ForFloat((Float) value);
             } else if (value instanceof Double) {
-                return new Simple.OfTrivialValue<Double>((Double) value, TypeDescription.ForLoadedType.of(double.class));
+                return new JavaConstant.Simple.OfTrivialValue.ForDouble((Double) value);
             } else if (value instanceof String) {
-                return new Simple.OfTrivialValue<String>((String) value, TypeDescription.STRING);
+                return new JavaConstant.Simple.OfTrivialValue.ForString((String) value);
             } else if (CLASS_DESC.isInstance(value)) {
                 Type type = Type.getType(CLASS_DESC.descriptorString(value));
-                return Simple.OfTypeDescription.of(typePool.describe(type.getSort() == Type.ARRAY
+                return JavaConstant.Simple.OfTypeDescription.of(typePool.describe(type.getSort() == Type.ARRAY
                         ? type.getInternalName().replace('/', '.')
                         : type.getClassName()).resolve());
             } else if (METHOD_TYPE_DESC.isInstance(value)) {
@@ -335,7 +346,7 @@ public interface JavaConstant {
                         typePool.describe(Type.getType(CLASS_DESC.descriptorString(DIRECT_METHOD_HANDLE_DESC.owner(value))).getClassName()).resolve(),
                         DIRECT_METHOD_HANDLE_DESC.methodName(value),
                         DIRECT_METHOD_HANDLE_DESC.refKind(value) == Opcodes.H_NEWINVOKESPECIAL
-                                ? TypeDescription.VOID
+                                ? TypeDescription.ForLoadedType.of(void.class)
                                 : typePool.describe(type.getSort() == Type.ARRAY ? type.getInternalName().replace('/', '.') : type.getClassName()).resolve(),
                         typeDescriptions);
             } else if (DYNAMIC_CONSTANT_DESC.isInstance(value)) {
@@ -379,7 +390,7 @@ public interface JavaConstant {
             if (typeDescription.isPrimitive()) {
                 throw new IllegalArgumentException("A primitive type cannot be represented as a type constant: " + typeDescription);
             }
-            return new Simple.OfTypeDescription(typeDescription);
+            return new JavaConstant.Simple.OfTypeDescription(typeDescription);
         }
 
         /**
@@ -434,10 +445,10 @@ public interface JavaConstant {
         }
 
         @Override
-        public boolean equals(Object object) {
+        public boolean equals(@MaybeNull Object object) {
             if (this == object) return true;
             if (object == null || getClass() != object.getClass()) return false;
-            return value.equals(((Simple<?>) object).value);
+            return value.equals(((JavaConstant.Simple<?>) object).value);
         }
 
         @Override
@@ -450,7 +461,7 @@ public interface JavaConstant {
          *
          * @param <S> The represented type.
          */
-        protected static class OfTrivialValue<S> extends Simple<S> {
+        protected abstract static class OfTrivialValue<S> extends JavaConstant.Simple<S> {
 
             /**
              * Creates a representation of a trivial constant that represents itself.
@@ -475,12 +486,82 @@ public interface JavaConstant {
             public <T> T accept(Visitor<T> visitor) {
                 return visitor.onValue(this);
             }
+
+            protected static class ForInteger extends OfTrivialValue<Integer> {
+
+                public ForInteger(Integer value) {
+                    super(value, TypeDescription.ForLoadedType.of(int.class));
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public StackManipulation toStackManipulation() {
+                    return IntegerConstant.forValue(value);
+                }
+            }
+
+            protected static class ForLong extends OfTrivialValue<Long> {
+
+                public ForLong(Long value) {
+                    super(value, TypeDescription.ForLoadedType.of(long.class));
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public StackManipulation toStackManipulation() {
+                    return LongConstant.forValue(value);
+                }
+            }
+
+            protected static class ForFloat extends OfTrivialValue<Float> {
+
+                public ForFloat(Float value) {
+                    super(value, TypeDescription.ForLoadedType.of(float.class));
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public StackManipulation toStackManipulation() {
+                    return FloatConstant.forValue(value);
+                }
+            }
+
+            protected static class ForDouble extends OfTrivialValue<Double> {
+
+                public ForDouble(Double value) {
+                    super(value, TypeDescription.ForLoadedType.of(double.class));
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public StackManipulation toStackManipulation() {
+                    return DoubleConstant.forValue(value);
+                }
+            }
+
+            protected static class ForString extends OfTrivialValue<String> {
+
+                public ForString(String value) {
+                    super(value, TypeDescription.ForLoadedType.of(String.class));
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public StackManipulation toStackManipulation() {
+                    return new TextConstant(value);
+                }
+            }
         }
 
         /**
          * Represents a type constant.
          */
-        protected static class OfTypeDescription extends Simple<TypeDescription> {
+        protected static class OfTypeDescription extends JavaConstant.Simple<TypeDescription> {
 
             /**
              * Creates a type constant.
@@ -488,7 +569,7 @@ public interface JavaConstant {
              * @param value The represented type.
              */
             protected OfTypeDescription(TypeDescription value) {
-                super(value, TypeDescription.CLASS);
+                super(value, TypeDescription.ForLoadedType.of(Class.class));
             }
 
             /**
@@ -496,6 +577,13 @@ public interface JavaConstant {
              */
             public Object toDescription() {
                 return CLASS_DESC.ofDescriptor(value.getDescriptor());
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            public StackManipulation toStackManipulation() {
+                return ClassConstant.of(value);
             }
 
             /**
@@ -857,6 +945,43 @@ public interface JavaConstant {
          * @return The method type of the given method.
          */
         public static MethodType of(MethodDescription methodDescription) {
+            return new MethodType(
+                    (methodDescription.isConstructor() ? methodDescription.getDeclaringType() : methodDescription.getReturnType()).asErasure(),
+                    methodDescription.isStatic() || methodDescription.isConstructor()
+                            ? methodDescription.getParameters().asTypeList().asErasures()
+                            : CompoundList.of(methodDescription.getDeclaringType().asErasure(), methodDescription.getParameters().asTypeList().asErasures()));
+        }
+
+        /**
+         * Returns a method type description of the given method's signature without considering the method's actual stack consumption
+         * and production.
+         *
+         * @param method The method to extract the method type from.
+         * @return The method type of the given method's signature.
+         */
+        public static MethodType ofSignature(Method method) {
+            return ofSignature(new MethodDescription.ForLoadedMethod(method));
+        }
+
+        /**
+         * Returns a method type description of the given constructor's signature without considering the constructor's
+         * actual stack consumption and production.
+         *
+         * @param constructor The constructor to extract the method type from.
+         * @return The method type of the given method's signature.
+         */
+        public static MethodType ofSignature(Constructor<?> constructor) {
+            return ofSignature(new MethodDescription.ForLoadedConstructor(constructor));
+        }
+
+        /**
+         * Returns a method type description of the given method's signature without considering the method's actual stack consumption
+         * and production.
+         *
+         * @param methodDescription The method to extract the method type from.
+         * @return The method type of the given method's signature.
+         */
+        public static MethodType ofSignature(MethodDescription methodDescription) {
             return new MethodType(methodDescription.getReturnType().asErasure(), methodDescription.getParameters().asTypeList().asErasures());
         }
 
@@ -876,8 +1001,11 @@ public interface JavaConstant {
          * @param fieldDescription The field to extract a setter type for.
          * @return The type of a setter for the given field.
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming declaring type for type member.")
         public static MethodType ofSetter(FieldDescription fieldDescription) {
-            return new MethodType(TypeDescription.VOID, Collections.singletonList(fieldDescription.getType().asErasure()));
+            return new MethodType(TypeDescription.ForLoadedType.of(void.class), fieldDescription.isStatic()
+                    ? Collections.singletonList(fieldDescription.getType().asErasure())
+                    : Arrays.asList(fieldDescription.getDeclaringType().asErasure(), fieldDescription.getType().asErasure()));
         }
 
         /**
@@ -896,8 +1024,11 @@ public interface JavaConstant {
          * @param fieldDescription The field to extract a getter type for.
          * @return The type of a getter for the given field.
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming declaring type for type member.")
         public static MethodType ofGetter(FieldDescription fieldDescription) {
-            return new MethodType(fieldDescription.getType().asErasure(), Collections.<TypeDescription>emptyList());
+            return new MethodType(fieldDescription.getType().asErasure(), fieldDescription.isStatic()
+                    ? Collections.<TypeDescription>emptyList()
+                    : Collections.singletonList(fieldDescription.getDeclaringType().asErasure()));
         }
 
         /**
@@ -965,11 +1096,11 @@ public interface JavaConstant {
          * {@inheritDoc}
          */
         public Object toDescription() {
-            Object[] parameterType = Simple.CLASS_DESC.toArray(parameterTypes.size());
+            Object[] parameterType = JavaConstant.Simple.CLASS_DESC.toArray(parameterTypes.size());
             for (int index = 0; index < parameterTypes.size(); index++) {
-                parameterType[index] = Simple.CLASS_DESC.ofDescriptor(parameterTypes.get(index).getDescriptor());
+                parameterType[index] = JavaConstant.Simple.CLASS_DESC.ofDescriptor(parameterTypes.get(index).getDescriptor());
             }
-            return Simple.METHOD_TYPE_DESC.of(Simple.CLASS_DESC.ofDescriptor(returnType.getDescriptor()), parameterType);
+            return JavaConstant.Simple.METHOD_TYPE_DESC.of(JavaConstant.Simple.CLASS_DESC.ofDescriptor(returnType.getDescriptor()), parameterType);
         }
 
         /**
@@ -986,6 +1117,13 @@ public interface JavaConstant {
             return JavaType.METHOD_TYPE.getTypeStub();
         }
 
+        /**
+         * {@inheritDoc}
+         */
+        public StackManipulation toStackManipulation() {
+            return new JavaConstantValue(this);
+        }
+
         @Override
         public int hashCode() {
             int result = returnType.hashCode();
@@ -994,7 +1132,7 @@ public interface JavaConstant {
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             }
@@ -1106,11 +1244,11 @@ public interface JavaConstant {
          * @param returnType     The return type that is represented by this instance.
          * @param parameterTypes The parameter types that is represented by this instance.
          */
-        protected MethodHandle(HandleType handleType,
-                               TypeDescription ownerType,
-                               String name,
-                               TypeDescription returnType,
-                               List<? extends TypeDescription> parameterTypes) {
+        public MethodHandle(HandleType handleType,
+                            TypeDescription ownerType,
+                            String name,
+                            TypeDescription returnType,
+                            List<? extends TypeDescription> parameterTypes) {
             this.handleType = handleType;
             this.ownerType = ownerType;
             this.name = name;
@@ -1275,7 +1413,7 @@ public interface JavaConstant {
             return new MethodHandle(HandleType.ofSetter(fieldDescription),
                     fieldDescription.getDeclaringType().asErasure(),
                     fieldDescription.getInternalName(),
-                    TypeDescription.VOID,
+                    TypeDescription.ForLoadedType.of(void.class),
                     Collections.singletonList(fieldDescription.getType().asErasure()));
         }
 
@@ -1293,8 +1431,8 @@ public interface JavaConstant {
          * {@inheritDoc}
          */
         public Object toDescription() {
-            return Simple.METHOD_HANDLE_DESC.of(Simple.DIRECT_METHOD_HANDLE_DESC_KIND.valueOf(handleType.getIdentifier(), ownerType.isInterface()),
-                    Simple.CLASS_DESC.ofDescriptor(ownerType.getDescriptor()),
+            return JavaConstant.Simple.METHOD_HANDLE_DESC.of(JavaConstant.Simple.DIRECT_METHOD_HANDLE_DESC_KIND.valueOf(handleType.getIdentifier(), ownerType.isInterface()),
+                    JavaConstant.Simple.CLASS_DESC.ofDescriptor(ownerType.getDescriptor()),
                     name,
                     getDescriptor());
         }
@@ -1311,6 +1449,13 @@ public interface JavaConstant {
          */
         public TypeDescription getTypeDescription() {
             return JavaType.METHOD_HANDLE.getTypeStub();
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public StackManipulation toStackManipulation() {
+            return new JavaConstantValue(this);
         }
 
         /**
@@ -1391,7 +1536,7 @@ public interface JavaConstant {
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (!(other instanceof MethodHandle)) {
@@ -1759,12 +1904,12 @@ public interface JavaConstant {
          */
         public static Dynamic ofNullConstant() {
             return new Dynamic(DEFAULT_NAME,
-                    TypeDescription.OBJECT,
+                    TypeDescription.ForLoadedType.of(Object.class),
                     new MethodHandle(MethodHandle.HandleType.INVOKE_STATIC,
                             JavaType.CONSTANT_BOOTSTRAPS.getTypeStub(),
                             "nullConstant",
-                            TypeDescription.OBJECT,
-                            Arrays.asList(JavaType.METHOD_HANDLES_LOOKUP.getTypeStub(), TypeDescription.STRING, TypeDescription.CLASS)),
+                            TypeDescription.ForLoadedType.of(Object.class),
+                            Arrays.asList(JavaType.METHOD_HANDLES_LOOKUP.getTypeStub(), TypeDescription.ForLoadedType.of(String.class), TypeDescription.ForLoadedType.of(Class.class))),
                     Collections.<JavaConstant>emptyList());
         }
 
@@ -1789,12 +1934,12 @@ public interface JavaConstant {
                 throw new IllegalArgumentException("Not a primitive type: " + typeDescription);
             }
             return new Dynamic(typeDescription.getDescriptor(),
-                    TypeDescription.CLASS,
+                    TypeDescription.ForLoadedType.of(Class.class),
                     new MethodHandle(MethodHandle.HandleType.INVOKE_STATIC,
                             JavaType.CONSTANT_BOOTSTRAPS.getTypeStub(),
                             "primitiveClass",
-                            TypeDescription.CLASS,
-                            Arrays.asList(JavaType.METHOD_HANDLES_LOOKUP.getTypeStub(), TypeDescription.STRING, TypeDescription.CLASS)),
+                            TypeDescription.ForLoadedType.of(Class.class),
+                            Arrays.asList(JavaType.METHOD_HANDLES_LOOKUP.getTypeStub(), TypeDescription.ForLoadedType.of(String.class), TypeDescription.ForLoadedType.of(Class.class))),
                     Collections.<JavaConstant>emptyList());
         }
 
@@ -1821,7 +1966,7 @@ public interface JavaConstant {
                             JavaType.CONSTANT_BOOTSTRAPS.getTypeStub(),
                             "enumConstant",
                             TypeDescription.ForLoadedType.of(Enum.class),
-                            Arrays.asList(JavaType.METHOD_HANDLES_LOOKUP.getTypeStub(), TypeDescription.STRING, TypeDescription.CLASS)),
+                            Arrays.asList(JavaType.METHOD_HANDLES_LOOKUP.getTypeStub(), TypeDescription.ForLoadedType.of(String.class), TypeDescription.ForLoadedType.of(Class.class))),
                     Collections.<JavaConstant>emptyList());
         }
 
@@ -1853,13 +1998,13 @@ public interface JavaConstant {
                     new MethodHandle(MethodHandle.HandleType.INVOKE_STATIC,
                             JavaType.CONSTANT_BOOTSTRAPS.getTypeStub(),
                             "getStaticFinal",
-                            TypeDescription.OBJECT,
+                            TypeDescription.ForLoadedType.of(Object.class),
                             selfDeclared
-                                    ? Arrays.asList(JavaType.METHOD_HANDLES_LOOKUP.getTypeStub(), TypeDescription.STRING, TypeDescription.CLASS)
-                                    : Arrays.asList(JavaType.METHOD_HANDLES_LOOKUP.getTypeStub(), TypeDescription.STRING, TypeDescription.CLASS, TypeDescription.CLASS)),
+                                    ? Arrays.asList(JavaType.METHOD_HANDLES_LOOKUP.getTypeStub(), TypeDescription.ForLoadedType.of(String.class), TypeDescription.ForLoadedType.of(Class.class))
+                                    : Arrays.asList(JavaType.METHOD_HANDLES_LOOKUP.getTypeStub(), TypeDescription.ForLoadedType.of(String.class), TypeDescription.ForLoadedType.of(Class.class), TypeDescription.ForLoadedType.of(Class.class))),
                     selfDeclared
                             ? Collections.<JavaConstant>emptyList()
-                            : Collections.singletonList(Simple.of(fieldDescription.getDeclaringType())));
+                            : Collections.singletonList(JavaConstant.Simple.of(fieldDescription.getDeclaringType())));
         }
 
         /**
@@ -1956,7 +2101,7 @@ public interface JavaConstant {
             List<JavaConstant> arguments = new ArrayList<JavaConstant>(constants.size() + 1);
             arguments.add(MethodHandle.of(methodDescription));
             for (Object constant : constants) {
-                JavaConstant argument = Simple.wrap(constant);
+                JavaConstant argument = JavaConstant.Simple.wrap(constant);
                 if (!argument.getTypeDescription().isAssignableTo(iterator.next())) {
                     throw new IllegalArgumentException("Cannot assign " + constants + " to " + methodDescription);
                 }
@@ -1969,12 +2114,12 @@ public interface JavaConstant {
                     new MethodHandle(MethodHandle.HandleType.INVOKE_STATIC,
                             JavaType.CONSTANT_BOOTSTRAPS.getTypeStub(),
                             "invoke",
-                            TypeDescription.OBJECT,
+                            TypeDescription.ForLoadedType.of(Object.class),
                             Arrays.asList(JavaType.METHOD_HANDLES_LOOKUP.getTypeStub(),
-                                    TypeDescription.STRING,
-                                    TypeDescription.CLASS,
+                                    TypeDescription.ForLoadedType.of(String.class),
+                                    TypeDescription.ForLoadedType.of(Class.class),
                                     JavaType.METHOD_HANDLE.getTypeStub(),
-                                    TypeDescription.ArrayProjection.of(TypeDescription.OBJECT))),
+                                    TypeDescription.ArrayProjection.of(TypeDescription.ForLoadedType.of(Object.class)))),
                     arguments);
         }
 
@@ -2004,11 +2149,11 @@ public interface JavaConstant {
                                     : "fieldVarHandle",
                             JavaType.VAR_HANDLE.getTypeStub(),
                             Arrays.asList(JavaType.METHOD_HANDLES_LOOKUP.getTypeStub(),
-                                    TypeDescription.STRING,
-                                    TypeDescription.CLASS,
-                                    TypeDescription.CLASS,
-                                    TypeDescription.CLASS)),
-                    Arrays.asList(Simple.of(fieldDescription.getDeclaringType()), Simple.of(fieldDescription.getType().asErasure())));
+                                    TypeDescription.ForLoadedType.of(String.class),
+                                    TypeDescription.ForLoadedType.of(Class.class),
+                                    TypeDescription.ForLoadedType.of(Class.class),
+                                    TypeDescription.ForLoadedType.of(Class.class))),
+                    Arrays.asList(JavaConstant.Simple.of(fieldDescription.getDeclaringType()), JavaConstant.Simple.of(fieldDescription.getType().asErasure())));
         }
 
         /**
@@ -2038,10 +2183,10 @@ public interface JavaConstant {
                             "arrayVarHandle",
                             JavaType.VAR_HANDLE.getTypeStub(),
                             Arrays.asList(JavaType.METHOD_HANDLES_LOOKUP.getTypeStub(),
-                                    TypeDescription.STRING,
-                                    TypeDescription.CLASS,
-                                    TypeDescription.CLASS)),
-                    Collections.singletonList(Simple.of(typeDescription)));
+                                    TypeDescription.ForLoadedType.of(String.class),
+                                    TypeDescription.ForLoadedType.of(Class.class),
+                                    TypeDescription.ForLoadedType.of(Class.class))),
+                    Collections.singletonList(JavaConstant.Simple.of(typeDescription)));
         }
 
         /**
@@ -2118,23 +2263,20 @@ public interface JavaConstant {
          *
          * @param name      The name of the bootstrap constant that is provided to the bootstrap method or constructor.
          * @param bootstrap The bootstrap method or constructor to invoke.
-         * @param constants The constant values passed to the bootstrap method. Values can be represented either
+         * @param arguments The constant values passed to the bootstrap method. Values can be represented either
          *                  as {@link TypeDescription}, as {@link JavaConstant}, as {@link String} or a primitive
          *                  {@code int}, {@code long}, {@code float} or {@code double} represented as wrapper type.
          * @return A dynamic constant that represents the bootstrapped method's or constructor's result.
          */
-        public static Dynamic bootstrap(String name, MethodDescription.InDefinedShape bootstrap, List<?> constants) {
+        public static Dynamic bootstrap(String name, MethodDescription.InDefinedShape bootstrap, List<?> arguments) {
             if (name.length() == 0 || name.contains(".")) {
                 throw new IllegalArgumentException("Not a valid field name: " + name);
             }
-            List<JavaConstant> arguments = new ArrayList<JavaConstant>(constants.size());
-            List<TypeDescription> types = new ArrayList<TypeDescription>(constants.size());
-            for (Object constant : constants) {
-                JavaConstant argument = JavaConstant.Simple.wrap(constant);
-                arguments.add(argument);
-                types.add(argument.getTypeDescription());
+            List<JavaConstant> constants = new ArrayList<JavaConstant>(arguments.size());
+            for (Object argument : arguments) {
+                constants.add(JavaConstant.Simple.wrap(argument));
             }
-            if (!bootstrap.isConstantBootstrap(types)) {
+            if (!bootstrap.isConstantBootstrap(TypeList.Explicit.of(constants))) {
                 throw new IllegalArgumentException("Not a valid bootstrap method " + bootstrap + " for " + arguments);
             }
             return new Dynamic(name,
@@ -2146,7 +2288,7 @@ public interface JavaConstant {
                             bootstrap.getInternalName(),
                             bootstrap.getReturnType().asErasure(),
                             bootstrap.getParameters().asTypeList().asErasures()),
-                    arguments);
+                    constants);
         }
 
         /**
@@ -2209,15 +2351,15 @@ public interface JavaConstant {
          * {@inheritDoc}
          */
         public Object toDescription() {
-            Object[] argument = Simple.CONSTANT_DESC.toArray(arguments.size());
+            Object[] argument = JavaConstant.Simple.CONSTANT_DESC.toArray(arguments.size());
             for (int index = 0; index < argument.length; index++) {
                 argument[index] = arguments.get(index).toDescription();
             }
-            return Simple.DYNAMIC_CONSTANT_DESC.ofCanonical(Simple.METHOD_HANDLE_DESC.of(
-                    Simple.DIRECT_METHOD_HANDLE_DESC_KIND.valueOf(bootstrap.getHandleType().getIdentifier(), bootstrap.getOwnerType().isInterface()),
-                    Simple.CLASS_DESC.ofDescriptor(bootstrap.getOwnerType().getDescriptor()),
+            return JavaConstant.Simple.DYNAMIC_CONSTANT_DESC.ofCanonical(JavaConstant.Simple.METHOD_HANDLE_DESC.of(
+                    JavaConstant.Simple.DIRECT_METHOD_HANDLE_DESC_KIND.valueOf(bootstrap.getHandleType().getIdentifier(), bootstrap.getOwnerType().isInterface()),
+                    JavaConstant.Simple.CLASS_DESC.ofDescriptor(bootstrap.getOwnerType().getDescriptor()),
                     bootstrap.getName(),
-                    bootstrap.getDescriptor()), getName(), Simple.CLASS_DESC.ofDescriptor(typeDescription.getDescriptor()), argument);
+                    bootstrap.getDescriptor()), getName(), JavaConstant.Simple.CLASS_DESC.ofDescriptor(typeDescription.getDescriptor()), argument);
         }
 
         /**
@@ -2234,6 +2376,13 @@ public interface JavaConstant {
             return typeDescription;
         }
 
+        /**
+         * {@inheritDoc}
+         */
+        public StackManipulation toStackManipulation() {
+            return new JavaConstantValue(this);
+        }
+
         @Override
         public int hashCode() {
             int result = name.hashCode();
@@ -2244,7 +2393,7 @@ public interface JavaConstant {
         }
 
         @Override
-        public boolean equals(Object object) {
+        public boolean equals(@MaybeNull Object object) {
             if (this == object) return true;
             if (object == null || getClass() != object.getClass()) return false;
             Dynamic dynamic = (Dynamic) object;

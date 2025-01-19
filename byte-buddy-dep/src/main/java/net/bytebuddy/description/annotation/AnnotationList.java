@@ -19,14 +19,14 @@ import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.description.type.TypeList;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.FilterableList;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
@@ -58,7 +58,7 @@ public interface AnnotationList extends FilterableList<AnnotationDescription, An
      * @param <T>            The annotation type.
      * @return The annotation description or {@code null} if no such annotation was found.
      */
-    @Nullable
+    @MaybeNull
     <T extends Annotation> AnnotationDescription.Loadable<T> ofType(Class<T> annotationType);
 
     /**
@@ -94,6 +94,14 @@ public interface AnnotationList extends FilterableList<AnnotationDescription, An
     TypeList asTypeList();
 
     /**
+     * Returns a list of the names of the annotation types. This list might contain the names of
+     * annotations that are not otherwise resolvable.
+     *
+     * @return A list of binary names of the represented annotations.
+     */
+    List<String> asTypeNames();
+
+    /**
      * An abstract base implementation of an annotation list.
      */
     abstract class AbstractBase extends FilterableList.AbstractBase<AnnotationDescription, AnnotationList> implements AnnotationList {
@@ -126,7 +134,7 @@ public interface AnnotationList extends FilterableList<AnnotationDescription, An
          * {@inheritDoc}
          */
         @SuppressWarnings("unchecked")
-        @Nullable
+        @MaybeNull
         public <T extends Annotation> AnnotationDescription.Loadable<T> ofType(Class<T> annotationType) {
             for (AnnotationDescription annotation : this) {
                 if (annotation.getAnnotationType().represents(annotationType)) {
@@ -139,7 +147,7 @@ public interface AnnotationList extends FilterableList<AnnotationDescription, An
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public AnnotationDescription ofType(TypeDescription annotationType) {
             for (AnnotationDescription annotation : this) {
                 if (annotation.getAnnotationType().equals(annotationType)) {
@@ -184,6 +192,17 @@ public interface AnnotationList extends FilterableList<AnnotationDescription, An
                 annotationTypes.add(annotation.getAnnotationType());
             }
             return new TypeList.Explicit(annotationTypes);
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public List<String> asTypeNames() {
+            List<String> typeNames = new ArrayList<String>(size());
+            for (AnnotationDescription annotation : this) {
+                typeNames.add(annotation.getAnnotationType().getName());
+            }
+            return typeNames;
         }
 
         @Override
@@ -343,7 +362,7 @@ public interface AnnotationList extends FilterableList<AnnotationDescription, An
          * {@inheritDoc}
          */
         @SuppressWarnings("unchecked")
-        @Nonnull(when = When.NEVER)
+        @AlwaysNull
         public <T extends Annotation> AnnotationDescription.Loadable<T> ofType(Class<T> annotationType) {
             return (AnnotationDescription.Loadable<T>) AnnotationDescription.UNDEFINED;
         }
@@ -351,7 +370,7 @@ public interface AnnotationList extends FilterableList<AnnotationDescription, An
         /**
          * {@inheritDoc}
          */
-        @Nonnull(when = When.NEVER)
+        @AlwaysNull
         public AnnotationDescription ofType(TypeDescription annotationType) {
             return AnnotationDescription.UNDEFINED;
         }
@@ -375,6 +394,13 @@ public interface AnnotationList extends FilterableList<AnnotationDescription, An
          */
         public TypeList asTypeList() {
             return new TypeList.Empty();
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public List<String> asTypeNames() {
+            return Collections.emptyList();
         }
     }
 }

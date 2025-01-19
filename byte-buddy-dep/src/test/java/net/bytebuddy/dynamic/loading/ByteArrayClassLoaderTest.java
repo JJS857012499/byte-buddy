@@ -2,21 +2,21 @@ package net.bytebuddy.dynamic.loading;
 
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.test.utility.IntegrationRule;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.MethodRule;
-import org.junit.rules.TestRule;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
+import org.mockito.junit.MockitoJUnit;
 import org.mockito.stubbing.Answer;
 
 import java.io.InputStream;
+import java.net.URI;
 import java.net.URL;
 import java.security.ProtectionDomain;
 import java.util.Arrays;
@@ -33,16 +33,14 @@ import static org.mockito.Mockito.when;
 @RunWith(Parameterized.class)
 public class ByteArrayClassLoaderTest {
 
-    private static final ProtectionDomain DEFAULT_PROTECTION_DOMAIN = null;
-
-    private static final String FOO = "foo", BAR = "bar", QUX = "qux", CLASS_FILE = ".class";
+    private static final String FOO = "foo", BAR = "bar", QUX = "qux", CLASS_FILE = ClassFileLocator.CLASS_FILE_EXTENSION;
 
     private final ByteArrayClassLoader.PersistenceHandler persistenceHandler;
 
     private final boolean expectedResourceLookup;
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Rule
     public MethodRule integrationRule = new IntegrationRule();
@@ -75,11 +73,11 @@ public class ByteArrayClassLoaderTest {
         classLoader = new ByteArrayClassLoader(ClassLoadingStrategy.BOOTSTRAP_LOADER,
                 false,
                 ClassFileLocator.ForClassLoader.readToNames(Foo.class),
-                DEFAULT_PROTECTION_DOMAIN,
+                ClassLoadingStrategy.NO_PROTECTION_DOMAIN,
                 persistenceHandler,
                 packageDefinitionStrategy,
                 classFilePostProcessor);
-        sealBase = new URL("file://foo");
+        sealBase = URI.create("file://foo").toURL();
         when(packageDefinitionStrategy.define(classLoader, Foo.class.getPackage().getName(), Foo.class.getName()))
                 .thenReturn(new PackageDefinitionStrategy.Definition.Simple(FOO, BAR, QUX, QUX, FOO, BAR, sealBase));
         when(packageDefinitionStrategy.define(classLoader, Bar.class.getPackage().getName(), Bar.class.getName()))

@@ -40,8 +40,8 @@ public class MethodAttributeAppenderExplicitTest extends AbstractMethodAttribute
     public void testAnnotationAppenderNoRetention() throws Exception {
         new MethodAttributeAppender.Explicit(new AnnotationList.ForLoadedAnnotations(new Qux.Instance()))
                 .apply(methodVisitor, methodDescription, annotationValueFilter);
-        verifyZeroInteractions(methodVisitor);
-        verifyZeroInteractions(methodDescription);
+        verifyNoMoreInteractions(methodVisitor);
+        verifyNoMoreInteractions(methodDescription);
     }
 
     @Test
@@ -50,7 +50,7 @@ public class MethodAttributeAppenderExplicitTest extends AbstractMethodAttribute
                 .apply(methodVisitor, methodDescription, annotationValueFilter);
         verify(methodVisitor).visitAnnotation(Type.getDescriptor(Baz.class), true);
         verifyNoMoreInteractions(methodVisitor);
-        verifyZeroInteractions(methodDescription);
+        verifyNoMoreInteractions(methodDescription);
     }
 
     @Test
@@ -59,14 +59,14 @@ public class MethodAttributeAppenderExplicitTest extends AbstractMethodAttribute
                 .apply(methodVisitor, methodDescription, annotationValueFilter);
         verify(methodVisitor).visitAnnotation(Type.getDescriptor(QuxBaz.class), false);
         verifyNoMoreInteractions(methodVisitor);
-        verifyZeroInteractions(methodDescription);
+        verifyNoMoreInteractions(methodDescription);
     }
 
     @Test
     public void testAnnotationAppenderForParameterNoRetention() throws Exception {
         new MethodAttributeAppender.Explicit(PARAMETER_INDEX, new AnnotationList.ForLoadedAnnotations(new Qux.Instance()))
                 .apply(methodVisitor, methodDescription, annotationValueFilter);
-        verifyZeroInteractions(methodVisitor);
+        verifyNoMoreInteractions(methodVisitor);
         verify(methodDescription).getParameters();
         verifyNoMoreInteractions(methodDescription);
     }
@@ -101,9 +101,9 @@ public class MethodAttributeAppenderExplicitTest extends AbstractMethodAttribute
     public void testFactory() throws Exception {
         MethodAttributeAppender.Explicit methodAttributeAppender = new MethodAttributeAppender.Explicit(new AnnotationList.ForLoadedAnnotations(new Qux.Instance()));
         assertThat(methodAttributeAppender.make(instrumentedType), sameInstance((MethodAttributeAppender) methodAttributeAppender));
-        verifyZeroInteractions(instrumentedType);
+        verifyNoMoreInteractions(instrumentedType);
     }
-    
+
     @Test
     public void testOfMethod() throws Exception {
         when(methodDescription.getDeclaredAnnotations()).thenReturn(new AnnotationList.ForLoadedAnnotations(new Baz.Instance()));
@@ -119,9 +119,9 @@ public class MethodAttributeAppenderExplicitTest extends AbstractMethodAttribute
         verify(parameterDescription).getIndex();
         verify(parameterDescription).getDeclaredAnnotations();
         verifyNoMoreInteractions(parameterDescription);
-        verifyZeroInteractions(instrumentedType);
+        verifyNoMoreInteractions(instrumentedType);
     }
-    
+
     @Test
     public void testOfMethodAnnotations() throws Exception {
         when(methodDescription.getDeclaredAnnotations()).thenReturn(new AnnotationList.ForLoadedAnnotations(new Baz.Instance()));
@@ -134,10 +134,10 @@ public class MethodAttributeAppenderExplicitTest extends AbstractMethodAttribute
         verify(methodDescription, times(0)).getParameters();
         verify(methodDescription).getDeclaredAnnotations();
         verifyNoMoreInteractions(methodDescription);
-        verifyZeroInteractions(parameterDescription);
-        verifyZeroInteractions(instrumentedType);
+        verifyNoMoreInteractions(parameterDescription);
+        verifyNoMoreInteractions(instrumentedType);
     }
-    
+
     @Test
     public void testOfParameterAnnotations() throws Exception {
         when(methodDescription.getDeclaredAnnotations()).thenReturn(new AnnotationList.ForLoadedAnnotations(new Baz.Instance()));
@@ -153,7 +153,7 @@ public class MethodAttributeAppenderExplicitTest extends AbstractMethodAttribute
         verify(parameterDescription).getIndex();
         verify(parameterDescription).getDeclaredAnnotations();
         verifyNoMoreInteractions(parameterDescription);
-        verifyZeroInteractions(instrumentedType);
+        verifyNoMoreInteractions(instrumentedType);
     }
 
     public @interface SimpleAnnotation {

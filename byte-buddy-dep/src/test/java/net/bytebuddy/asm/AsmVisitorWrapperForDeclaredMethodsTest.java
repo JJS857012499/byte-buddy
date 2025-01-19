@@ -8,12 +8,12 @@ import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.Implementation;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.pool.TypePool;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
 
@@ -28,7 +28,7 @@ public class AsmVisitorWrapperForDeclaredMethodsTest {
     private static final String FOO = "foo", BAR = "bar", QUX = "qux", BAZ = "baz";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private ElementMatcher<? super MethodDescription> matcher;
@@ -82,7 +82,7 @@ public class AsmVisitorWrapperForDeclaredMethodsTest {
         verifyNoMoreInteractions(matcher);
         verify(methodVisitorWrapper).wrap(instrumentedType, foo, methodVisitor, implementationContext, typePool, FLAGS, FLAGS * 2);
         verifyNoMoreInteractions(methodVisitorWrapper);
-        verifyZeroInteractions(typePool);
+        verifyNoMoreInteractions(typePool);
     }
 
     @Test
@@ -100,8 +100,8 @@ public class AsmVisitorWrapperForDeclaredMethodsTest {
                 .visitMethod(MODIFIERS, BAR, BAZ, BAZ, new String[]{QUX + BAZ}), is(methodVisitor));
         verify(matcher).matches(bar);
         verifyNoMoreInteractions(matcher);
-        verifyZeroInteractions(methodVisitorWrapper);
-        verifyZeroInteractions(typePool);
+        verifyNoMoreInteractions(methodVisitorWrapper);
+        verifyNoMoreInteractions(typePool);
     }
 
     @Test
@@ -117,9 +117,9 @@ public class AsmVisitorWrapperForDeclaredMethodsTest {
                         FLAGS,
                         FLAGS * 2)
                 .visitMethod(MODIFIERS, FOO + BAR, QUX, BAZ, new String[]{QUX + BAZ}), is(methodVisitor));
-        verifyZeroInteractions(matcher);
-        verifyZeroInteractions(methodVisitorWrapper);
-        verifyZeroInteractions(typePool);
+        verifyNoMoreInteractions(matcher);
+        verifyNoMoreInteractions(methodVisitorWrapper);
+        verifyNoMoreInteractions(typePool);
     }
 
     @Test
@@ -135,7 +135,7 @@ public class AsmVisitorWrapperForDeclaredMethodsTest {
                         FLAGS,
                         FLAGS * 2)
                 .visitMethod(MODIFIERS, FOO, QUX, BAZ, new String[]{QUX + BAZ}), is(methodVisitor));
-        verifyZeroInteractions(matcher);
+        verifyNoMoreInteractions(matcher);
     }
 
     @Test
@@ -151,7 +151,7 @@ public class AsmVisitorWrapperForDeclaredMethodsTest {
                         FLAGS,
                         FLAGS * 2)
                 .visitMethod(MODIFIERS, FOO, QUX, BAZ, new String[]{QUX + BAZ}), is(methodVisitor));
-        verifyZeroInteractions(matcher);
+        verifyNoMoreInteractions(matcher);
     }
 
     @Test

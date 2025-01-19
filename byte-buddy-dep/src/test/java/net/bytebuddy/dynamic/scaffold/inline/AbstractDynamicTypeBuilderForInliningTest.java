@@ -41,10 +41,8 @@ import org.objectweb.asm.commons.LocalVariablesSorter;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
-import java.lang.reflect.*;
 import java.lang.reflect.Type;
-import java.net.URL;
-import java.net.URLClassLoader;
+import java.lang.reflect.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -64,11 +62,11 @@ public abstract class AbstractDynamicTypeBuilderForInliningTest extends Abstract
 
     private static final int QUX = 42;
 
-    private static final String PARAMETER_NAME_CLASS = "net.bytebuddy.test.precompiled.ParameterNames";
+    private static final String PARAMETER_NAME_CLASS = "net.bytebuddy.test.precompiled.v8parameters.ParameterNames";
 
-    private static final String SIMPLE_TYPE_ANNOTATED = "net.bytebuddy.test.precompiled.SimpleTypeAnnotatedType";
+    private static final String SIMPLE_TYPE_ANNOTATED = "net.bytebuddy.test.precompiled.v8.SimpleTypeAnnotatedType";
 
-    private static final String TYPE_VARIABLE_NAME = "net.bytebuddy.test.precompiled.TypeAnnotation", VALUE = "value";
+    private static final String TYPE_VARIABLE_NAME = "net.bytebuddy.test.precompiled.v8.TypeAnnotation", VALUE = "value";
 
     @Rule
     public MethodRule javaVersionRule = new JavaVersionRule();

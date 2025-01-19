@@ -7,7 +7,7 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.TypeReference;
 
 import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.MatcherAssert.*;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.Mockito.*;
 
 public class RecordComponentAttributeAppenderForInstrumentedFieldTest extends AbstractRecordComponentAttributeAppenderTest {
@@ -20,10 +20,10 @@ public class RecordComponentAttributeAppenderForInstrumentedFieldTest extends Ab
 
     @Test
     public void testAnnotationAppenderNoRetention() throws Exception {
-        when(recordComponentDescription.getType()).thenReturn(TypeDescription.Generic.OBJECT);
+        when(recordComponentDescription.getType()).thenReturn(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class));
         when(recordComponentDescription.getDeclaredAnnotations()).thenReturn(new AnnotationList.ForLoadedAnnotations(new Qux.Instance()));
         RecordComponentAttributeAppender.ForInstrumentedRecordComponent.INSTANCE.apply(recordComponentVisitor, recordComponentDescription, annotationValueFilter);
-        verifyZeroInteractions(recordComponentVisitor);
+        verifyNoMoreInteractions(recordComponentVisitor);
         verify(recordComponentDescription).getDeclaredAnnotations();
         verify(recordComponentDescription).getType();
         verifyNoMoreInteractions(recordComponentDescription);
@@ -31,7 +31,7 @@ public class RecordComponentAttributeAppenderForInstrumentedFieldTest extends Ab
 
     @Test
     public void testAnnotationAppenderRuntimeRetention() throws Exception {
-        when(recordComponentDescription.getType()).thenReturn(TypeDescription.Generic.OBJECT);
+        when(recordComponentDescription.getType()).thenReturn(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class));
         when(recordComponentDescription.getDeclaredAnnotations()).thenReturn(new AnnotationList.ForLoadedAnnotations(new Baz.Instance()));
         RecordComponentAttributeAppender.ForInstrumentedRecordComponent.INSTANCE.apply(recordComponentVisitor, recordComponentDescription, annotationValueFilter);
         verify(recordComponentVisitor).visitAnnotation(Type.getDescriptor(Baz.class), true);
@@ -43,7 +43,7 @@ public class RecordComponentAttributeAppenderForInstrumentedFieldTest extends Ab
 
     @Test
     public void testAnnotationAppenderByteCodeRetention() throws Exception {
-        when(recordComponentDescription.getType()).thenReturn(TypeDescription.Generic.OBJECT);
+        when(recordComponentDescription.getType()).thenReturn(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class));
         when(recordComponentDescription.getDeclaredAnnotations()).thenReturn(new AnnotationList.ForLoadedAnnotations(new QuxBaz.Instance()));
         RecordComponentAttributeAppender.ForInstrumentedRecordComponent.INSTANCE.apply(recordComponentVisitor, recordComponentDescription, annotationValueFilter);
         verify(recordComponentVisitor).visitAnnotation(Type.getDescriptor(QuxBaz.class), false);
@@ -59,7 +59,7 @@ public class RecordComponentAttributeAppenderForInstrumentedFieldTest extends Ab
         when(simpleAnnotatedType.getDeclaredAnnotations()).thenReturn(new AnnotationList.ForLoadedAnnotations(new Qux.Instance()));
         when(recordComponentDescription.getDeclaredAnnotations()).thenReturn(new AnnotationList.Empty());
         RecordComponentAttributeAppender.ForInstrumentedRecordComponent.INSTANCE.apply(recordComponentVisitor, recordComponentDescription, annotationValueFilter);
-        verifyZeroInteractions(recordComponentVisitor);
+        verifyNoMoreInteractions(recordComponentVisitor);
         verify(recordComponentDescription).getDeclaredAnnotations();
         verify(recordComponentDescription).getType();
         verifyNoMoreInteractions(recordComponentDescription);

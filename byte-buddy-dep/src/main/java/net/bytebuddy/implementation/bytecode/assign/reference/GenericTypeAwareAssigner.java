@@ -15,12 +15,14 @@
  */
 package net.bytebuddy.implementation.bytecode.assign.reference;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.description.type.TypeList;
 import net.bytebuddy.implementation.bytecode.StackManipulation;
 import net.bytebuddy.implementation.bytecode.assign.Assigner;
 import net.bytebuddy.implementation.bytecode.assign.TypeCasting;
+import net.bytebuddy.utility.QueueFactory;
 
 import java.util.*;
 
@@ -39,7 +41,9 @@ public enum GenericTypeAwareAssigner implements Assigner {
      */
     INSTANCE;
 
-    @Override
+    /**
+     * {@inheritDoc}
+     */
     public StackManipulation assign(TypeDescription.Generic source, TypeDescription.Generic target, Typing typing) {
         if (source.isPrimitive() || target.isPrimitive()) {
             return source.equals(target)
@@ -122,7 +126,7 @@ public enum GenericTypeAwareAssigner implements Assigner {
             } else if (typeVariable.equals(typeDescription)) {
                 return true;
             } else if (polymorphic) {
-                Queue<TypeDescription.Generic> candidates = new LinkedList<TypeDescription.Generic>(typeVariable.getUpperBounds());
+                Queue<TypeDescription.Generic> candidates = QueueFactory.make(typeVariable.getUpperBounds());
                 while (!candidates.isEmpty()) {
                     TypeDescription.Generic candidate = candidates.remove();
                     if (candidate.accept(new IsAssignableToVisitor(typeDescription))) {
@@ -219,7 +223,7 @@ public enum GenericTypeAwareAssigner implements Assigner {
              * {@inheritDoc}
              */
             public Boolean onParameterizedType(TypeDescription.Generic parameterizedType) {
-                Queue<TypeDescription.Generic> candidates = new LinkedList<TypeDescription.Generic>(Collections.singleton(typeDescription));
+                Queue<TypeDescription.Generic> candidates = QueueFactory.make(Collections.singleton(typeDescription));
                 Set<TypeDescription> previous = new HashSet<TypeDescription>(Collections.singleton(typeDescription.asErasure()));
                 do {
                     TypeDescription.Generic candidate = candidates.remove();
@@ -238,7 +242,7 @@ public enum GenericTypeAwareAssigner implements Assigner {
                                 }
                             }
                             TypeDescription.Generic ownerType = parameterizedType.getOwnerType();
-                            return ownerType == null || ownerType.accept(new IsAssignableToVisitor(parameterizedType.getOwnerType()));
+                            return ownerType == null || ownerType.accept(new IsAssignableToVisitor(ownerType));
                         }
                     } else if (polymorphic) {
                         TypeDescription.Generic superClass = candidate.getSuperClass();
@@ -283,6 +287,7 @@ public enum GenericTypeAwareAssigner implements Assigner {
             /**
              * {@inheritDoc}
              */
+            @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
             public Boolean onGenericArray(TypeDescription.Generic genericArray) {
                 TypeDescription.Generic source = typeDescription.getComponentType(), target = genericArray.getComponentType();
                 while (source.getSort().isGenericArray() && target.getSort().isGenericArray()) {

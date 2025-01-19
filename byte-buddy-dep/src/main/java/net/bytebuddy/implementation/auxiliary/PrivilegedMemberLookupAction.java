@@ -28,6 +28,7 @@ import net.bytebuddy.implementation.Implementation;
 import net.bytebuddy.implementation.MethodAccessorFactory;
 import net.bytebuddy.implementation.MethodCall;
 import net.bytebuddy.utility.CompoundList;
+import net.bytebuddy.utility.RandomString;
 
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
@@ -71,7 +72,7 @@ public enum PrivilegedMemberLookupAction implements AuxiliaryType {
     /**
      * The default constructor of the {@link Object} class.
      */
-    private static final MethodDescription.InDefinedShape DEFAULT_CONSTRUCTOR = TypeDescription.OBJECT.getDeclaredMethods()
+    private static final MethodDescription.InDefinedShape DEFAULT_CONSTRUCTOR = TypeDescription.ForLoadedType.of(Object.class).getDeclaredMethods()
             .filter(isConstructor())
             .getOnly();
 
@@ -139,6 +140,13 @@ public enum PrivilegedMemberLookupAction implements AuxiliaryType {
         } else {
             throw new IllegalStateException("Cannot load constant for type initializer: " + methodDescription);
         }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public String getSuffix() {
+        return RandomString.hashOf(name().hashCode());
     }
 
     /**

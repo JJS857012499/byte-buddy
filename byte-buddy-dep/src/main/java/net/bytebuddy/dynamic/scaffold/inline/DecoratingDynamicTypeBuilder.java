@@ -29,8 +29,6 @@ import net.bytebuddy.description.type.TypeVariableToken;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.dynamic.Transformer;
-import net.bytebuddy.dynamic.TypeResolutionStrategy;
-import net.bytebuddy.dynamic.scaffold.ClassWriterStrategy;
 import net.bytebuddy.dynamic.scaffold.MethodGraph;
 import net.bytebuddy.dynamic.scaffold.TypeValidation;
 import net.bytebuddy.dynamic.scaffold.TypeWriter;
@@ -44,6 +42,8 @@ import net.bytebuddy.implementation.bytecode.ByteCodeAppender;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.LatentMatcher;
 import net.bytebuddy.pool.TypePool;
+import net.bytebuddy.utility.AsmClassReader;
+import net.bytebuddy.utility.AsmClassWriter;
 import net.bytebuddy.utility.CompoundList;
 
 import java.util.ArrayList;
@@ -60,7 +60,7 @@ import static net.bytebuddy.matcher.ElementMatchers.not;
  * @param <T> A loaded type that the built type is guaranteed to be a subclass of.
  */
 @HashCodeAndEqualsPlugin.Enhance
-public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.AbstractBase<T> {
+public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.AbstractBase.UsingTypeWriter<T> {
 
     /**
      * The instrumented type to decorate.
@@ -113,9 +113,14 @@ public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.Abstrac
     private final TypeValidation typeValidation;
 
     /**
-     * The class writer strategy to use.
+     * The class reader factory to use.
      */
-    private final ClassWriterStrategy classWriterStrategy;
+    private final AsmClassReader.Factory classReaderFactory;
+
+    /**
+     * The class writer factory to use.
+     */
+    private final AsmClassWriter.Factory classWriterFactory;
 
     /**
      * A matcher for identifying methods that should be excluded from instrumentation.
@@ -143,7 +148,8 @@ public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.Abstrac
      * @param implementationContextFactory The implementation context factory to apply.
      * @param methodGraphCompiler          The method graph compiler to use.
      * @param typeValidation               Determines if a type should be explicitly validated.
-     * @param classWriterStrategy          The class writer strategy to use.
+     * @param classReaderFactory           The class reader strategy to use.
+     * @param classWriterFactory           The class writer strategy to use.
      * @param ignoredMethods               A matcher for identifying methods that should be excluded from instrumentation.
      * @param classFileLocator             The class file locator for locating the original type's class file.
      */
@@ -155,7 +161,8 @@ public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.Abstrac
                                         Implementation.Context.Factory implementationContextFactory,
                                         MethodGraph.Compiler methodGraphCompiler,
                                         TypeValidation typeValidation,
-                                        ClassWriterStrategy classWriterStrategy,
+                                        AsmClassReader.Factory classReaderFactory,
+                                        AsmClassWriter.Factory classWriterFactory,
                                         LatentMatcher<? super MethodDescription> ignoredMethods,
                                         ClassFileLocator classFileLocator) {
         this(instrumentedType,
@@ -170,7 +177,8 @@ public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.Abstrac
                 implementationContextFactory,
                 methodGraphCompiler,
                 typeValidation,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods,
                 Collections.<DynamicType>emptyList(),
                 classFileLocator);
@@ -189,7 +197,8 @@ public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.Abstrac
      * @param implementationContextFactory The implementation context factory to apply.
      * @param methodGraphCompiler          The method graph compiler to use.
      * @param typeValidation               Determines if a type should be explicitly validated.
-     * @param classWriterStrategy          The class writer strategy to use.
+     * @param classReaderFactory           The class reader strategy to use.
+     * @param classWriterFactory           The class writer strategy to use.
      * @param ignoredMethods               A matcher for identifying methods that should be excluded from instrumentation.
      * @param auxiliaryTypes               A list of explicitly required auxiliary types.
      * @param classFileLocator             The class file locator for locating the original type's class file.
@@ -204,7 +213,8 @@ public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.Abstrac
                                            Implementation.Context.Factory implementationContextFactory,
                                            MethodGraph.Compiler methodGraphCompiler,
                                            TypeValidation typeValidation,
-                                           ClassWriterStrategy classWriterStrategy,
+                                           AsmClassReader.Factory classReaderFactory,
+                                           AsmClassWriter.Factory classWriterFactory,
                                            LatentMatcher<? super MethodDescription> ignoredMethods,
                                            List<DynamicType> auxiliaryTypes,
                                            ClassFileLocator classFileLocator) {
@@ -218,7 +228,8 @@ public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.Abstrac
         this.implementationContextFactory = implementationContextFactory;
         this.methodGraphCompiler = methodGraphCompiler;
         this.typeValidation = typeValidation;
-        this.classWriterStrategy = classWriterStrategy;
+        this.classReaderFactory = classReaderFactory;
+        this.classWriterFactory = classWriterFactory;
         this.ignoredMethods = ignoredMethods;
         this.auxiliaryTypes = auxiliaryTypes;
         this.classFileLocator = classFileLocator;
@@ -238,7 +249,8 @@ public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.Abstrac
                 implementationContextFactory,
                 methodGraphCompiler,
                 typeValidation,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods,
                 auxiliaryTypes,
                 classFileLocator);
@@ -342,7 +354,8 @@ public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.Abstrac
                 implementationContextFactory,
                 methodGraphCompiler,
                 typeValidation,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods,
                 auxiliaryTypes,
                 classFileLocator);
@@ -419,7 +432,8 @@ public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.Abstrac
                 implementationContextFactory,
                 methodGraphCompiler,
                 typeValidation,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 new LatentMatcher.Disjunction<MethodDescription>(this.ignoredMethods, ignoredMethods),
                 auxiliaryTypes,
                 classFileLocator);
@@ -453,7 +467,9 @@ public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.Abstrac
         throw new UnsupportedOperationException("Cannot define record component for decorated type: " + instrumentedType);
     }
 
-    @Override
+    /**
+     * {@inheritDoc}
+     */
     public RecordComponentDefinition<T> recordComponent(LatentMatcher<? super RecordComponentDescription> matcher) {
         throw new UnsupportedOperationException("Cannot change record component for decorated type: " + instrumentedType);
     }
@@ -472,7 +488,8 @@ public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.Abstrac
                 implementationContextFactory,
                 methodGraphCompiler,
                 typeValidation,
-                classWriterStrategy,
+                classReaderFactory,
+                classWriterFactory,
                 ignoredMethods,
                 CompoundList.of(this.auxiliaryTypes, new ArrayList<DynamicType>(auxiliaryTypes)),
                 classFileLocator);
@@ -481,14 +498,14 @@ public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.Abstrac
     /**
      * {@inheritDoc}
      */
-    public DynamicType.Unloaded<T> make(TypeResolutionStrategy typeResolutionStrategy) {
-        return make(typeResolutionStrategy, TypePool.Empty.INSTANCE);
+    protected TypeWriter<T> toTypeWriter() {
+        return toTypeWriter(TypePool.Empty.INSTANCE);
     }
 
     /**
      * {@inheritDoc}
      */
-    public DynamicType.Unloaded<T> make(TypeResolutionStrategy typeResolutionStrategy, TypePool typePool) {
+    protected TypeWriter<T> toTypeWriter(TypePool typePool) {
         return TypeWriter.Default.<T>forDecoration(instrumentedType,
                 classFileVersion,
                 auxiliaryTypes,
@@ -503,9 +520,10 @@ public class DecoratingDynamicTypeBuilder<T> extends DynamicType.Builder.Abstrac
                 auxiliaryTypeNamingStrategy,
                 implementationContextFactory,
                 typeValidation,
-                classWriterStrategy,
-                typePool,
-                classFileLocator).make(typeResolutionStrategy.resolve());
+                classReaderFactory,
+                classWriterFactory,
+                TypePool.Explicit.wrap(instrumentedType, auxiliaryTypes, typePool),
+                classFileLocator);
     }
 
     /**

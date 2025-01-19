@@ -1,60 +1,75 @@
 plugins {
     id 'java'
     id 'java-gradle-plugin'
-    id 'com.gradle.plugin-publish' version '0.11.0'
+    id 'com.gradle.plugin-publish' version '1.2.1'
 }
 
-apply from: './main.gradle'
+if (gradle.gradleVersion.startsWith("2.")) {
+    throw new GradleException("Use build.legacy.gradle for executing build with Gradle 2")
+}
 
-version = pom.parent.version.text().toString()
+apply from: 'bytebuddy.gradle'
+apply from: 'common.gradle'
 
-if (gradle.gradleVersion.startsWith("2.")) { // support legacy version
-    repositories {
-        maven {
-            url 'http://insecure.repo1.maven.org/maven2/'
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    fatJar {
+        canBeConsumed(false)
+        canBeResolved(false)
+    }
+    fatJarClasspath {
+        canBeConsumed(false)
+        canBeResolved(true)
+        setTransitive(false)
+        extendsFrom(fatJar)
+    }
+}
+
+dependencies {
+    implementation gradleApi()
+    if (findProject(':android-plugin') != null) {
+        fatJar project(':android-plugin')
+    }
+    compileOnly group: 'com.google.code.findbugs', name: 'findbugs-annotations', version: outerPom.properties.'version.utility.findbugs'
+    compileOnly group: 'com.google.code.findbugs', name: 'jsr305', version: outerPom.properties.'version.utility.jsr305'
+    testImplementation gradleTestKit()
+    testImplementation group: 'junit', name: 'junit', version: outerPom.properties.'version.junit'
+    testImplementation(group: 'org.mockito', name: 'mockito-core', version: outerPom.properties.'version.mockito') {
+        exclude group: 'net.bytebuddy'
+    }
+    testCompileOnly group: 'com.google.code.findbugs', name: 'findbugs-annotations', version: outerPom.properties.'version.utility.findbugs'
+    testCompileOnly group: 'com.google.code.findbugs', name: 'jsr305', version: outerPom.properties.'version.utility.jsr305'
+}
+
+validatePlugins {
+    enabled = false
+}
+
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+
+tasks.named("jar") {
+    dependsOn configurations.fatJarClasspath
+    from {
+        configurations.fatJarClasspath.collect { zipTree(it) }
+    }
+}
+
+gradlePlugin {
+    website.set("https://bytebuddy.net")
+    vcsUrl.set("https://github.com/raphw/byte-buddy")
+    plugins {
+        byteBuddyPlugin {
+            id = 'net.bytebuddy.byte-buddy-gradle-plugin'
+            implementationClass = 'net.bytebuddy.build.gradle.ByteBuddyPlugin'
+            displayName = 'Byte Buddy Gradle plugin'
+            description = 'The Byte Buddy plugin allows for post processing Java classes with byte code transformation.'
+            tags.set(['Byte Buddy', 'bytecode', 'enhancement'])
         }
     }
-    dependencies {
-        compile gradleApi()
-        compile group: 'net.bytebuddy', name: 'byte-buddy', version: version
-        compileOnly group: 'com.google.code.findbugs', name: 'findbugs-annotations', version: outerPom.properties.'version.utility.findbugs'
-        compileOnly group: 'com.google.code.findbugs', name: 'jsr305', version: outerPom.properties.'version.utility.jsr305'
-        testCompile gradleTestKit()
-        testCompile group: 'junit', name: 'junit', version: outerPom.properties.'version.junit'
-        testCompile(group: 'org.mockito', name: 'mockito-core', version: outerPom.properties.'version.mockito') {
-            exclude group: 'net.bytebuddy'
-        }
-        testCompileOnly group: 'com.google.code.findbugs', name: 'findbugs-annotations', version: outerPom.properties.'version.utility.findbugs'
-        testCompileOnly group: 'com.google.code.findbugs', name: 'jsr305', version: outerPom.properties.'version.utility.jsr305'
-    }
-} else {
-    repositories {
-        mavenCentral()
-    }
-    dependencies {
-        implementation gradleApi()
-        implementation group: 'net.bytebuddy', name: 'byte-buddy', version: version
-        compileOnly group: 'com.google.code.findbugs', name: 'findbugs-annotations', version: outerPom.properties.'version.utility.findbugs'
-        compileOnly group: 'com.google.code.findbugs', name: 'jsr305', version: outerPom.properties.'version.utility.jsr305'
-        testImplementation gradleTestKit()
-        testImplementation group: 'junit', name: 'junit', version: outerPom.properties.'version.junit'
-        testImplementation(group: 'org.mockito', name: 'mockito-core', version: outerPom.properties.'version.mockito') {
-            exclude group: 'net.bytebuddy'
-        }
-        testCompileOnly group: 'com.google.code.findbugs', name: 'findbugs-annotations', version: outerPom.properties.'version.utility.findbugs'
-        testCompileOnly group: 'com.google.code.findbugs', name: 'jsr305', version: outerPom.properties.'version.utility.jsr305'
-    }
 }
-
-configurations.all {
-    resolutionStrategy.dependencySubstitution {
-        substitute module("net.bytebuddy:byte-buddy:${version}") with project(":mavenBridge")
-    }
-}
-
-pluginBundle {
-    website = 'https://bytebuddy.net'
-    vcsUrl = 'https://github.com/raphw/byte-buddy'
-    tags = ['Byte Buddy', 'bytecode', 'enhancement']
-}
-

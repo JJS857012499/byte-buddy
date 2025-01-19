@@ -1,10 +1,10 @@
 package net.bytebuddy.description.type;
 
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import java.io.Serializable;
 
@@ -16,7 +16,7 @@ import static org.mockito.Mockito.when;
 public class TypeDescriptionGenericVisitorValidatorTest {
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private TypeDescription.Generic typeDescription;
@@ -48,13 +48,13 @@ public class TypeDescriptionGenericVisitorValidatorTest {
 
     @Test
     public void testSuperClassType() throws Exception {
-        assertThat(TypeDescription.Generic.Visitor.Validator.SUPER_CLASS.onNonGenericType(TypeDescription.Generic.OBJECT), is(true));
+        assertThat(TypeDescription.Generic.Visitor.Validator.SUPER_CLASS.onNonGenericType(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)), is(true));
         assertThat(TypeDescription.Generic.Visitor.Validator.SUPER_CLASS.onNonGenericType(TypeDefinition.Sort.describe(Serializable.class)), is(false));
         assertThat(TypeDescription.Generic.Visitor.Validator.SUPER_CLASS.onNonGenericType(TypeDefinition.Sort.describe(void.class)), is(false));
         assertThat(TypeDescription.Generic.Visitor.Validator.SUPER_CLASS.onNonGenericType(TypeDefinition.Sort.describe(int.class)), is(false));
         assertThat(TypeDescription.Generic.Visitor.Validator.SUPER_CLASS.onNonGenericType(TypeDefinition.Sort.describe(void.class)), is(false));
         assertThat(TypeDescription.Generic.Visitor.Validator.SUPER_CLASS.onNonGenericType(TypeDefinition.Sort.describe(Object[].class)), is(false));
-        assertThat(TypeDescription.Generic.Visitor.Validator.SUPER_CLASS.onParameterizedType(TypeDescription.Generic.OBJECT), is(true));
+        assertThat(TypeDescription.Generic.Visitor.Validator.SUPER_CLASS.onParameterizedType(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)), is(true));
         assertThat(TypeDescription.Generic.Visitor.Validator.SUPER_CLASS.onParameterizedType(TypeDefinition.Sort.describe(Serializable.class)), is(false));
         assertThat(TypeDescription.Generic.Visitor.Validator.SUPER_CLASS.onTypeVariable(mock(TypeDescription.Generic.class)), is(false));
         assertThat(TypeDescription.Generic.Visitor.Validator.SUPER_CLASS.onGenericArray(mock(TypeDescription.Generic.class)), is(false));
@@ -62,13 +62,13 @@ public class TypeDescriptionGenericVisitorValidatorTest {
 
     @Test
     public void testInterfaceType() throws Exception {
-        assertThat(TypeDescription.Generic.Visitor.Validator.INTERFACE.onNonGenericType(TypeDescription.Generic.OBJECT), is(false));
+        assertThat(TypeDescription.Generic.Visitor.Validator.INTERFACE.onNonGenericType(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)), is(false));
         assertThat(TypeDescription.Generic.Visitor.Validator.INTERFACE.onNonGenericType(TypeDefinition.Sort.describe(Serializable.class)), is(true));
         assertThat(TypeDescription.Generic.Visitor.Validator.INTERFACE.onNonGenericType(TypeDefinition.Sort.describe(void.class)), is(false));
         assertThat(TypeDescription.Generic.Visitor.Validator.INTERFACE.onNonGenericType(TypeDefinition.Sort.describe(int.class)), is(false));
         assertThat(TypeDescription.Generic.Visitor.Validator.INTERFACE.onNonGenericType(TypeDefinition.Sort.describe(void.class)), is(false));
         assertThat(TypeDescription.Generic.Visitor.Validator.INTERFACE.onNonGenericType(TypeDefinition.Sort.describe(Object[].class)), is(false));
-        assertThat(TypeDescription.Generic.Visitor.Validator.INTERFACE.onParameterizedType(TypeDescription.Generic.OBJECT), is(false));
+        assertThat(TypeDescription.Generic.Visitor.Validator.INTERFACE.onParameterizedType(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)), is(false));
         assertThat(TypeDescription.Generic.Visitor.Validator.INTERFACE.onParameterizedType(TypeDefinition.Sort.describe(Serializable.class)), is(true));
         assertThat(TypeDescription.Generic.Visitor.Validator.INTERFACE.onTypeVariable(mock(TypeDescription.Generic.class)), is(false));
         assertThat(TypeDescription.Generic.Visitor.Validator.INTERFACE.onGenericArray(mock(TypeDescription.Generic.class)), is(false));
@@ -76,7 +76,7 @@ public class TypeDescriptionGenericVisitorValidatorTest {
 
     @Test
     public void testFieldType() throws Exception {
-        assertThat(TypeDescription.Generic.Visitor.Validator.FIELD.onNonGenericType(TypeDescription.Generic.OBJECT), is(true));
+        assertThat(TypeDescription.Generic.Visitor.Validator.FIELD.onNonGenericType(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)), is(true));
         assertThat(TypeDescription.Generic.Visitor.Validator.FIELD.onNonGenericType(TypeDefinition.Sort.describe(Object[].class)), is(true));
         assertThat(TypeDescription.Generic.Visitor.Validator.FIELD.onNonGenericType(TypeDefinition.Sort.describe(int.class)), is(true));
         assertThat(TypeDescription.Generic.Visitor.Validator.FIELD.onNonGenericType(TypeDefinition.Sort.describe(void.class)), is(false));
@@ -87,7 +87,7 @@ public class TypeDescriptionGenericVisitorValidatorTest {
 
     @Test
     public void testMethodParameterType() throws Exception {
-        assertThat(TypeDescription.Generic.Visitor.Validator.METHOD_PARAMETER.onNonGenericType(TypeDescription.Generic.OBJECT), is(true));
+        assertThat(TypeDescription.Generic.Visitor.Validator.METHOD_PARAMETER.onNonGenericType(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)), is(true));
         assertThat(TypeDescription.Generic.Visitor.Validator.METHOD_PARAMETER.onNonGenericType(TypeDefinition.Sort.describe(Object[].class)), is(true));
         assertThat(TypeDescription.Generic.Visitor.Validator.METHOD_PARAMETER.onNonGenericType(TypeDefinition.Sort.describe(int.class)), is(true));
         assertThat(TypeDescription.Generic.Visitor.Validator.METHOD_PARAMETER.onNonGenericType(TypeDefinition.Sort.describe(void.class)), is(false));
@@ -98,7 +98,7 @@ public class TypeDescriptionGenericVisitorValidatorTest {
 
     @Test
     public void testMethodReturnType() throws Exception {
-        assertThat(TypeDescription.Generic.Visitor.Validator.METHOD_RETURN.onNonGenericType(TypeDescription.Generic.OBJECT), is(true));
+        assertThat(TypeDescription.Generic.Visitor.Validator.METHOD_RETURN.onNonGenericType(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)), is(true));
         assertThat(TypeDescription.Generic.Visitor.Validator.METHOD_RETURN.onNonGenericType(TypeDefinition.Sort.describe(Object[].class)), is(true));
         assertThat(TypeDescription.Generic.Visitor.Validator.METHOD_RETURN.onNonGenericType(TypeDefinition.Sort.describe(int.class)), is(true));
         assertThat(TypeDescription.Generic.Visitor.Validator.METHOD_RETURN.onNonGenericType(TypeDefinition.Sort.describe(void.class)), is(true));

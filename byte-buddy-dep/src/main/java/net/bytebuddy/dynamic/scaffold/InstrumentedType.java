@@ -15,6 +15,7 @@
  */
 package net.bytebuddy.dynamic.scaffold;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.description.annotation.AnnotationDescription;
 import net.bytebuddy.description.annotation.AnnotationList;
@@ -33,8 +34,9 @@ import net.bytebuddy.implementation.bytecode.ByteCodeAppender;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.utility.CompoundList;
 import net.bytebuddy.utility.JavaType;
+import net.bytebuddy.utility.nullability.MaybeNull;
+import org.objectweb.asm.Opcodes;
 
-import javax.annotation.Nullable;
 import java.lang.annotation.ElementType;
 import java.util.*;
 
@@ -152,7 +154,7 @@ public interface InstrumentedType extends TypeDescription {
      * @param declaringType The type that declares the instrumented type or {@code null} if no such type exists.
      * @return A new instrumented type that is declared by the instrumented type.
      */
-    InstrumentedType withDeclaringType(@Nullable TypeDescription declaringType);
+    InstrumentedType withDeclaringType(@MaybeNull TypeDescription declaringType);
 
     /**
      * Creates a new instrumented type that indicates that it declared the supplied types.
@@ -168,7 +170,7 @@ public interface InstrumentedType extends TypeDescription {
      * @param permittedSubclasses A list of permitted subclasses to include or {@code null} to unseal the type.
      * @return A new instrumented type that includes the supplied permitted subclasses or unseals the type.
      */
-    InstrumentedType withPermittedSubclasses(@Nullable TypeList permittedSubclasses);
+    InstrumentedType withPermittedSubclasses(@MaybeNull TypeList permittedSubclasses);
 
     /**
      * Creates a new instrumented type that indicates that is defined as a local class. Setting this property
@@ -285,7 +287,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        WithFlexibleName withEnclosingType(@Nullable TypeDescription enclosingType);
+        WithFlexibleName withEnclosingType(@MaybeNull TypeDescription enclosingType);
 
         /**
          * {@inheritDoc}
@@ -295,7 +297,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        WithFlexibleName withDeclaringType(@Nullable TypeDescription declaringType);
+        WithFlexibleName withDeclaringType(@MaybeNull TypeDescription declaringType);
 
         /**
          * {@inheritDoc}
@@ -305,7 +307,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        WithFlexibleName withPermittedSubclasses(@Nullable TypeList permittedSubclasses);
+        WithFlexibleName withPermittedSubclasses(@MaybeNull TypeList permittedSubclasses);
 
         /**
          * {@inheritDoc}
@@ -527,7 +529,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * The generic super type of the instrumented type.
          */
-        @Nullable
+        @MaybeNull
         private final Generic superClass;
 
         /**
@@ -578,19 +580,19 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * The declaring type of the instrumented type or {@code null} if no such type exists.
          */
-        @Nullable
+        @MaybeNull
         private final TypeDescription declaringType;
 
         /**
          * The enclosing method of the instrumented type or {@code null} if no such type exists.
          */
-        @Nullable
+        @MaybeNull
         private final MethodDescription.InDefinedShape enclosingMethod;
 
         /**
          * The enclosing type of the instrumented type or {@code null} if no such type exists.
          */
-        @Nullable
+        @MaybeNull
         private final TypeDescription enclosingType;
 
         /**
@@ -601,7 +603,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * A list of permitted subclasses or {@code null} if this type is not sealed.
          */
-        @Nullable
+        @MaybeNull
         private final List<? extends TypeDescription> permittedSubclasses;
 
         /**
@@ -657,7 +659,7 @@ public interface InstrumentedType extends TypeDescription {
          */
         protected Default(String name,
                           int modifiers,
-                          @Nullable Generic superClass,
+                          @MaybeNull Generic superClass,
                           List<? extends TypeVariableToken> typeVariables,
                           List<? extends Generic> interfaceTypes,
                           List<? extends FieldDescription.Token> fieldTokens,
@@ -667,11 +669,11 @@ public interface InstrumentedType extends TypeDescription {
                           List<? extends AnnotationDescription> annotationDescriptions,
                           TypeInitializer typeInitializer,
                           LoadedTypeInitializer loadedTypeInitializer,
-                          @Nullable TypeDescription declaringType,
-                          @Nullable MethodDescription.InDefinedShape enclosingMethod,
-                          @Nullable TypeDescription enclosingType,
+                          @MaybeNull TypeDescription declaringType,
+                          @MaybeNull MethodDescription.InDefinedShape enclosingMethod,
+                          @MaybeNull TypeDescription enclosingType,
                           List<? extends TypeDescription> declaredTypes,
-                          @Nullable List<? extends TypeDescription> permittedSubclasses,
+                          @MaybeNull List<? extends TypeDescription> permittedSubclasses,
                           boolean anonymousClass,
                           boolean localClass,
                           boolean record,
@@ -994,7 +996,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        public WithFlexibleName withEnclosingType(@Nullable TypeDescription enclosingType) {
+        public WithFlexibleName withEnclosingType(@MaybeNull TypeDescription enclosingType) {
             return new Default(name,
                     modifiers,
                     superClass,
@@ -1050,7 +1052,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        public WithFlexibleName withDeclaringType(@Nullable TypeDescription declaringType) {
+        public WithFlexibleName withDeclaringType(@MaybeNull TypeDescription declaringType) {
             return new Default(name,
                     modifiers,
                     superClass,
@@ -1106,7 +1108,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        public WithFlexibleName withPermittedSubclasses(@Nullable TypeList permittedSubclasses) {
+        public WithFlexibleName withPermittedSubclasses(@MaybeNull TypeList permittedSubclasses) {
             return new Default(name,
                     modifiers,
                     superClass,
@@ -1383,7 +1385,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public MethodDescription.InDefinedShape getEnclosingMethod() {
             return enclosingMethod;
         }
@@ -1391,7 +1393,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription getEnclosingType() {
             return enclosingType;
         }
@@ -1420,11 +1422,11 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public PackageDescription getPackage() {
             int packageIndex = name.lastIndexOf('.');
             return packageIndex == -1
-                    ? PackageDescription.UNDEFINED
+                    ? PackageDescription.DEFAULT
                     : new PackageDescription.Simple(name.substring(0, packageIndex));
         }
 
@@ -1438,7 +1440,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription getDeclaringType() {
             return declaringType;
         }
@@ -1446,7 +1448,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public Generic getSuperClass() {
             return superClass == null
                     ? Generic.UNDEFINED
@@ -1523,8 +1525,11 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming super class for given instance.")
         public boolean isRecord() {
-            return record && getSuperClass().asErasure().equals(JavaType.RECORD.getTypeStub());
+            return record
+                    && superClass != null
+                    && getSuperClass().asErasure().equals(JavaType.RECORD.getTypeStub());
         }
 
         @Override
@@ -1654,9 +1659,9 @@ public interface InstrumentedType extends TypeDescription {
             }
             Set<TypeDescription> typeAnnotationTypes = new HashSet<TypeDescription>();
             for (AnnotationDescription annotationDescription : getDeclaredAnnotations()) {
-                if (!annotationDescription.getElementTypes().contains(ElementType.TYPE)
-                        && !(isAnnotation() && annotationDescription.getElementTypes().contains(ElementType.ANNOTATION_TYPE))
-                        && !(isPackageType() && annotationDescription.getElementTypes().contains(ElementType.PACKAGE))) {
+                if (!annotationDescription.isSupportedOn(ElementType.TYPE)
+                        && !(isAnnotation() && annotationDescription.isSupportedOn(ElementType.ANNOTATION_TYPE))
+                        && !(isPackageType() && annotationDescription.isSupportedOn(ElementType.PACKAGE))) {
                     throw new IllegalStateException("Cannot add " + annotationDescription + " on " + this);
                 } else if (!typeAnnotationTypes.add(annotationDescription.getAnnotationType())) {
                     throw new IllegalStateException("Duplicate annotation " + annotationDescription + " for " + this);
@@ -1682,7 +1687,7 @@ public interface InstrumentedType extends TypeDescription {
                 }
                 Set<TypeDescription> fieldAnnotationTypes = new HashSet<TypeDescription>();
                 for (AnnotationDescription annotationDescription : fieldDescription.getDeclaredAnnotations()) {
-                    if (!annotationDescription.getElementTypes().contains(ElementType.FIELD)) {
+                    if (!annotationDescription.isSupportedOn(ElementType.FIELD)) {
                         throw new IllegalStateException("Cannot add " + annotationDescription + " on " + fieldDescription);
                     } else if (!fieldAnnotationTypes.add(annotationDescription.getAnnotationType())) {
                         throw new IllegalStateException("Duplicate annotation " + annotationDescription + " for " + fieldDescription);
@@ -1695,6 +1700,8 @@ public interface InstrumentedType extends TypeDescription {
                     throw new IllegalStateException("Duplicate method signature for " + methodDescription);
                 } else if ((methodDescription.getModifiers() & ~ModifierContributor.ForMethod.MASK) != 0) {
                     throw new IllegalStateException("Illegal modifiers " + methodDescription.getModifiers() + " for " + methodDescription);
+                } else if (methodDescription.isAbstract() && (methodDescription.getModifiers() & Opcodes.ACC_STRICT) != 0) {
+                    throw new IllegalStateException("Cannot declare strict computations for " + methodDescription);
                 } else if (isInterface() && !methodDescription.isPublic() && !methodDescription.isPrivate()) {
                     throw new IllegalStateException("Methods declared by an interface must be public or private " + methodDescription);
                 }
@@ -1767,7 +1774,7 @@ public interface InstrumentedType extends TypeDescription {
                     }
                     Set<TypeDescription> parameterAnnotationTypes = new HashSet<TypeDescription>();
                     for (AnnotationDescription annotationDescription : parameterDescription.getDeclaredAnnotations()) {
-                        if (!annotationDescription.getElementTypes().contains(ElementType.PARAMETER)) {
+                        if (!annotationDescription.isSupportedOn(ElementType.PARAMETER)) {
                             throw new IllegalStateException("Cannot add " + annotationDescription + " on " + parameterDescription);
                         } else if (!parameterAnnotationTypes.add(annotationDescription.getAnnotationType())) {
                             throw new IllegalStateException("Duplicate annotation " + annotationDescription + " of " + parameterDescription + " for " + methodDescription);
@@ -1785,7 +1792,7 @@ public interface InstrumentedType extends TypeDescription {
                 }
                 Set<TypeDescription> methodAnnotationTypes = new HashSet<TypeDescription>();
                 for (AnnotationDescription annotationDescription : methodDescription.getDeclaredAnnotations()) {
-                    if (!annotationDescription.getElementTypes().contains(methodDescription.isMethod() ? ElementType.METHOD : ElementType.CONSTRUCTOR)) {
+                    if (!annotationDescription.isSupportedOn(methodDescription.isMethod() ? ElementType.METHOD : ElementType.CONSTRUCTOR)) {
                         throw new IllegalStateException("Cannot add " + annotationDescription + " on " + methodDescription);
                     } else if (!methodAnnotationTypes.add(annotationDescription.getAnnotationType())) {
                         throw new IllegalStateException("Duplicate annotation " + annotationDescription + " for " + methodDescription);
@@ -1838,13 +1845,16 @@ public interface InstrumentedType extends TypeDescription {
          * @return {@code true} if the given identifier is valid.
          */
         private static boolean isValidIdentifier(String identifier) {
-            if (KEYWORDS.contains(identifier) || identifier.length() == 0 || !Character.isJavaIdentifierStart(identifier.charAt(0))) {
+            if (KEYWORDS.contains(identifier)
+                    || identifier.length() == 0
+                    || !(Character.isJavaIdentifierStart(identifier.charAt(0))
+                    || Character.isUnicodeIdentifierStart(identifier.charAt(0)))) {
                 return false;
             } else if (identifier.equals(PackageDescription.PACKAGE_CLASS_NAME)) {
                 return true;
             }
             for (int index = 1; index < identifier.length(); index++) {
-                if (!Character.isJavaIdentifierPart(identifier.charAt(index))) {
+                if (!(Character.isJavaIdentifierPart(identifier.charAt(index)) || Character.isUnicodeIdentifierPart(identifier.charAt(index)))) {
                     return false;
                 }
             }
@@ -1909,7 +1919,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public Generic getSuperClass() {
             return typeDescription.getSuperClass();
         }
@@ -1952,7 +1962,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public PackageDescription getPackage() {
             return typeDescription.getPackage();
         }
@@ -1960,7 +1970,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription getEnclosingType() {
             return typeDescription.getEnclosingType();
         }
@@ -1968,7 +1978,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription getDeclaringType() {
             return typeDescription.getDeclaringType();
         }
@@ -1983,7 +1993,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public MethodDescription.InDefinedShape getEnclosingMethod() {
             return typeDescription.getEnclosingMethod();
         }
@@ -1991,7 +2001,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public String getGenericSignature() {
             // Embrace use of native generic signature by direct delegation.
             return typeDescription.getGenericSignature();
@@ -2118,7 +2128,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        public WithFlexibleName withEnclosingType(@Nullable TypeDescription enclosingType) {
+        public WithFlexibleName withEnclosingType(@MaybeNull TypeDescription enclosingType) {
             throw new IllegalStateException("Cannot set enclosing type of frozen type: " + typeDescription);
         }
 
@@ -2132,7 +2142,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        public WithFlexibleName withDeclaringType(@Nullable TypeDescription declaringType) {
+        public WithFlexibleName withDeclaringType(@MaybeNull TypeDescription declaringType) {
             throw new IllegalStateException("Cannot add declaring type to frozen type: " + typeDescription);
         }
 
@@ -2146,7 +2156,7 @@ public interface InstrumentedType extends TypeDescription {
         /**
          * {@inheritDoc}
          */
-        public WithFlexibleName withPermittedSubclasses(@Nullable TypeList permittedSubclasses) {
+        public WithFlexibleName withPermittedSubclasses(@MaybeNull TypeList permittedSubclasses) {
             throw new IllegalStateException("Cannot add permitted subclasses to frozen type: " + typeDescription);
         }
 
@@ -2213,7 +2223,7 @@ public interface InstrumentedType extends TypeDescription {
             return TypeInitializer.None.INSTANCE;
         }
 
-        @Nullable
+        @MaybeNull
         @Override
         public ClassFileVersion getClassFileVersion() {
             return typeDescription.getClassFileVersion();

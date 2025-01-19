@@ -25,6 +25,7 @@ import net.bytebuddy.implementation.bind.MethodDelegationBinder;
 import net.bytebuddy.implementation.bytecode.StackManipulation;
 import net.bytebuddy.implementation.bytecode.assign.Assigner;
 import net.bytebuddy.implementation.bytecode.constant.*;
+import net.bytebuddy.implementation.bytecode.member.MethodInvocation;
 import net.bytebuddy.utility.JavaConstant;
 import net.bytebuddy.utility.JavaType;
 
@@ -56,6 +57,8 @@ import static net.bytebuddy.matcher.ElementMatchers.named;
  * only supported for byte code versions starting from Java 7.</li>
  * <li>If the annotated type is {@code java.lang.invoke.MethodType}, a description of the intercepted method's type
  * is injected. Method type descriptions are only supported for byte code versions starting from Java 7.</li>
+ * <li>If the annotated type is {@code java.lang.invoke.MethodHandles$Lookup}, a method handle lookup of the instrumented
+ * class is returned. Method type descriptions are only supported for byte code versions starting from Java 7.</li>
  * </ol>
  * <p>
  * Any other parameter type will cause an {@link java.lang.IllegalStateException}.
@@ -65,11 +68,9 @@ import static net.bytebuddy.matcher.ElementMatchers.named;
  * to the instrumented type or an {@link IllegalAccessError} will be thrown at runtime.
  * </p>
  * <p>
- * <b>Important</b>: Don't confuse this annotation with {@link net.bytebuddy.asm.Advice.Origin} annotation. This annotation
- * should be used only in combination with method delegation
- * ({@link net.bytebuddy.implementation.MethodDelegation MethodDelegation.to(...)}).
- * For {@link net.bytebuddy.asm.Advice} ASM visitor use alternative annotation from
- * <code>net.bytebuddy.asm.Advice</code> package.
+ * <b>Important</b>: Don't confuse this annotation with {@link net.bytebuddy.asm.Advice.Origin} or
+ * {@link net.bytebuddy.asm.MemberSubstitution.Origin}. This annotation should be used with
+ * {@link net.bytebuddy.implementation.MethodDelegation} only.
  * </p>
  *
  * @see net.bytebuddy.implementation.MethodDelegation
@@ -178,9 +179,11 @@ public @interface Origin {
             } else if (parameterType.represents(int.class)) {
                 return new MethodDelegationBinder.ParameterBinding.Anonymous(IntegerConstant.forValue(source.getModifiers()));
             } else if (parameterType.equals(JavaType.METHOD_HANDLE.getTypeStub())) {
-                return new MethodDelegationBinder.ParameterBinding.Anonymous(new JavaConstantValue(JavaConstant.MethodHandle.of(source.asDefined())));
+                return new MethodDelegationBinder.ParameterBinding.Anonymous(JavaConstant.MethodHandle.of(source.asDefined()).toStackManipulation());
             } else if (parameterType.equals(JavaType.METHOD_TYPE.getTypeStub())) {
-                return new MethodDelegationBinder.ParameterBinding.Anonymous(new JavaConstantValue(JavaConstant.MethodType.of(source.asDefined())));
+                return new MethodDelegationBinder.ParameterBinding.Anonymous(JavaConstant.MethodType.of(source.asDefined()).toStackManipulation());
+            } else if (parameterType.equals(JavaType.METHOD_HANDLES_LOOKUP.getTypeStub())) {
+                return new MethodDelegationBinder.ParameterBinding.Anonymous(MethodInvocation.lookup());
             } else {
                 throw new IllegalStateException("The " + target + " method's " + target.getIndex() +
                         " parameter is annotated with a Origin annotation with an argument not representing a Class," +

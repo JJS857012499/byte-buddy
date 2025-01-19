@@ -28,16 +28,18 @@ import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.pool.TypePool;
 import net.bytebuddy.utility.CompoundList;
 import net.bytebuddy.utility.FileSystem;
+import net.bytebuddy.utility.QueueFactory;
+import net.bytebuddy.utility.StreamDrainer;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.io.*;
 import java.lang.annotation.*;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.net.URL;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.jar.JarEntry;
@@ -59,7 +61,7 @@ import static net.bytebuddy.matcher.ElementMatchers.none;
  * {@link Plugin.Engine.Dispatcher}.
  * </p>
  * <p>
- * For discoverability, plugin class names can be stored in a file named <i>/META-INF/net.bytebuddy/build.plugins</i> with the fully
+ * For discoverability, plugin class names can be stored in a file named <i>META-INF/net.bytebuddy/build.plugins</i> with the fully
  * qualified class name of the plugin per line.
  * </p>
  */
@@ -98,6 +100,20 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
     }
 
     /**
+     * Allows for the generation of types before a plugin is applied.
+     */
+    interface WithInitialization extends Plugin {
+
+        /**
+         * Returns a mapping of classes that should be created before discovering any types.
+         *
+         * @param classFileLocator A class file locator that can locate other types in the scope of the project.
+         * @return A mapping of types to their binary representation.
+         */
+        Map<TypeDescription, byte[]> initialize(ClassFileLocator classFileLocator);
+    }
+
+    /**
      * A factory for providing a build plugin.
      */
     interface Factory {
@@ -110,7 +126,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
         Plugin make();
 
         /**
-         * A simple factory that returns a preconstructed plugin instance..
+         * A simple factory that returns a preconstructed plugin instance.
          */
         @HashCodeAndEqualsPlugin.Enhance
         class Simple implements Factory {
@@ -470,7 +486,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                      *
                      * @return The resolved argument if the resolution was successful.
                      */
-                    @Nullable
+                    @MaybeNull
                     Object getArgument();
 
                     /**
@@ -507,7 +523,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         /**
                          * The resolved argument which might be {@code null}.
                          */
-                        @Nullable
+                        @MaybeNull
                         @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
                         private final Object argument;
 
@@ -516,7 +532,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                          *
                          * @param argument The resolved argument which might be {@code null}.
                          */
-                        public Resolved(@Nullable Object argument) {
+                        public Resolved(@MaybeNull Object argument) {
                             this.argument = argument;
                         }
 
@@ -530,7 +546,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         /**
                          * {@inheritDoc}
                          */
-                        @Nullable
+                        @MaybeNull
                         public Object getArgument() {
                             return argument;
                         }
@@ -640,7 +656,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                     /**
                      * The value to resolve for the represented index.
                      */
-                    @Nullable
+                    @MaybeNull
                     @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
                     private final Object value;
 
@@ -650,7 +666,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                      * @param index The index of the parameter to resolve.
                      * @param value The value to resolve for the represented index.
                      */
-                    public ForIndex(int index, @Nullable Object value) {
+                    public ForIndex(int index, @MaybeNull Object value) {
                         this.index = index;
                         this.value = value;
                     }
@@ -688,7 +704,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         /**
                          * A string representation of the supplied value.
                          */
-                        @Nullable
+                        @MaybeNull
                         @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
                         private final String value;
 
@@ -698,7 +714,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                          * @param index The index of the parameter to resolve.
                          * @param value A string representation of the supplied value.
                          */
-                        public WithDynamicType(int index, @Nullable String value) {
+                        public WithDynamicType(int index, @MaybeNull String value) {
                             this.index = index;
                             this.value = value;
                         }
@@ -709,8 +725,8 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         public Resolution resolve(int index, Class<?> type) {
                             if (this.index != index) {
                                 return Resolution.Unresolved.INSTANCE;
-                            } else if (type == char.class || type == Character.class && value != null) {
-                                return value.length() == 1
+                            } else if (type == char.class || type == Character.class) {
+                                return value != null && value.length() == 1
                                         ? new Resolution.Resolved(value.charAt(0))
                                         : Resolution.Unresolved.INSTANCE;
                             } else if (type == String.class) {
@@ -744,9 +760,19 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
     interface Engine {
 
         /**
-         * The class file extension.
+         * The module info class file.
          */
-        String CLASS_FILE_EXTENSION = ".class";
+        String MODULE_INFO = "module-info" + ClassFileLocator.CLASS_FILE_EXTENSION;
+
+        /**
+         * The package info class file.
+         */
+        String PACKAGE_INFO = "package-info" + ClassFileLocator.CLASS_FILE_EXTENSION;
+
+        /**
+         * The name of the file that contains declares Byte Buddy plugins for discovery.
+         */
+        String PLUGIN_FILE = "META-INF/net.bytebuddy/build.plugins";
 
         /**
          * Defines a new Byte Buddy instance for usage for type creation.
@@ -780,6 +806,17 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
          * @return A new plugin engine that is equal to this engine but with the supplied class file locator being appended.
          */
         Engine with(ClassFileLocator classFileLocator);
+
+        /**
+         * Uses the supplied {@link ClassFileVersion} as a base for resolving multi-release jars, or {@code null}
+         * if multi-release jars should not be resolved but be treated as regular jar files. This property might
+         * not be applied if the underlying location mechanism does not supply manual resource resolution. Note that
+         * classes that are of newer class file versions than the specified version are not resolved and simply copied.
+         *
+         * @param classFileVersion The class file version to use or {@code null} if multi-release jars should be ignored.
+         * @return A new plugin engine that is equal to this engine but with the supplied class file version being used.
+         */
+        Engine with(@MaybeNull ClassFileVersion classFileVersion);
 
         /**
          * Appends the supplied listener to this engine.
@@ -1125,7 +1162,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
              *
              * @param manifest The located manifest or {@code null} if no manifest was found.
              */
-            void onManifest(Manifest manifest);
+            void onManifest(@MaybeNull Manifest manifest);
 
             /**
              * Invoked if a resource that is not a class file is discovered.
@@ -1154,14 +1191,14 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                      * {@inheritDoc}
                      */
                     public void onError(TypeDescription typeDescription, List<Throwable> throwables) {
-                        throw new UnsupportedOperationException("onError");
+                        throw new IllegalStateException("Failed to transform " + typeDescription + ": " + throwables);
                     }
 
                     /**
                      * {@inheritDoc}
                      */
                     public void onError(Map<TypeDescription, List<Throwable>> throwables) {
-                        throw new UnsupportedOperationException("onError");
+                        throw new IllegalStateException("Failed to transform at least one type: " + throwables);
                     }
                 },
 
@@ -1187,7 +1224,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                      * {@inheritDoc}
                      */
                     public void onError(Map<TypeDescription, List<Throwable>> throwables) {
-                        throw new UnsupportedOperationException("onError");
+                        throw new IllegalStateException("Failed to transform at least one type: " + throwables);
                     }
                 },
 
@@ -1293,7 +1330,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                  */
                 MANIFEST_REQUIRED {
                     @Override
-                    public void onManifest(Manifest manifest) {
+                    public void onManifest(@MaybeNull Manifest manifest) {
                         if (manifest == null) {
                             throw new IllegalStateException("Required a manifest but no manifest was found");
                         }
@@ -1345,7 +1382,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 /**
                  * {@inheritDoc}
                  */
-                public void onManifest(Manifest manifest) {
+                public void onManifest(@MaybeNull Manifest manifest) {
                     /* do nothing */
                 }
 
@@ -1450,7 +1487,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 /**
                  * {@inheritDoc}
                  */
-                public void onManifest(Manifest manifest) {
+                public void onManifest(@MaybeNull Manifest manifest) {
                     for (ErrorHandler errorHandler : errorHandlers) {
                         errorHandler.onManifest(manifest);
                     }
@@ -1617,7 +1654,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 /**
                  * {@inheritDoc}
                  */
-                public void onManifest(Manifest manifest) {
+                public void onManifest(@MaybeNull Manifest manifest) {
                     /* do nothing */
                 }
 
@@ -1721,7 +1758,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 /**
                  * {@inheritDoc}
                  */
-                public void onManifest(Manifest manifest) {
+                public void onManifest(@MaybeNull Manifest manifest) {
                     /* do nothing */
                 }
 
@@ -1859,7 +1896,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 /**
                  * {@inheritDoc}
                  */
-                public void onManifest(Manifest manifest) {
+                public void onManifest(@MaybeNull Manifest manifest) {
                     printStream.printf(PREFIX + " MANIFEST %b", manifest != null);
                 }
 
@@ -2014,7 +2051,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 }
 
                 @Override
-                public void onManifest(Manifest manifest) {
+                public void onManifest(@MaybeNull Manifest manifest) {
                     errorHandler.onManifest(manifest);
                 }
 
@@ -2171,7 +2208,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 /**
                  * {@inheritDoc}
                  */
-                public void onManifest(Manifest manifest) {
+                public void onManifest(@MaybeNull Manifest manifest) {
                     for (Listener listener : listeners) {
                         listener.onManifest(manifest);
                     }
@@ -2209,7 +2246,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 /**
                  * Indicates that no manifest exists.
                  */
-                @Nonnull(when = When.NEVER)
+                @AlwaysNull
                 Manifest NO_MANIFEST = null;
 
                 /**
@@ -2218,16 +2255,19 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                  * @return This source's manifest or {@code null}.
                  * @throws IOException If an I/O error occurs.
                  */
-                @Nullable
+                @MaybeNull
                 Manifest getManifest() throws IOException;
 
                 /**
-                 * Returns a class file locator for the represented source. If the class file locator needs to be closed, it is the responsibility
-                 * of this origin to close the locator or its underlying resources.
+                 * Creates a class file locator for the represented source. If the class file locator needs to be closed,
+                 * it is the responsibility of this origin to close the locator or its underlying resources.
                  *
-                 * @return A class file locator for locating class files of this instance..
+                 * @param classFileVersion The class file version to consider for multi-release jars or {@code null}
+                 *                         if multi-release jars should not be considered.
+                 * @return A class file locator for locating class files of this instance.
+                 * @throws IOException If an I/O exception occurs.
                  */
-                ClassFileLocator getClassFileLocator();
+                ClassFileLocator toClassFileLocator(@MaybeNull ClassFileVersion classFileVersion) throws IOException;
 
                 /**
                  * An origin implementation for a jar file.
@@ -2251,7 +2291,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                     /**
                      * {@inheritDoc}
                      */
-                    @Nullable
+                    @MaybeNull
                     public Manifest getManifest() throws IOException {
                         return file.getManifest();
                     }
@@ -2259,8 +2299,10 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                     /**
                      * {@inheritDoc}
                      */
-                    public ClassFileLocator getClassFileLocator() {
-                        return new ClassFileLocator.ForJarFile(file);
+                    public ClassFileLocator toClassFileLocator(@MaybeNull ClassFileVersion classFileVersion) throws IOException {
+                        return classFileVersion == null
+                                ? new ClassFileLocator.ForJarFile(file)
+                                : ClassFileLocator.ForJarFile.of(file, classFileVersion);
                     }
 
                     /**
@@ -2366,7 +2408,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                     /**
                      * {@inheritDoc}
                      */
-                    @Nullable
+                    @MaybeNull
                     public Manifest getManifest() throws IOException {
                         return manifest ? delegate.getManifest() : NO_MANIFEST;
                     }
@@ -2374,15 +2416,8 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                     /**
                      * {@inheritDoc}
                      */
-                    public ClassFileLocator getClassFileLocator() {
-                        return delegate.getClassFileLocator();
-                    }
-
-                    /**
-                     * {@inheritDoc}
-                     */
-                    public void close() throws IOException {
-                        delegate.close();
+                    public ClassFileLocator toClassFileLocator(@MaybeNull ClassFileVersion classFileVersion) throws IOException {
+                        return delegate.toClassFileLocator(classFileVersion);
                     }
 
                     /**
@@ -2390,6 +2425,13 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                      */
                     public Iterator<Element> iterator() {
                         return new FilteringIterator(delegate.iterator(), matcher);
+                    }
+
+                    /**
+                     * {@inheritDoc}
+                     */
+                    public void close() throws IOException {
+                        delegate.close();
                     }
 
                     /**
@@ -2410,7 +2452,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         /**
                          * The current element or {@code null} if no further elements are available.
                          */
-                        @Nullable
+                        @MaybeNull
                         private Element current;
 
                         /**
@@ -2477,14 +2519,16 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
             interface Element {
 
                 /**
-                 * Returns the element's relative path and name.
+                 * Returns the element's relative path and name. If the name ends with a {@code /}, it represents
+                 * a folder.
                  *
                  * @return The element's path and name.
                  */
                 String getName();
 
                 /**
-                 * Returns an input stream to read this element's binary information.
+                 * Returns an input stream to read this element's binary information. Must not be invoked for
+                 * folders.
                  *
                  * @return An input stream that represents this element's binary information.
                  * @throws IOException If an I/O error occurs.
@@ -2499,13 +2543,13 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                  * @param <T>  The requested spezialized type.
                  * @return The resolved element or {@code null} if a transformation is impossible.
                  */
-                @Nullable
+                @MaybeNull
                 <T> T resolveAs(Class<T> type);
 
                 /**
                  * An element representation for a byte array.
                  */
-                @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "Not mutating the byte array is part of the class contract.")
+                @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "The array is not modified by class contract.")
                 @HashCodeAndEqualsPlugin.Enhance
                 class ForByteArray implements Element {
 
@@ -2547,7 +2591,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                     /**
                      * {@inheritDoc}
                      */
-                    @Nonnull(when = When.NEVER)
+                    @AlwaysNull
                     public <T> T resolveAs(Class<T> type) {
                         return null;
                     }
@@ -2597,7 +2641,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                     /**
                      * {@inheritDoc}
                      */
-                    @Nullable
+                    @MaybeNull
                     @SuppressWarnings("unchecked")
                     public <T> T resolveAs(Class<T> type) {
                         return File.class.isAssignableFrom(type)
@@ -2650,7 +2694,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                     /**
                      * {@inheritDoc}
                      */
-                    @Nullable
+                    @MaybeNull
                     @SuppressWarnings("unchecked")
                     public <T> T resolveAs(Class<T> type) {
                         return JarEntry.class.isAssignableFrom(type)
@@ -2680,14 +2724,14 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 /**
                  * {@inheritDoc}
                  */
-                public ClassFileLocator getClassFileLocator() {
+                public ClassFileLocator toClassFileLocator(@MaybeNull ClassFileVersion classFileVersion) {
                     return ClassFileLocator.NoOp.INSTANCE;
                 }
 
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Manifest getManifest() {
                     return NO_MANIFEST;
                 }
@@ -2704,6 +2748,176 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                  */
                 public void close() {
                     /* do nothing */
+                }
+            }
+
+            /**
+             * A compound source that combines multiple sources into a single representation.
+             */
+            @HashCodeAndEqualsPlugin.Enhance
+            class Compound implements Source {
+
+                /**
+                 * The represented sources.
+                 */
+                private final Collection<? extends Source> sources;
+
+                /**
+                 * Creates a new compound source.
+                 *
+                 * @param sources The represented sources.
+                 */
+                public Compound(Collection<? extends Source> sources) {
+                    this.sources = sources;
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public Source.Origin read() throws IOException {
+                    if (sources.isEmpty()) {
+                        return Empty.INSTANCE;
+                    } else if (sources.size() == 1) {
+                        return sources.iterator().next().read();
+                    }
+                    List<Source.Origin> origins = new ArrayList<Source.Origin>(sources.size());
+                    try {
+                        for (Source source : sources) {
+                            origins.add(source.read());
+                        }
+                    } catch (IOException exception) {
+                        for (Source.Origin origin : origins) {
+                            origin.close();
+                        }
+                        throw exception;
+                    }
+                    return new Origin(origins);
+                }
+
+                /**
+                 * Implements a compound {@link Source.Origin}.
+                 */
+                @HashCodeAndEqualsPlugin.Enhance
+                protected static class Origin implements Source.Origin {
+
+                    /**
+                     * A list of represented origins.
+                     */
+                    private final List<Source.Origin> origins;
+
+                    /**
+                     * Creates a new compound origin.
+                     *
+                     * @param origins A list of represented origins.
+                     */
+                    protected Origin(List<Source.Origin> origins) {
+                        this.origins = origins;
+                    }
+
+                    /**
+                     * {@inheritDoc}
+                     */
+                    public Manifest getManifest() throws IOException {
+                        for (Source.Origin origin : origins) {
+                            Manifest manifest = origin.getManifest();
+                            if (manifest != null) {
+                                return manifest;
+                            }
+                        }
+                        return NO_MANIFEST;
+                    }
+
+                    /**
+                     * {@inheritDoc}
+                     */
+                    public ClassFileLocator toClassFileLocator(@MaybeNull ClassFileVersion classFileVersion) throws IOException {
+                        List<ClassFileLocator> classFileLocators = new ArrayList<ClassFileLocator>(origins.size());
+                        for (Source.Origin origin : origins) {
+                            classFileLocators.add(origin.toClassFileLocator(classFileVersion));
+                        }
+                        return new ClassFileLocator.Compound(classFileLocators);
+                    }
+
+                    /**
+                     * {@inheritDoc}
+                     */
+                    public Iterator<Element> iterator() {
+                        return new CompoundIterator(origins);
+                    }
+
+                    /**
+                     * {@inheritDoc}
+                     */
+                    public void close() throws IOException {
+                        for (Source.Origin origin : origins) {
+                            origin.close();
+                        }
+                    }
+
+                    /**
+                     * A compound iterator that combines several iterables.
+                     */
+                    protected static class CompoundIterator implements Iterator<Element> {
+
+                        /**
+                         * The current iterator or {@code null} if no such iterator is defined.
+                         */
+                        @MaybeNull
+                        private Iterator<? extends Element> current;
+
+                        /**
+                         * A backlog of iterables to still consider.
+                         */
+                        private final Queue<? extends Iterable<? extends Element>> backlog;
+
+                        /**
+                         * Creates a compound iterator.
+                         *
+                         * @param iterables The iterables to consider.
+                         */
+                        protected CompoundIterator(List<? extends Iterable<? extends Element>> iterables) {
+                            backlog = QueueFactory.make(iterables);
+                            forward();
+                        }
+
+                        /**
+                         * {@inheritDoc}
+                         */
+                        public boolean hasNext() {
+                            return current != null && current.hasNext();
+                        }
+
+                        /**
+                         * {@inheritDoc}
+                         */
+                        public Element next() {
+                            try {
+                                if (current != null) {
+                                    return current.next();
+                                } else {
+                                    throw new NoSuchElementException();
+                                }
+                            } finally {
+                                forward();
+                            }
+                        }
+
+                        /**
+                         * Forwards the iterator to the next relevant iterable.
+                         */
+                        private void forward() {
+                            while ((current == null || !current.hasNext()) && !backlog.isEmpty()) {
+                                current = backlog.remove().iterator();
+                            }
+                        }
+
+                        /**
+                         * {@inheritDoc}
+                         */
+                        public void remove() {
+                            throw new UnsupportedOperationException("remove");
+                        }
+                    }
                 }
             }
 
@@ -2728,7 +2942,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 }
 
                 /**
-                 * Represents a collection of types as a in-memory source.
+                 * Represents a collection of types as an in-memory source.
                  *
                  * @param type The types to represent.
                  * @return A source representing the supplied types.
@@ -2738,17 +2952,36 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 }
 
                 /**
-                 * Represents a collection of types as a in-memory source.
+                 * Represents a collection of types as an in-memory source.
                  *
                  * @param types The types to represent.
                  * @return A source representing the supplied types.
                  */
                 public static Source ofTypes(Collection<? extends Class<?>> types) {
+                    return ofTypes(types, Collections.<ClassFileVersion, Collection<? extends Class<?>>>emptyMap());
+                }
+
+                /**
+                 * Represents a collection of types as an in-memory source.
+                 *
+                 * @param types          The types to represent.
+                 * @param versionedTypes A versioned mapping of types to represent.
+                 * @return A source representing the supplied types.
+                 */
+                public static Source ofTypes(Collection<? extends Class<?>> types, Map<ClassFileVersion, Collection<? extends Class<?>>> versionedTypes) {
+                    Map<ClassFileVersion, Map<TypeDescription, byte[]>> versionedBinaryRepresentations = new HashMap<ClassFileVersion, Map<TypeDescription, byte[]>>();
+                    for (Map.Entry<ClassFileVersion, Collection<? extends Class<?>>> entry : versionedTypes.entrySet()) {
+                        Map<TypeDescription, byte[]> binaryRepresentations = new HashMap<TypeDescription, byte[]>();
+                        for (Class<?> type : entry.getValue()) {
+                            binaryRepresentations.put(TypeDescription.ForLoadedType.of(type), ClassFileLocator.ForClassLoader.read(type));
+                        }
+                        versionedBinaryRepresentations.put(entry.getKey(), binaryRepresentations);
+                    }
                     Map<TypeDescription, byte[]> binaryRepresentations = new HashMap<TypeDescription, byte[]>();
                     for (Class<?> type : types) {
                         binaryRepresentations.put(TypeDescription.ForLoadedType.of(type), ClassFileLocator.ForClassLoader.read(type));
                     }
-                    return ofTypes(binaryRepresentations);
+                    return ofTypes(binaryRepresentations, versionedBinaryRepresentations);
                 }
 
                 /**
@@ -2758,9 +2991,32 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                  * @return A source representing the supplied types.
                  */
                 public static Source ofTypes(Map<TypeDescription, byte[]> binaryRepresentations) {
+                    return ofTypes(binaryRepresentations, Collections.<ClassFileVersion, Map<TypeDescription, byte[]>>emptyMap());
+                }
+
+                /**
+                 * Represents a map of type names to their binary representation as an in-memory source.
+                 *
+                 * @param binaryRepresentations          A mapping of type names to their binary representation.
+                 * @param versionedBinaryRepresentations A versioned mapping of type names to their binary representation.
+                 * @return A source representing the supplied types.
+                 */
+                public static Source ofTypes(
+                        Map<TypeDescription, byte[]> binaryRepresentations,
+                        Map<ClassFileVersion, Map<TypeDescription, byte[]>> versionedBinaryRepresentations
+                ) {
                     Map<String, byte[]> storage = new HashMap<String, byte[]>();
                     for (Map.Entry<TypeDescription, byte[]> entry : binaryRepresentations.entrySet()) {
-                        storage.put(entry.getKey().getInternalName() + CLASS_FILE_EXTENSION, entry.getValue());
+                        storage.put(entry.getKey().getInternalName() + ClassFileLocator.CLASS_FILE_EXTENSION, entry.getValue());
+                    }
+                    for (Map.Entry<ClassFileVersion, Map<TypeDescription, byte[]>> versioned : versionedBinaryRepresentations.entrySet()) {
+                        for (Map.Entry<TypeDescription, byte[]> entry : versioned.getValue().entrySet()) {
+                            storage.put(ClassFileLocator.META_INF_VERSIONS
+                                    + versioned.getKey().getJavaVersion()
+                                    + "/"
+                                    + entry.getKey().getInternalName()
+                                    + ClassFileLocator.CLASS_FILE_EXTENSION, entry.getValue());
+                        }
                     }
                     return new InMemory(storage);
                 }
@@ -2775,14 +3031,14 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 /**
                  * {@inheritDoc}
                  */
-                public ClassFileLocator getClassFileLocator() {
+                public ClassFileLocator toClassFileLocator(@MaybeNull ClassFileVersion classFileVersion) {
                     return ClassFileLocator.Simple.ofResources(storage);
                 }
 
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Manifest getManifest() throws IOException {
                     byte[] binaryRepresentation = storage.get(JarFile.MANIFEST_NAME);
                     if (binaryRepresentation == null) {
@@ -2881,14 +3137,16 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 /**
                  * {@inheritDoc}
                  */
-                public ClassFileLocator getClassFileLocator() {
-                    return new ClassFileLocator.ForFolder(folder);
+                public ClassFileLocator toClassFileLocator(@MaybeNull ClassFileVersion classFileVersion) throws IOException {
+                    return classFileVersion == null
+                            ? new ClassFileLocator.ForFolder(folder)
+                            : ClassFileLocator.ForFolder.of(folder, classFileVersion);
                 }
 
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Manifest getManifest() throws IOException {
                     File file = new File(folder, JarFile.MANIFEST_NAME);
                     if (file.exists()) {
@@ -2923,9 +3181,9 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 protected class FolderIterator implements Iterator<Element> {
 
                     /**
-                     * A list of files and folders to process.
+                     * A list of files and folders to process with the next processed file at the end of the list.
                      */
-                    private final LinkedList<File> files;
+                    private final Queue<File> files;
 
                     /**
                      * Creates a new iterator representation for all files within a folder.
@@ -2933,15 +3191,15 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                      * @param folder The root folder.
                      */
                     protected FolderIterator(File folder) {
-                        files = new LinkedList<File>(Collections.singleton(folder));
-                        File candidate;
-                        do {
-                            candidate = files.removeFirst();
-                            File[] file = candidate.listFiles();
-                            if (file != null) {
-                                files.addAll(0, Arrays.asList(file));
+                        files = QueueFactory.make();
+                        File[] file = folder.listFiles();
+                        if (file != null) {
+                            for (File candidate : file) {
+                                if (!candidate.equals(new File(folder, JarFile.MANIFEST_NAME))) {
+                                    files.add(candidate);
+                                }
                             }
-                        } while (!files.isEmpty() && (files.peek().isDirectory() || files.peek().equals(new File(folder, JarFile.MANIFEST_NAME))));
+                        }
                     }
 
                     /**
@@ -2956,17 +3214,18 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                      */
                     @SuppressFBWarnings(value = "IT_NO_SUCH_ELEMENT", justification = "Exception is thrown by invoking removeFirst on an empty list.")
                     public Element next() {
-                        try {
-                            return new Element.ForFile(folder, files.removeFirst());
-                        } finally {
-                            while (!files.isEmpty() && (files.peek().isDirectory() || files.peek().equals(new File(folder, JarFile.MANIFEST_NAME)))) {
-                                File folder = files.removeFirst();
-                                File[] file = folder.listFiles();
-                                if (file != null) {
-                                    files.addAll(0, Arrays.asList(file));
+                        File next = files.remove();
+                        if (next.isDirectory()) {
+                            File[] file = next.listFiles();
+                            if (file != null) {
+                                for (File candidate : file) {
+                                    if (!candidate.equals(new File(folder, JarFile.MANIFEST_NAME))) {
+                                        files.add(candidate);
+                                    }
                                 }
                             }
                         }
+                        return new Element.ForFile(folder, next);
                     }
 
                     /**
@@ -3002,7 +3261,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                  * {@inheritDoc}
                  */
                 public Origin read() throws IOException {
-                    return new Origin.ForJarFile(new JarFile(file));
+                    return new Origin.ForJarFile(new JarFile(file, false));
                 }
             }
 
@@ -3051,10 +3310,96 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 }
 
                 /**
+                 * Wraps a source to exclude elements that are above the specified Java version.
+                 *
+                 * @param delegate         The delegate source.
+                 * @param classFileVersion The latest multi-release Java version to retain from the source.
+                 * @return A source that applies an appropriate filter.
+                 */
+                public static Source dropMultiReleaseClassFilesAbove(Source delegate, ClassFileVersion classFileVersion) {
+                    return new Filtering(delegate, new MultiReleaseVersionMatcher(classFileVersion));
+                }
+
+                /**
+                 * Wraps a source to exclude elements that represent folders.
+                 *
+                 * @param delegate The delegate source.
+                 * @return A source that drops folders and delegates to the original source.
+                 */
+                public static Source dropFolders(Source delegate) {
+                    return new Filtering(delegate, NoFolderMatcher.INSTANCE);
+                }
+
+                /**
                  * {@inheritDoc}
                  */
                 public Origin read() throws IOException {
                     return new Origin.Filtering(delegate.read(), matcher, manifest);
+                }
+
+                /**
+                 * An element matcher that filters multi-release files above a given version.
+                 */
+                @HashCodeAndEqualsPlugin.Enhance
+                protected static class MultiReleaseVersionMatcher implements ElementMatcher<Element> {
+
+                    /**
+                     * The latest version to consider.
+                     */
+                    private final ClassFileVersion classFileVersion;
+
+                    /**
+                     * Creates a multi-release version matcher.
+                     *
+                     * @param classFileVersion The latest class file version to consider.
+                     */
+                    protected MultiReleaseVersionMatcher(ClassFileVersion classFileVersion) {
+                        this.classFileVersion = classFileVersion;
+                    }
+
+                    /**
+                     * {@inheritDoc}
+                     */
+                    public boolean matches(@MaybeNull Element target) {
+                        if (target == null) {
+                            return true;
+                        }
+                        String name = target.getName();
+                        if (name.startsWith("/")) {
+                            name = name.substring(1);
+                        }
+                        if (name.startsWith(ClassFileLocator.META_INF_VERSIONS)) {
+                            int version;
+                            try {
+                                version = Integer.parseInt(name.substring(
+                                        ClassFileLocator.META_INF_VERSIONS.length(),
+                                        name.indexOf('/', ClassFileLocator.META_INF_VERSIONS.length())));
+                            } catch (NumberFormatException ignored) {
+                                return true;
+                            }
+                            return version <= classFileVersion.getJavaVersion();
+                        }
+                        return true;
+                    }
+                }
+
+                /**
+                 * A matcher that removes folders from the iteration.
+                 */
+                @HashCodeAndEqualsPlugin.Enhance
+                protected enum NoFolderMatcher implements ElementMatcher<Element> {
+
+                    /**
+                     * The singleton instance.
+                     */
+                    INSTANCE;
+
+                    /**
+                     * {@inheritDoc}
+                     */
+                    public boolean matches(@MaybeNull Element target) {
+                        return target == null || !target.getName().endsWith("/");
+                    }
                 }
             }
         }
@@ -3071,7 +3416,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
              * @return The sink to write to.
              * @throws IOException If an I/O error occurs.
              */
-            Sink write(Manifest manifest) throws IOException;
+            Sink write(@MaybeNull Manifest manifest) throws IOException;
 
             /**
              * A sink represents an active writing process.
@@ -3085,6 +3430,16 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                  * @throws IOException If an I/O error occurs.
                  */
                 void store(Map<TypeDescription, byte[]> binaryRepresentations) throws IOException;
+
+                /**
+                 * Stores the supplied binary representation of types in this sink.
+                 *
+                 * @param classFileVersion      The version of the multi-release jar file, which should at least be {@code 8} as previous
+                 *                              versions are not recognized by regular class loaders.
+                 * @param binaryRepresentations The binary representations to store.
+                 * @throws IOException If an I/O error occurs.
+                 */
+                void store(ClassFileVersion classFileVersion, Map<TypeDescription, byte[]> binaryRepresentations) throws IOException;
 
                 /**
                  * Retains the supplied element in its original form.
@@ -3118,7 +3473,22 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                      */
                     public void store(Map<TypeDescription, byte[]> binaryRepresentations) throws IOException {
                         for (Map.Entry<TypeDescription, byte[]> entry : binaryRepresentations.entrySet()) {
-                            outputStream.putNextEntry(new JarEntry(entry.getKey().getInternalName() + CLASS_FILE_EXTENSION));
+                            outputStream.putNextEntry(new JarEntry(entry.getKey().getInternalName() + ClassFileLocator.CLASS_FILE_EXTENSION));
+                            outputStream.write(entry.getValue());
+                            outputStream.closeEntry();
+                        }
+                    }
+
+                    /**
+                     * {@inheritDoc}
+                     */
+                    public void store(ClassFileVersion classFileVersion, Map<TypeDescription, byte[]> binaryRepresentations) throws IOException {
+                        for (Map.Entry<TypeDescription, byte[]> entry : binaryRepresentations.entrySet()) {
+                            outputStream.putNextEntry(new JarEntry(ClassFileLocator.META_INF_VERSIONS
+                                    + classFileVersion.getJavaVersion()
+                                    + "/"
+                                    + entry.getKey().getInternalName()
+                                    + ClassFileLocator.CLASS_FILE_EXTENSION));
                             outputStream.write(entry.getValue());
                             outputStream.closeEntry();
                         }
@@ -3129,18 +3499,21 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                      */
                     public void retain(Source.Element element) throws IOException {
                         JarEntry entry = element.resolveAs(JarEntry.class);
+                        String name = element.getName();
                         outputStream.putNextEntry(entry == null
-                                ? new JarEntry(element.getName())
+                                ? new JarEntry(name)
                                 : entry);
-                        InputStream inputStream = element.getInputStream();
-                        try {
-                            byte[] buffer = new byte[1024];
-                            int length;
-                            while ((length = inputStream.read(buffer)) != -1) {
-                                outputStream.write(buffer, 0, length);
+                        if (entry != null || !name.endsWith("/")) {
+                            InputStream inputStream = element.getInputStream();
+                            try {
+                                byte[] buffer = new byte[1024];
+                                int length;
+                                while ((length = inputStream.read(buffer)) != -1) {
+                                    outputStream.write(buffer, 0, length);
+                                }
+                            } finally {
+                                inputStream.close();
                             }
-                        } finally {
-                            inputStream.close();
                         }
                         outputStream.closeEntry();
                     }
@@ -3167,7 +3540,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 /**
                  * {@inheritDoc}
                  */
-                public Sink write(Manifest manifest) {
+                public Sink write(@MaybeNull Manifest manifest) {
                     return this;
                 }
 
@@ -3175,6 +3548,13 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                  * {@inheritDoc}
                  */
                 public void store(Map<TypeDescription, byte[]> binaryRepresentations) {
+                    /* do nothing */
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public void store(ClassFileVersion classFileVersion, Map<TypeDescription, byte[]> binaryRepresentations) throws IOException {
                     /* do nothing */
                 }
 
@@ -3202,6 +3582,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 /**
                  * The map for storing all elements being received.
                  */
+                @HashCodeAndEqualsPlugin.Identity
                 private final Map<String, byte[]> storage;
 
                 /**
@@ -3223,7 +3604,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 /**
                  * {@inheritDoc}
                  */
-                public Sink write(Manifest manifest) throws IOException {
+                public Sink write(@MaybeNull Manifest manifest) throws IOException {
                     if (manifest != null) {
                         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
                         try {
@@ -3241,7 +3622,20 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                  */
                 public void store(Map<TypeDescription, byte[]> binaryRepresentations) {
                     for (Map.Entry<TypeDescription, byte[]> entry : binaryRepresentations.entrySet()) {
-                        storage.put(entry.getKey().getInternalName() + CLASS_FILE_EXTENSION, entry.getValue());
+                        storage.put(entry.getKey().getInternalName() + ClassFileLocator.CLASS_FILE_EXTENSION, entry.getValue());
+                    }
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public void store(ClassFileVersion classFileVersion, Map<TypeDescription, byte[]> binaryRepresentations) throws IOException {
+                    for (Map.Entry<TypeDescription, byte[]> entry : binaryRepresentations.entrySet()) {
+                        storage.put(ClassFileLocator.META_INF_VERSIONS
+                                + classFileVersion.getJavaVersion()
+                                + "/"
+                                + entry.getKey().getInternalName()
+                                + ClassFileLocator.CLASS_FILE_EXTENSION, entry.getValue());
                     }
                 }
 
@@ -3294,10 +3688,50 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 public Map<String, byte[]> toTypeMap() {
                     Map<String, byte[]> binaryRepresentations = new HashMap<String, byte[]>();
                     for (Map.Entry<String, byte[]> entry : storage.entrySet()) {
-                        if (entry.getKey().endsWith(CLASS_FILE_EXTENSION)) {
+                        if (entry.getKey().endsWith(ClassFileLocator.CLASS_FILE_EXTENSION) && !entry.getKey().startsWith(ClassFileLocator.META_INF_VERSIONS)) {
                             binaryRepresentations.put(entry.getKey()
-                                    .substring(0, entry.getKey().length() - CLASS_FILE_EXTENSION.length())
+                                    .substring(0, entry.getKey().length() - ClassFileLocator.CLASS_FILE_EXTENSION.length())
                                     .replace('/', '.'), entry.getValue());
+                        }
+                    }
+                    return binaryRepresentations;
+                }
+
+                /**
+                 * Returns the in-memory storage as a type-map where all non-class files are discarded.
+                 *
+                 * @param classFileVersion The class file version to consider when encountering multi-release class files.
+                 * @return The in-memory storage as a type map.
+                 */
+                public Map<String, byte[]> toTypeMap(ClassFileVersion classFileVersion) {
+                    Map<String, byte[]> binaryRepresentations = new HashMap<String, byte[]>();
+                    Map<String, Integer> versions = new HashMap<String, Integer>();
+                    for (Map.Entry<String, byte[]> entry : storage.entrySet()) {
+                        if (entry.getKey().endsWith(ClassFileLocator.CLASS_FILE_EXTENSION)) {
+                            String suffix;
+                            int version;
+                            if (entry.getKey().startsWith(ClassFileLocator.META_INF_VERSIONS)) {
+                                suffix = entry.getKey().substring(entry.getKey().indexOf('/', ClassFileLocator.META_INF_VERSIONS.length()) + 1);
+                                try {
+                                    int candidate = Integer.parseInt(entry.getKey().substring(ClassFileLocator.META_INF_VERSIONS.length(), entry.getKey().indexOf('/', ClassFileLocator.META_INF_VERSIONS.length())));
+                                    if (candidate < 7 || candidate > classFileVersion.getJavaVersion()) {
+                                        continue;
+                                    }
+                                    version = candidate;
+                                } catch (NumberFormatException ignored) {
+                                    continue;
+                                }
+                            } else {
+                                suffix = entry.getKey();
+                                version = 0;
+                            }
+                            Integer current = versions.get(suffix);
+                            if (current == null || current < version) {
+                                versions.put(suffix, version);
+                                binaryRepresentations.put(suffix
+                                        .substring(0, suffix.length() - ClassFileLocator.CLASS_FILE_EXTENSION.length())
+                                        .replace('/', '.'), entry.getValue());
+                            }
                         }
                     }
                     return binaryRepresentations;
@@ -3316,18 +3750,56 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 private final File folder;
 
                 /**
+                 * {@code true} if retained files should be linked and not copied.
+                 */
+                private final boolean link;
+
+                /**
                  * Creates a new target for a folder.
                  *
                  * @param folder The folder that is represented by this instance.
                  */
                 public ForFolder(File folder) {
+                    this(folder, false);
+                }
+
+                /**
+                 * Creates a new target for a folder.
+                 *
+                 * @param folder The folder that is represented by this instance.
+                 * @param link   {@code true} if retained files should be linked and not copied.
+                 */
+                public ForFolder(File folder, boolean link) {
                     this.folder = folder;
+                    this.link = link;
+                }
+
+                /**
+                 * Stores binary representations to a folder.
+                 *
+                 * @param folder                The base folder.
+                 * @param binaryRepresentations The binary representations to store.
+                 * @throws IOException If an I/O exception occurs.
+                 */
+                private static void doStore(File folder, Map<TypeDescription, byte[]> binaryRepresentations) throws IOException {
+                    for (Map.Entry<TypeDescription, byte[]> entry : binaryRepresentations.entrySet()) {
+                        File target = new File(folder, entry.getKey().getInternalName() + ClassFileLocator.CLASS_FILE_EXTENSION);
+                        if (!target.getParentFile().isDirectory() && !target.getParentFile().mkdirs()) {
+                            throw new IOException("Could not create directory: " + target.getParent());
+                        }
+                        OutputStream outputStream = new FileOutputStream(target);
+                        try {
+                            outputStream.write(entry.getValue());
+                        } finally {
+                            outputStream.close();
+                        }
+                    }
                 }
 
                 /**
                  * {@inheritDoc}
                  */
-                public Sink write(Manifest manifest) throws IOException {
+                public Sink write(@MaybeNull Manifest manifest) throws IOException {
                     if (manifest != null) {
                         File target = new File(folder, JarFile.MANIFEST_NAME);
                         if (!target.getParentFile().isDirectory() && !target.getParentFile().mkdirs()) {
@@ -3347,18 +3819,14 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                  * {@inheritDoc}
                  */
                 public void store(Map<TypeDescription, byte[]> binaryRepresentations) throws IOException {
-                    for (Map.Entry<TypeDescription, byte[]> entry : binaryRepresentations.entrySet()) {
-                        File target = new File(folder, entry.getKey().getInternalName() + CLASS_FILE_EXTENSION);
-                        if (!target.getParentFile().isDirectory() && !target.getParentFile().mkdirs()) {
-                            throw new IOException("Could not create directory: " + target.getParent());
-                        }
-                        OutputStream outputStream = new FileOutputStream(target);
-                        try {
-                            outputStream.write(entry.getValue());
-                        } finally {
-                            outputStream.close();
-                        }
-                    }
+                    doStore(folder, binaryRepresentations);
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public void store(ClassFileVersion classFileVersion, Map<TypeDescription, byte[]> binaryRepresentations) throws IOException {
+                    doStore(new File(folder, ClassFileLocator.META_INF_VERSIONS + classFileVersion.getJavaVersion()), binaryRepresentations);
                 }
 
                 /**
@@ -3366,14 +3834,19 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                  */
                 public void retain(Source.Element element) throws IOException {
                     String name = element.getName();
+                    File target = new File(folder, name);
                     if (!name.endsWith("/")) {
-                        File target = new File(folder, name), resolved = element.resolveAs(File.class);
-                        if (!target.getCanonicalPath().startsWith(folder.getCanonicalPath())) {
+                        File resolved = element.resolveAs(File.class);
+                        if (!target.getCanonicalPath().startsWith(folder.getCanonicalPath() + File.separatorChar)) {
                             throw new IllegalArgumentException(target + " is not a subdirectory of " + folder);
                         } else if (!target.getParentFile().isDirectory() && !target.getParentFile().mkdirs()) {
                             throw new IOException("Could not create directory: " + target.getParent());
                         } else if (resolved != null && !resolved.equals(target)) {
-                            FileSystem.getInstance().copy(resolved, target);
+                            if (link) {
+                                FileSystem.getInstance().link(resolved, target);
+                            } else {
+                                FileSystem.getInstance().copy(resolved, target);
+                            }
                         } else if (!target.equals(resolved)) {
                             InputStream inputStream = element.getInputStream();
                             try {
@@ -3391,6 +3864,8 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                                 inputStream.close();
                             }
                         }
+                    } else if (!target.isDirectory() && !target.mkdirs()) {
+                        throw new IllegalStateException("Cannot create requested directory: " + target);
                     }
                 }
 
@@ -3425,10 +3900,22 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 /**
                  * {@inheritDoc}
                  */
-                public Sink write(Manifest manifest) throws IOException {
-                    return manifest == null
-                            ? new Sink.ForJarOutputStream(new JarOutputStream(new FileOutputStream(file)))
-                            : new Sink.ForJarOutputStream(new JarOutputStream(new FileOutputStream(file), manifest));
+                public Sink write(@MaybeNull Manifest manifest) throws IOException {
+                    OutputStream outputStream = new FileOutputStream(file);
+                    try {
+                        return manifest == null
+                                ? new Sink.ForJarOutputStream(new JarOutputStream(outputStream))
+                                : new Sink.ForJarOutputStream(new JarOutputStream(outputStream, manifest));
+                    } catch (RuntimeException exception) {
+                        outputStream.close();
+                        throw exception;
+                    } catch (IOException exception) {
+                        outputStream.close();
+                        throw exception;
+                    } catch (Error error) {
+                        outputStream.close();
+                        throw error;
+                    }
                 }
             }
         }
@@ -3482,6 +3969,12 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 class ForTransformedElement implements Materializable {
 
                     /**
+                     * The multi-release class file version number or {@code null} if a regular class.
+                     */
+                    @MaybeNull
+                    private final ClassFileVersion classFileVersion;
+
+                    /**
                      * The type that has been transformed.
                      */
                     private final DynamicType dynamicType;
@@ -3489,9 +3982,11 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                     /**
                      * Creates a new materializable for a successfully transformed type.
                      *
-                     * @param dynamicType The type that has been transformed.
+                     * @param classFileVersion The multi-release class file version number or {@code null} if a regular class.
+                     * @param dynamicType      The type that has been transformed.
                      */
-                    protected ForTransformedElement(DynamicType dynamicType) {
+                    protected ForTransformedElement(@MaybeNull ClassFileVersion classFileVersion, DynamicType dynamicType) {
+                        this.classFileVersion = classFileVersion;
                         this.dynamicType = dynamicType;
                     }
 
@@ -3503,7 +3998,11 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                                             Map<TypeDescription,
                                                     List<Throwable>> failed,
                                             List<String> unresolved) throws IOException {
-                        sink.store(dynamicType.getAllTypes());
+                        if (classFileVersion == null) {
+                            sink.store(dynamicType.getAllTypes());
+                        } else {
+                            sink.store(classFileVersion, dynamicType.getAllTypes());
+                        }
                         transformed.add(dynamicType.getTypeDescription());
                     }
                 }
@@ -4097,7 +4596,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
             }
 
             @Override
-            public boolean equals(Object other) {
+            public boolean equals(@MaybeNull Object other) {
                 if (this == other) {
                     return true;
                 } else if (other == null || getClass() != other.getClass()) {
@@ -4185,6 +4684,13 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
             private final ClassFileLocator classFileLocator;
 
             /**
+             * The class file version to use for multi-release jars, or {@code null}.
+             */
+            @MaybeNull
+            @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
+            private final ClassFileVersion classFileVersion;
+
+            /**
              * The listener to use.
              */
             private final Listener listener;
@@ -4231,6 +4737,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         typeStrategy,
                         PoolStrategy.Default.FAST,
                         ClassFileLocator.NoOp.INSTANCE,
+                        null,
                         Listener.NoOp.INSTANCE,
                         new ErrorHandler.Compound(ErrorHandler.Failing.FAIL_FAST,
                                 ErrorHandler.Enforcing.ALL_TYPES_RESOLVED,
@@ -4246,6 +4753,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
              * @param typeStrategy       The type strategy to use.
              * @param poolStrategy       The pool strategy to use.
              * @param classFileLocator   The class file locator to use.
+             * @param classFileVersion   The class file version to use for multi-release jars, or {@code null}.
              * @param listener           The listener to use.
              * @param errorHandler       The error handler to use.
              * @param dispatcherFactory  The dispatcher factory to use.
@@ -4255,6 +4763,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                               TypeStrategy typeStrategy,
                               PoolStrategy poolStrategy,
                               ClassFileLocator classFileLocator,
+                              @MaybeNull ClassFileVersion classFileVersion,
                               Listener listener,
                               ErrorHandler errorHandler,
                               Dispatcher.Factory dispatcherFactory,
@@ -4263,6 +4772,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 this.typeStrategy = typeStrategy;
                 this.poolStrategy = poolStrategy;
                 this.classFileLocator = classFileLocator;
+                this.classFileVersion = classFileVersion;
                 this.listener = listener;
                 this.errorHandler = errorHandler;
                 this.dispatcherFactory = dispatcherFactory;
@@ -4279,6 +4789,30 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
              */
             public static Engine of(EntryPoint entryPoint, ClassFileVersion classFileVersion, MethodNameTransformer methodNameTransformer) {
                 return new Default(entryPoint.byteBuddy(classFileVersion), new TypeStrategy.ForEntryPoint(entryPoint, methodNameTransformer));
+            }
+
+            /**
+             * Scans a class loader for plugins declared in a <i>META-INF/net.bytebuddy/build.plugins</i> file.
+             *
+             * @param classLoader The class loader to scan.
+             * @return A set containing all plugins that were found.
+             * @throws IOException If an I/O exception occurred.
+             */
+            public static Set<String> scan(ClassLoader classLoader) throws IOException {
+                Set<String> plugins = new HashSet<String>();
+                Enumeration<URL> enumeration = classLoader.getResources(PLUGIN_FILE);
+                while (enumeration.hasMoreElements()) {
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(enumeration.nextElement().openStream(), "UTF-8"));
+                    try {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            plugins.add(line);
+                        }
+                    } finally {
+                        reader.close();
+                    }
+                }
+                return plugins;
             }
 
             /**
@@ -4309,6 +4843,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         typeStrategy,
                         poolStrategy,
                         classFileLocator,
+                        classFileVersion,
                         listener,
                         errorHandler,
                         dispatcherFactory,
@@ -4323,6 +4858,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         typeStrategy,
                         poolStrategy,
                         classFileLocator,
+                        classFileVersion,
                         listener,
                         errorHandler,
                         dispatcherFactory,
@@ -4337,6 +4873,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         typeStrategy,
                         poolStrategy,
                         classFileLocator,
+                        classFileVersion,
                         listener,
                         errorHandler,
                         dispatcherFactory,
@@ -4351,6 +4888,22 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         typeStrategy,
                         poolStrategy,
                         new ClassFileLocator.Compound(this.classFileLocator, classFileLocator),
+                        classFileVersion,
+                        listener,
+                        errorHandler,
+                        dispatcherFactory,
+                        ignoredTypeMatcher);
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            public Engine with(@MaybeNull ClassFileVersion classFileVersion) {
+                return new Default(byteBuddy,
+                        typeStrategy,
+                        poolStrategy,
+                        classFileLocator,
+                        classFileVersion,
                         listener,
                         errorHandler,
                         dispatcherFactory,
@@ -4365,6 +4918,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         typeStrategy,
                         poolStrategy,
                         classFileLocator,
+                        classFileVersion,
                         new Listener.Compound(this.listener, listener),
                         errorHandler,
                         dispatcherFactory,
@@ -4379,6 +4933,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         typeStrategy,
                         poolStrategy,
                         classFileLocator,
+                        classFileVersion,
                         listener,
                         Listener.NoOp.INSTANCE,
                         dispatcherFactory,
@@ -4393,6 +4948,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         typeStrategy,
                         poolStrategy,
                         classFileLocator,
+                        classFileVersion,
                         listener,
                         new ErrorHandler.Compound(errorHandlers),
                         dispatcherFactory,
@@ -4407,6 +4963,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         typeStrategy,
                         poolStrategy,
                         classFileLocator,
+                        classFileVersion,
                         listener,
                         errorHandler,
                         dispatcherFactory,
@@ -4421,6 +4978,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         typeStrategy,
                         poolStrategy,
                         classFileLocator,
+                        classFileVersion,
                         listener,
                         errorHandler,
                         dispatcherFactory,
@@ -4437,6 +4995,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 List<String> unresolved = new ArrayList<String>();
                 Throwable rethrown = null;
                 List<Plugin> plugins = new ArrayList<Plugin>(factories.size());
+                List<WithInitialization> initializers = new ArrayList<WithInitialization>();
                 List<WithPreprocessor> preprocessors = new ArrayList<WithPreprocessor>();
                 try {
                     for (Plugin.Factory factory : factories) {
@@ -4445,15 +5004,21 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                         if (plugin instanceof WithPreprocessor) {
                             preprocessors.add((WithPreprocessor) plugin);
                         }
+                        if (plugin instanceof WithInitialization) {
+                            initializers.add((WithInitialization) plugin);
+                        }
                     }
                     Source.Origin origin = source.read();
                     try {
-                        ClassFileLocator classFileLocator = new ClassFileLocator.Compound(origin.getClassFileLocator(), this.classFileLocator);
+                        ClassFileLocator classFileLocator = new ClassFileLocator.Compound(origin.toClassFileLocator(classFileVersion), this.classFileLocator);
                         TypePool typePool = poolStrategy.typePool(classFileLocator);
                         Manifest manifest = origin.getManifest();
                         listener.onManifest(manifest);
                         Target.Sink sink = target.write(manifest);
                         try {
+                            for (WithInitialization initializer : initializers) {
+                                sink.store(initializer.initialize(classFileLocator));
+                            }
                             Dispatcher dispatcher = dispatcherFactory.make(sink, transformed, failed, unresolved);
                             try {
                                 for (Source.Element element : origin) {
@@ -4465,14 +5030,37 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                                     while (name.startsWith("/")) {
                                         name = name.substring(1);
                                     }
-                                    if (name.endsWith(CLASS_FILE_EXTENSION)) {
-                                        dispatcher.accept(new Preprocessor(element,
-                                                name.substring(0, name.length() - CLASS_FILE_EXTENSION.length()).replace('/', '.'),
-                                                classFileLocator,
-                                                typePool,
-                                                listener,
-                                                plugins,
-                                                preprocessors), preprocessors.isEmpty());
+                                    if (name.endsWith(ClassFileLocator.CLASS_FILE_EXTENSION)
+                                            && (!name.startsWith("META-INF") || name.startsWith(ClassFileLocator.META_INF_VERSIONS))
+                                            && !name.endsWith(PACKAGE_INFO)
+                                            && !name.endsWith(MODULE_INFO)) {
+                                        try {
+                                            ClassFileVersion classFileVersion = name.startsWith(ClassFileLocator.META_INF_VERSIONS)
+                                                    ? ClassFileVersion.ofJavaVersion(Integer.parseInt(name.substring(ClassFileLocator.META_INF_VERSIONS.length(), name.indexOf('/', ClassFileLocator.META_INF_VERSIONS.length()))))
+                                                    : null;
+                                            if (classFileVersion == null || classFileVersion.isAtLeast(ClassFileVersion.JAVA_V8)
+                                                    && this.classFileVersion != null
+                                                    && this.classFileVersion.isAtLeast(ClassFileVersion.JAVA_V9)
+                                                    && classFileVersion.isAtMost(this.classFileVersion)) {
+                                                String typeName = name.substring(name.startsWith(ClassFileLocator.META_INF_VERSIONS)
+                                                        ? name.indexOf('/', ClassFileLocator.META_INF_VERSIONS.length()) + 1
+                                                        : 0, name.length() - ClassFileLocator.CLASS_FILE_EXTENSION.length()).replace('/', '.');
+                                                dispatcher.accept(new Preprocessor(element,
+                                                        typeName,
+                                                        new SourceEntryPrependingClassFileLocator(typeName, element, classFileLocator),
+                                                        classFileVersion,
+                                                        typePool,
+                                                        listener,
+                                                        plugins,
+                                                        preprocessors), preprocessors.isEmpty());
+                                            } else {
+                                                listener.onResource(name);
+                                                sink.retain(element);
+                                            }
+                                        } catch (NumberFormatException ignored) {
+                                            listener.onResource(name);
+                                            sink.retain(element);
+                                        }
                                     } else if (!name.equals(JarFile.MANIFEST_NAME)) {
                                         listener.onResource(name);
                                         sink.retain(element);
@@ -4518,6 +5106,65 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
             }
 
             /**
+             * A class file locator that shadows a given {@link Source.Element}'s type with the explicit element.
+             * This avoids that caching yields the wrong class file in case of multi-release jars.
+             */
+            @HashCodeAndEqualsPlugin.Enhance
+            protected static class SourceEntryPrependingClassFileLocator implements ClassFileLocator {
+
+                /**
+                 * The name of the represented type.
+                 */
+                private final String name;
+
+                /**
+                 * The corresponding source element.
+                 */
+                private final Source.Element element;
+
+                /**
+                 * The actual class file locator to query for all other types.
+                 */
+                private final ClassFileLocator delegate;
+
+                /**
+                 * Creates a class file locator that prepends a {@link Source.Element}.
+                 *
+                 * @param name     The name of the represented type.
+                 * @param element  The corresponding source element.
+                 * @param delegate The actual class file locator to query for all other types.
+                 */
+                protected SourceEntryPrependingClassFileLocator(String name, Source.Element element, ClassFileLocator delegate) {
+                    this.name = name;
+                    this.element = element;
+                    this.delegate = delegate;
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public Resolution locate(String name) throws IOException {
+                    if (name.endsWith(this.name)) {
+                        InputStream inputStream = element.getInputStream();
+                        try {
+                            return new Resolution.Explicit(StreamDrainer.DEFAULT.drain(inputStream));
+                        } finally {
+                            inputStream.close();
+                        }
+                    } else {
+                        return delegate.locate(name);
+                    }
+                }
+
+                /**
+                 * {@inheritDoc}
+                 */
+                public void close() throws IOException {
+                    delegate.close();
+                }
+            }
+
+            /**
              * A preprocessor for a parallel plugin engine.
              */
             private class Preprocessor implements Callable<Callable<? extends Dispatcher.Materializable>> {
@@ -4536,6 +5183,13 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                  * The class file locator to use.
                  */
                 private final ClassFileLocator classFileLocator;
+
+                /**
+                 * The multi-release class file version or {@code null} for a regular class.
+                 */
+                @MaybeNull
+                @HashCodeAndEqualsPlugin.ValueHandling(HashCodeAndEqualsPlugin.ValueHandling.Sort.REVERSE_NULLABILITY)
+                private final ClassFileVersion classFileVersion;
 
                 /**
                  * The type pool to use.
@@ -4563,6 +5217,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                  * @param element          The processed element.
                  * @param typeName         The name of the processed type.
                  * @param classFileLocator The class file locator to use.
+                 * @param classFileVersion The multi-release class file version or {@code null} for a regular class.
                  * @param typePool         The type pool to use.
                  * @param listener         The listener to notify.
                  * @param plugins          The plugins to apply.
@@ -4571,6 +5226,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 private Preprocessor(Source.Element element,
                                      String typeName,
                                      ClassFileLocator classFileLocator,
+                                     @MaybeNull ClassFileVersion classFileVersion,
                                      TypePool typePool,
                                      Listener listener,
                                      List<Plugin> plugins,
@@ -4578,6 +5234,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                     this.element = element;
                     this.typeName = typeName;
                     this.classFileLocator = classFileLocator;
+                    this.classFileVersion = classFileVersion;
                     this.typePool = typePool;
                     this.listener = listener;
                     this.plugins = plugins;
@@ -4597,7 +5254,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                                 for (WithPreprocessor preprocessor : preprocessors) {
                                     preprocessor.onPreprocess(typeDescription, classFileLocator);
                                 }
-                                return new Resolved(typeDescription);
+                                return new Resolved(classFileVersion, typeDescription);
                             } else {
                                 return new Ignored(typeDescription);
                             }
@@ -4622,6 +5279,12 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                 private class Resolved implements Callable<Dispatcher.Materializable> {
 
                     /**
+                     * The multi-release Java version number or {@code null} if a regular class.
+                     */
+                    @MaybeNull
+                    private final ClassFileVersion classFileVersion;
+
+                    /**
                      * A description of the resolved type.
                      */
                     private final TypeDescription typeDescription;
@@ -4629,9 +5292,11 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                     /**
                      * Creates a new resolved materializable.
                      *
-                     * @param typeDescription A description of the resolved type.
+                     * @param classFileVersion The multi-release Java version number or {@code null} if a regular class.
+                     * @param typeDescription  A description of the resolved type.
                      */
-                    private Resolved(TypeDescription typeDescription) {
+                    private Resolved(@MaybeNull ClassFileVersion classFileVersion, TypeDescription typeDescription) {
+                        this.classFileVersion = classFileVersion;
                         this.typeDescription = typeDescription;
                     }
 
@@ -4662,14 +5327,20 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
                                 listener.onError(typeDescription, errored);
                                 return new Dispatcher.Materializable.ForFailedElement(element, typeDescription, errored);
                             } else if (!applied.isEmpty()) {
-                                DynamicType dynamicType = builder.make(TypeResolutionStrategy.Disabled.INSTANCE, typePool);
-                                listener.onTransformation(typeDescription, applied);
-                                for (Map.Entry<TypeDescription, LoadedTypeInitializer> entry : dynamicType.getLoadedTypeInitializers().entrySet()) {
-                                    if (entry.getValue().isAlive()) {
-                                        listener.onLiveInitializer(typeDescription, entry.getKey());
+                                try {
+                                    DynamicType dynamicType = builder.make(TypeResolutionStrategy.Disabled.INSTANCE, typePool);
+                                    listener.onTransformation(typeDescription, applied);
+                                    for (Map.Entry<TypeDescription, LoadedTypeInitializer> entry : dynamicType.getLoadedTypeInitializers().entrySet()) {
+                                        if (entry.getValue().isAlive()) {
+                                            listener.onLiveInitializer(typeDescription, entry.getKey());
+                                        }
                                     }
+                                    return new Dispatcher.Materializable.ForTransformedElement(classFileVersion, dynamicType);
+                                } catch (Throwable throwable) {
+                                    errored.add(throwable);
+                                    listener.onError(typeDescription, errored);
+                                    return new Dispatcher.Materializable.ForFailedElement(element, typeDescription, errored);
                                 }
-                                return new Dispatcher.Materializable.ForTransformedElement(dynamicType);
                             } else {
                                 listener.onIgnored(typeDescription, ignored);
                                 return new Dispatcher.Materializable.ForRetainedElement(element);
@@ -4745,7 +5416,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
         /**
          * {@inheritDoc}
          */
-        public boolean matches(@Nullable TypeDescription target) {
+        public boolean matches(@MaybeNull TypeDescription target) {
             return false;
         }
 
@@ -4787,7 +5458,7 @@ public interface Plugin extends ElementMatcher<TypeDescription>, Closeable {
         /**
          * {@inheritDoc}
          */
-        public boolean matches(@Nullable TypeDescription target) {
+        public boolean matches(@MaybeNull TypeDescription target) {
             return matcher.matches(target);
         }
     }

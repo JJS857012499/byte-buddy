@@ -15,7 +15,6 @@
  */
 package net.bytebuddy.dynamic.loading;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.build.AccessControllerPlugin;
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
@@ -23,10 +22,9 @@ import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.utility.JavaModule;
 import net.bytebuddy.utility.dispatcher.JavaDispatcher;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.io.File;
 import java.io.IOException;
 import java.lang.instrument.ClassDefinition;
@@ -208,7 +206,7 @@ public class ClassReloadingStrategy implements ClassLoadingStrategy<ClassLoader>
     /**
      * {@inheritDoc}
      */
-    public Map<TypeDescription, Class<?>> load(@Nullable ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
+    public Map<TypeDescription, Class<?>> load(@MaybeNull ClassLoader classLoader, Map<TypeDescription, byte[]> types) {
         Map<String, Class<?>> availableTypes = new HashMap<String, Class<?>>(preregisteredTypes);
         for (Class<?> type : instrumentation.getInitiatedClasses(classLoader)) {
             availableTypes.put(TypeDescription.ForLoadedType.getName(type), type);
@@ -433,7 +431,7 @@ public class ClassReloadingStrategy implements ClassLoadingStrategy<ClassLoader>
         /**
          * Indicates that a class is not redefined.
          */
-        @Nonnull(when = When.NEVER)
+        @AlwaysNull
         private static final byte[] NO_REDEFINITION = null;
 
         /**
@@ -518,12 +516,11 @@ public class ClassReloadingStrategy implements ClassLoadingStrategy<ClassLoader>
             /**
              * {@inheritDoc}
              */
-            @Nullable
-            @SuppressFBWarnings(value = "EI_EXPOSE_REP", justification = "Value is always null")
-            public byte[] transform(@Nullable ClassLoader classLoader,
-                                    @Nullable String internalTypeName,
-                                    @Nullable Class<?> classBeingRedefined,
-                                    ProtectionDomain protectionDomain,
+            @MaybeNull
+            public byte[] transform(@MaybeNull ClassLoader classLoader,
+                                    @MaybeNull String internalTypeName,
+                                    @MaybeNull Class<?> classBeingRedefined,
+                                    @MaybeNull ProtectionDomain protectionDomain,
                                     byte[] classfileBuffer) {
                 if (internalTypeName == null) {
                     return NO_REDEFINITION;
@@ -557,11 +554,11 @@ public class ClassReloadingStrategy implements ClassLoadingStrategy<ClassLoader>
             /**
              * {@inheritDoc}
              */
-            @Nullable
-            public byte[] transform(@Nullable ClassLoader classLoader,
-                                    @Nullable String internalTypeName,
-                                    @Nullable Class<?> classBeingRedefined,
-                                    ProtectionDomain protectionDomain,
+            @MaybeNull
+            public byte[] transform(@MaybeNull ClassLoader classLoader,
+                                    @MaybeNull String internalTypeName,
+                                    @MaybeNull Class<?> classBeingRedefined,
+                                    @MaybeNull ProtectionDomain protectionDomain,
                                     byte[] classfileBuffer) {
                 return NO_REDEFINITION;
             }

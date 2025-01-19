@@ -20,9 +20,9 @@ import net.bytebuddy.description.type.TypeDefinition;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.description.type.TypeList;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.objectweb.asm.Opcodes;
 
-import javax.annotation.Nullable;
 import java.io.Serializable;
 import java.lang.reflect.*;
 import java.util.List;
@@ -68,7 +68,7 @@ public enum JavaType {
      */
     DYNAMIC_CONSTANT_DESCRIPTION("java.lang.constant.DynamicConstantDesc",
             Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT,
-            TypeDescription.OBJECT,
+            TypeDescription.ForLoadedType.of(Object.class),
             CONSTANT_DESCRIPTION.getTypeStub()),
 
     /**
@@ -108,7 +108,7 @@ public enum JavaType {
     /**
      * The Java 7 {@code java.lang.invoke.MethodHandle} type.
      */
-    METHOD_HANDLE("java.lang.invoke.MethodHandle", Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, TypeDescription.OBJECT, CONSTABLE.getTypeStub()),
+    METHOD_HANDLE("java.lang.invoke.MethodHandle", Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, TypeDescription.ForLoadedType.of(Object.class), CONSTABLE.getTypeStub()),
 
     /**
      * The Java 7 {@code java.lang.invoke.MethodHandles} type.
@@ -120,7 +120,7 @@ public enum JavaType {
      */
     METHOD_TYPE("java.lang.invoke.MethodType",
             Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL,
-            TypeDescription.OBJECT,
+            TypeDescription.ForLoadedType.of(Object.class),
             CONSTABLE.getTypeStub(),
             TYPE_DESCRIPTOR_OF_METHOD.getTypeStub(),
             TypeDescription.ForLoadedType.of(Serializable.class)),
@@ -138,7 +138,7 @@ public enum JavaType {
     /**
      * The Java 9 {@code java.lang.invoke.VarHandle} type.
      */
-    VAR_HANDLE("java.lang.invoke.VarHandle", Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, TypeDescription.Generic.OBJECT, CONSTABLE.getTypeStub()),
+    VAR_HANDLE("java.lang.invoke.VarHandle", Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class), CONSTABLE.getTypeStub()),
 
     /**
      * The Java 8 {@code java.lang.reflect.Parameter} type.
@@ -188,7 +188,7 @@ public enum JavaType {
      * @param superClass  The super class of this type when creating a stub or {@code null} if no super class is defined.
      * @param anInterface The interfaces of this type when creating a stub.
      */
-    JavaType(String typeName, int modifiers, @Nullable Type superClass, Type... anInterface) {
+    JavaType(String typeName, int modifiers, @MaybeNull Type superClass, Type... anInterface) {
         this(typeName, modifiers, superClass == null
                 ? TypeDescription.Generic.UNDEFINED
                 : TypeDescription.Generic.Sort.describe(superClass), new TypeList.Generic.ForLoadedTypes(anInterface));
@@ -202,7 +202,7 @@ public enum JavaType {
      * @param superClass  The super class of this type when creating a stub or {@code null} if no super class is defined.
      * @param anInterface The interfaces of this type when creating a stub.
      */
-    JavaType(String typeName, int modifiers, @Nullable TypeDefinition superClass, TypeDefinition... anInterface) {
+    JavaType(String typeName, int modifiers, @MaybeNull TypeDefinition superClass, TypeDefinition... anInterface) {
         this(typeName, modifiers, superClass == null
                 ? TypeDescription.Generic.UNDEFINED
                 : superClass.asGenericType(), new TypeList.Generic.Explicit(anInterface));
@@ -213,10 +213,10 @@ public enum JavaType {
      *
      * @param typeName   The binary name of this type.
      * @param modifiers  The modifiers of this type when creating a stub.
-     * @param superClass  The super class of this type when creating a stub or {@code null} if no super class is defined.
+     * @param superClass The super class of this type when creating a stub or {@code null} if no super class is defined.
      * @param interfaces The interfaces of this type when creating a stub.
      */
-    JavaType(String typeName, int modifiers, @Nullable TypeDescription.Generic superClass, TypeList.Generic interfaces) {
+    JavaType(String typeName, int modifiers, @MaybeNull TypeDescription.Generic superClass, TypeList.Generic interfaces) {
         typeDescription = new LatentTypeWithSimpleName(typeName, modifiers, superClass, interfaces);
     }
 
@@ -307,7 +307,7 @@ public enum JavaType {
          * @param superClass The super type or {@code null} if no such type exists.
          * @param interfaces The interfaces that this type implements.
          */
-        protected LatentTypeWithSimpleName(String name, int modifiers, @Nullable Generic superClass, List<? extends Generic> interfaces) {
+        protected LatentTypeWithSimpleName(String name, int modifiers, @MaybeNull Generic superClass, List<? extends Generic> interfaces) {
             super(name, modifiers, superClass, interfaces);
         }
 

@@ -15,9 +15,13 @@
  */
 package net.bytebuddy.description.method;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.build.AccessControllerPlugin;
 import net.bytebuddy.build.CachedReturnPlugin;
-import net.bytebuddy.description.*;
+import net.bytebuddy.description.ByteCodeElement;
+import net.bytebuddy.description.DeclaredByType;
+import net.bytebuddy.description.ModifierReviewable;
+import net.bytebuddy.description.TypeVariableSource;
 import net.bytebuddy.description.annotation.AnnotationDescription;
 import net.bytebuddy.description.annotation.AnnotationList;
 import net.bytebuddy.description.annotation.AnnotationValue;
@@ -32,13 +36,13 @@ import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.utility.JavaType;
 import net.bytebuddy.utility.dispatcher.JavaDispatcher;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.signature.SignatureWriter;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.*;
 import java.security.PrivilegedAction;
@@ -52,10 +56,9 @@ import static net.bytebuddy.matcher.ElementMatchers.ofSort;
  * interface must provide meaningful {@code equal(Object)} and {@code hashCode()} implementations.
  */
 public interface MethodDescription extends TypeVariableSource,
-        DeclaredByType.WithMandatoryDeclaration,
         ModifierReviewable.ForMethodDescription,
-        NamedElement.WithGenericName,
-        ByteCodeElement,
+        DeclaredByType.WithMandatoryDeclaration,
+        ByteCodeElement.Member,
         ByteCodeElement.TypeDependant<MethodDescription.InDefinedShape, MethodDescription.Token> {
 
     /**
@@ -77,8 +80,14 @@ public interface MethodDescription extends TypeVariableSource,
      * Represents any undefined property of a type description that is instead represented as {@code null} in order
      * to resemble the Java reflection API which returns {@code null} and is intuitive to many Java developers.
      */
-    @Nonnull(when = When.NEVER)
+    @AlwaysNull
     InDefinedShape UNDEFINED = null;
+
+    /**
+     * {@inheritDoc}
+     */
+    @Nonnull
+    TypeDefinition getDeclaringType();
 
     /**
      * Returns the return type of the described method.
@@ -203,7 +212,7 @@ public interface MethodDescription extends TypeVariableSource,
      *
      * @return The method's default annotation value or {@code null} if no default value is defined for this method.
      */
-    @Nullable
+    @MaybeNull
     AnnotationValue<?, ?> getDefaultValue();
 
     /**
@@ -214,7 +223,7 @@ public interface MethodDescription extends TypeVariableSource,
      * @param <T>  The type to cast the default value to.
      * @return The casted default value.
      */
-    @Nullable
+    @MaybeNull
     <T> T getDefaultValue(Class<T> type);
 
     /**
@@ -249,7 +258,7 @@ public interface MethodDescription extends TypeVariableSource,
     boolean isConstantBootstrap();
 
     /**
-     * Checks if this method is a valid bootstrap method for an constantdynamic call.
+     * Checks if this method is a valid bootstrap method for a constantdynamic call.
      *
      * @param arguments The types of the explicit arguments that are supplied to the bootstrap method.
      * @return {@code true} if this method is a valid bootstrap method for an <i>constantdynamic</i> call.
@@ -279,7 +288,7 @@ public interface MethodDescription extends TypeVariableSource,
      *
      * @return This method's (annotated) receiver type.
      */
-    @Nullable
+    @MaybeNull
     TypeDescription.Generic getReceiverType();
 
     /**
@@ -352,7 +361,7 @@ public interface MethodDescription extends TypeVariableSource,
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @MaybeNull
             public TypeDescription.Generic getReceiverType() {
                 if (isStatic()) {
                     return TypeDescription.Generic.UNDEFINED;
@@ -431,7 +440,7 @@ public interface MethodDescription extends TypeVariableSource,
                  * @param value The {@code java.lang.reflect.Executable} to resolve.
                  * @return An instance of {@code java.lang.reflect.AnnotatedType} that represents the receiver of the supplied executable.
                  */
-                @Nullable
+                @MaybeNull
                 @JavaDispatcher.Defaults
                 AnnotatedElement getAnnotatedReceiverType(Object value);
             }
@@ -529,7 +538,7 @@ public interface MethodDescription extends TypeVariableSource,
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public String getGenericSignature() {
             try {
                 SignatureWriter signatureWriter = new SignatureWriter();
@@ -580,9 +589,14 @@ public interface MethodDescription extends TypeVariableSource,
          * {@inheritDoc}
          */
         public int getActualModifiers(boolean manifest) {
-            return manifest
-                    ? getActualModifiers() & ~(Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)
-                    : getActualModifiers() & ~Opcodes.ACC_NATIVE | Opcodes.ACC_ABSTRACT;
+            int modifiers = getActualModifiers();
+            if (manifest) {
+                return modifiers & ~(Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE);
+            } else if ((modifiers & (Opcodes.ACC_NATIVE | Opcodes.ACC_ABSTRACT)) == 0) {
+                return modifiers | Opcodes.ACC_ABSTRACT;
+            } else {
+                return modifiers;
+            }
         }
 
         /**
@@ -596,23 +610,21 @@ public interface MethodDescription extends TypeVariableSource,
          * {@inheritDoc}
          */
         public boolean isVisibleTo(TypeDescription typeDescription) {
-            return (isVirtual() || getDeclaringType().asErasure().isVisibleTo(typeDescription))
-                    && (isPublic()
-                    || typeDescription.equals(getDeclaringType().asErasure())
-                    || isProtected() && getDeclaringType().asErasure().isAssignableFrom(typeDescription)
-                    || !isPrivate() && typeDescription.isSamePackage(getDeclaringType().asErasure())
-                    || isPrivate() && typeDescription.isNestMateOf(getDeclaringType().asErasure()));
+            return getDeclaringType().asErasure().equals(typeDescription)
+                    || isPublic() && getDeclaringType().isPublic()
+                    || (isPublic() || isProtected()) && getDeclaringType().asErasure().isAssignableFrom(typeDescription)
+                    || !isPrivate() && getDeclaringType().asErasure().isSamePackage(typeDescription)
+                    || isPrivate() && getDeclaringType().asErasure().isNestMateOf(typeDescription);
         }
 
         /**
          * {@inheritDoc}
          */
         public boolean isAccessibleTo(TypeDescription typeDescription) {
-            return (isVirtual() || getDeclaringType().asErasure().isVisibleTo(typeDescription))
-                    && (isPublic()
-                    || typeDescription.equals(getDeclaringType().asErasure())
-                    || !isPrivate() && typeDescription.isSamePackage(getDeclaringType().asErasure()))
-                    || isPrivate() && typeDescription.isNestMateOf(getDeclaringType().asErasure());
+            return getDeclaringType().asErasure().equals(typeDescription)
+                    || isPublic() && getDeclaringType().isPublic()
+                    || !isPrivate() && getDeclaringType().asErasure().isSamePackage(typeDescription)
+                    || isPrivate() && getDeclaringType().asErasure().isNestMateOf(typeDescription);
         }
 
         /**
@@ -645,7 +657,7 @@ public interface MethodDescription extends TypeVariableSource,
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public <T> T getDefaultValue(Class<T> type) {
             return type.cast(getDefaultValue());
         }
@@ -668,6 +680,7 @@ public interface MethodDescription extends TypeVariableSource,
          * @param bootstrapped The type of the bootstrap method's type representation.
          * @return {@code true} if this method is a bootstrap method assuming the supplied type representation.
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
         private boolean isBootstrap(TypeDescription bootstrapped) {
             TypeList parameterTypes = getParameters().asTypeList().asErasures();
             switch (parameterTypes.size()) {
@@ -696,6 +709,7 @@ public interface MethodDescription extends TypeVariableSource,
          * @param arguments The types of the explicit arguments that are supplied to the bootstrap method.
          * @return {@code true} if this method is a bootstrap method for the supplied arguments.
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
         private boolean isBootstrapping(List<? extends TypeDefinition> arguments) {
             TypeList targets = getParameters().asTypeList().asErasures();
             if (targets.size() < 4) {
@@ -756,7 +770,7 @@ public interface MethodDescription extends TypeVariableSource,
          * {@inheritDoc}
          */
         public boolean isConstantBootstrap() {
-            return isBootstrap(TypeDescription.CLASS);
+            return isBootstrap(TypeDescription.ForLoadedType.of(Class.class));
         }
 
         /**
@@ -779,6 +793,7 @@ public interface MethodDescription extends TypeVariableSource,
         /**
          * {@inheritDoc}
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
         public boolean isDefaultValue(AnnotationValue<?, ?> annotationValue) {
             if (!isDefaultValue()) {
                 return false;
@@ -846,7 +861,7 @@ public interface MethodDescription extends TypeVariableSource,
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeVariableSource getEnclosingSource() {
             return isStatic()
                     ? TypeVariableSource.UNDEFINED
@@ -933,7 +948,7 @@ public interface MethodDescription extends TypeVariableSource,
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (!(other instanceof MethodDescription)) {
@@ -1023,6 +1038,20 @@ public interface MethodDescription extends TypeVariableSource,
             }
             return stringBuilder.toString();
         }
+
+        @Override
+        protected String toSafeString() {
+            StringBuilder stringBuilder = new StringBuilder();
+            int modifiers = getModifiers() & SOURCE_MODIFIERS;
+            if (modifiers != EMPTY_MASK) {
+                stringBuilder.append(Modifier.toString(modifiers)).append(' ');
+            }
+            if (isMethod()) {
+                stringBuilder.append('?').append(' ');
+                stringBuilder.append(getDeclaringType().asErasure().getActualName()).append('.');
+            }
+            return stringBuilder.append(getName()).append("(?)").toString();
+        }
     }
 
     /**
@@ -1051,7 +1080,7 @@ public interface MethodDescription extends TypeVariableSource,
          * {@inheritDoc}
          */
         public TypeDescription.Generic getReturnType() {
-            return TypeDescription.Generic.VOID;
+            return TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(void.class);
         }
 
         /**
@@ -1135,7 +1164,7 @@ public interface MethodDescription extends TypeVariableSource,
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @AlwaysNull
         public AnnotationValue<?, ?> getDefaultValue() {
             return AnnotationValue.UNDEFINED;
         }
@@ -1304,7 +1333,7 @@ public interface MethodDescription extends TypeVariableSource,
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public AnnotationValue<?, ?> getDefaultValue() {
             Object value = executable.getDefaultValue();
             return value == null
@@ -1380,13 +1409,13 @@ public interface MethodDescription extends TypeVariableSource,
         /**
          * The default value of this method or {@code null} if no default annotation value is defined.
          */
-        @Nullable
+        @MaybeNull
         private final AnnotationValue<?, ?> defaultValue;
 
         /**
          * The receiver type of this method or {@code null} if the receiver type is defined implicitly.
          */
-        @Nullable
+        @MaybeNull
         private final TypeDescription.Generic receiverType;
 
         /**
@@ -1430,8 +1459,8 @@ public interface MethodDescription extends TypeVariableSource,
                       List<? extends ParameterDescription.Token> parameterTokens,
                       List<? extends TypeDescription.Generic> exceptionTypes,
                       List<? extends AnnotationDescription> declaredAnnotations,
-                      @Nullable AnnotationValue<?, ?> defaultValue,
-                      @Nullable TypeDescription.Generic receiverType) {
+                      @MaybeNull AnnotationValue<?, ?> defaultValue,
+                      @MaybeNull TypeDescription.Generic receiverType) {
             this.declaringType = declaringType;
             this.internalName = internalName;
             this.modifiers = modifiers;
@@ -1504,7 +1533,7 @@ public interface MethodDescription extends TypeVariableSource,
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public AnnotationValue<?, ?> getDefaultValue() {
             return defaultValue;
         }
@@ -1512,7 +1541,7 @@ public interface MethodDescription extends TypeVariableSource,
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription.Generic getReceiverType() {
             return receiverType == null
                     ? super.getReceiverType()
@@ -1542,7 +1571,7 @@ public interface MethodDescription extends TypeVariableSource,
              * {@inheritDoc}
              */
             public TypeDescription.Generic getReturnType() {
-                return TypeDescription.Generic.VOID;
+                return TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(void.class);
             }
 
             /**
@@ -1562,7 +1591,7 @@ public interface MethodDescription extends TypeVariableSource,
             /**
              * {@inheritDoc}
              */
-            @Nullable
+            @AlwaysNull
             public AnnotationValue<?, ?> getDefaultValue() {
                 return AnnotationValue.UNDEFINED;
             }
@@ -1671,7 +1700,7 @@ public interface MethodDescription extends TypeVariableSource,
         /**
          * {@inheritDoc}
          */
-        @Nullable
+        @MaybeNull
         public AnnotationValue<?, ?> getDefaultValue() {
             return methodDescription.getDefaultValue();
         }
@@ -1787,13 +1816,13 @@ public interface MethodDescription extends TypeVariableSource,
         /**
          * The default value of the represented method or {@code null} if no such value exists.
          */
-        @Nullable
+        @MaybeNull
         private final AnnotationValue<?, ?> defaultValue;
 
         /**
          * The receiver type of the represented method or {@code null} if the receiver type is implicit.
          */
-        @Nullable
+        @MaybeNull
         private final TypeDescription.Generic receiverType;
 
         /**
@@ -1803,7 +1832,7 @@ public interface MethodDescription extends TypeVariableSource,
          * @param modifiers The constructor's modifiers.
          */
         public Token(int modifiers) {
-            this(MethodDescription.CONSTRUCTOR_INTERNAL_NAME, modifiers, TypeDescription.Generic.VOID);
+            this(MethodDescription.CONSTRUCTOR_INTERNAL_NAME, modifiers, TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(void.class));
         }
 
         /**
@@ -1858,8 +1887,8 @@ public interface MethodDescription extends TypeVariableSource,
                      List<? extends ParameterDescription.Token> parameterTokens,
                      List<? extends TypeDescription.Generic> exceptionTypes,
                      List<? extends AnnotationDescription> annotations,
-                     @Nullable AnnotationValue<?, ?> defaultValue,
-                     @Nullable TypeDescription.Generic receiverType) {
+                     @MaybeNull AnnotationValue<?, ?> defaultValue,
+                     @MaybeNull TypeDescription.Generic receiverType) {
             this.name = name;
             this.modifiers = modifiers;
             this.typeVariableTokens = typeVariableTokens;
@@ -1939,7 +1968,7 @@ public interface MethodDescription extends TypeVariableSource,
          *
          * @return The default value of the represented method or {@code null} if no such value exists.
          */
-        @Nullable
+        @MaybeNull
         public AnnotationValue<?, ?> getDefaultValue() {
             return defaultValue;
         }
@@ -1949,7 +1978,7 @@ public interface MethodDescription extends TypeVariableSource,
          *
          * @return The receiver type of this token or {@code null} if the receiver type is implicit.
          */
-        @Nullable
+        @MaybeNull
         public TypeDescription.Generic getReceiverType() {
             return receiverType;
         }
@@ -2002,7 +2031,7 @@ public interface MethodDescription extends TypeVariableSource,
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (other == null || getClass() != other.getClass()) {
@@ -2140,7 +2169,7 @@ public interface MethodDescription extends TypeVariableSource,
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (!(other instanceof SignatureToken)) {
@@ -2222,7 +2251,7 @@ public interface MethodDescription extends TypeVariableSource,
         }
 
         @Override
-        public boolean equals(Object other) {
+        public boolean equals(@MaybeNull Object other) {
             if (this == other) {
                 return true;
             } else if (!(other instanceof TypeToken)) {

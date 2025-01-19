@@ -1,15 +1,17 @@
 package net.bytebuddy.dynamic;
 
 import net.bytebuddy.test.utility.JavaVersionRule;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.MethodRule;
+import org.junit.rules.TemporaryFolder;
 
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.net.URI;
 import java.net.URL;
 import java.util.Collections;
 import java.util.jar.JarEntry;
@@ -27,30 +29,30 @@ public class ClassFileLocatorForUrlTest {
     @Rule
     public MethodRule javaVersionRule = new JavaVersionRule();
 
+    @Rule
+    public TemporaryFolder temporaryFolder = new TemporaryFolder();
+
     private File file;
 
     @Before
     public void setUp() throws Exception {
-        file = File.createTempFile(FOO, BAR);
-    }
-
-    @After
-    public void tearDown() throws Exception {
-        assertThat(file.delete(), is(true));
+        file = temporaryFolder.newFile();
     }
 
     @Test
     @JavaVersionRule.Enforce(7) // Avoid leak since class loader cannot be closed
     public void testSuccessfulLocation() throws Exception {
-        JarOutputStream jarOutputStream = new JarOutputStream(new FileOutputStream(file));
+        OutputStream outputStream = new FileOutputStream(file);
         try {
-            JarEntry jarEntry = new JarEntry(FOO + "/" + BAR + ".class");
+            JarOutputStream jarOutputStream = new JarOutputStream(outputStream);
+            JarEntry jarEntry = new JarEntry(FOO + "/" + BAR + ClassFileLocator.CLASS_FILE_EXTENSION);
             jarOutputStream.putNextEntry(jarEntry);
             jarOutputStream.write(VALUE);
             jarOutputStream.write(VALUE * 2);
             jarOutputStream.closeEntry();
-        } finally {
             jarOutputStream.close();
+        } finally {
+            outputStream.close();
         }
         URL url = file.toURI().toURL();
         ClassFileLocator classFileLocator = new ClassFileLocator.ForUrl(Collections.singleton(url));
@@ -66,7 +68,7 @@ public class ClassFileLocatorForUrlTest {
     @Test
     @JavaVersionRule.Enforce(7) // Avoid leak since class loader cannot be closed
     public void testJarFileClosable() throws Exception {
-        URL url = new URL("http://localhost:123");
+        URL url = URI.create("http://localhost:123").toURL();
         Closeable classFileLocator = new ClassFileLocator.ForUrl(url);
         classFileLocator.close();
     }
@@ -74,14 +76,16 @@ public class ClassFileLocatorForUrlTest {
     @Test
     @JavaVersionRule.Enforce(7) // Avoid leak since class loader cannot be closed
     public void testNonSuccessfulLocation() throws Exception {
-        JarOutputStream jarOutputStream = new JarOutputStream(new FileOutputStream(file));
+        OutputStream outputStream = new FileOutputStream(file);
         try {
+            JarOutputStream jarOutputStream = new JarOutputStream(outputStream);
             JarEntry jarEntry = new JarEntry("noop.class");
             jarOutputStream.putNextEntry(jarEntry);
             jarOutputStream.write(VALUE);
             jarOutputStream.closeEntry();
-        } finally {
             jarOutputStream.close();
+        } finally {
+            outputStream.close();
         }
         URL url = file.toURI().toURL();
         ClassFileLocator classFileLocator = new ClassFileLocator.ForUrl(url);

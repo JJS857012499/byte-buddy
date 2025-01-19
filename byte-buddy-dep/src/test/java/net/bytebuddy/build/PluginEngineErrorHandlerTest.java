@@ -1,11 +1,11 @@
 package net.bytebuddy.build;
 
 import net.bytebuddy.description.type.TypeDescription;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import java.util.Collections;
 import java.util.jar.Manifest;
@@ -17,7 +17,7 @@ public class PluginEngineErrorHandlerTest {
     private static final String FOO = "foo", BAR = "bar";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private TypeDescription typeDescription, definingType;
@@ -36,12 +36,12 @@ public class PluginEngineErrorHandlerTest {
         Plugin.Engine.ErrorHandler.Failing.FAIL_FAST.onError(typeDescription, plugin, throwable);
     }
 
-    @Test(expected = UnsupportedOperationException.class)
+    @Test(expected = IllegalStateException.class)
     public void testFailingFailFastDoesNotSupportFailAfterType() {
         Plugin.Engine.ErrorHandler.Failing.FAIL_FAST.onError(typeDescription, Collections.singletonList(throwable));
     }
 
-    @Test(expected = UnsupportedOperationException.class)
+    @Test(expected = IllegalStateException.class)
     public void testFailingFailFastDoesNotSupportFailLast() {
         Plugin.Engine.ErrorHandler.Failing.FAIL_FAST.onError(Collections.singletonMap(typeDescription, Collections.singletonList(throwable)));
     }
@@ -61,7 +61,7 @@ public class PluginEngineErrorHandlerTest {
         Plugin.Engine.ErrorHandler.Failing.FAIL_AFTER_TYPE.onError(typeDescription, Collections.singletonList(throwable));
     }
 
-    @Test(expected = UnsupportedOperationException.class)
+    @Test(expected = IllegalStateException.class)
     public void testFailingFailAfterTypeDoesNotSupportFailLast() {
         Plugin.Engine.ErrorHandler.Failing.FAIL_AFTER_TYPE.onError(Collections.singletonMap(typeDescription, Collections.singletonList(throwable)));
     }
@@ -171,10 +171,10 @@ public class PluginEngineErrorHandlerTest {
         errorHandler.onLiveInitializer(typeDescription, definingType);
         errorHandler.onManifest(manifest);
         errorHandler.onUnresolved(FOO);
-        verifyZeroInteractions(typeDescription);
-        verifyZeroInteractions(definingType);
-        verifyZeroInteractions(plugin);
-        verifyZeroInteractions(throwable);
+        verifyNoMoreInteractions(typeDescription);
+        verifyNoMoreInteractions(definingType);
+        verifyNoMoreInteractions(plugin);
+        verifyNoMoreInteractions(throwable);
         verify(delegate).onError(typeDescription, plugin, throwable);
         verify(delegate).onError(typeDescription, Collections.singletonList(throwable));
         verify(delegate).onError(Collections.singletonMap(typeDescription, Collections.singletonList(throwable)));

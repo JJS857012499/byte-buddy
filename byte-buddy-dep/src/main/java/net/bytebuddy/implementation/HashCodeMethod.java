@@ -15,7 +15,7 @@
  */
 package net.bytebuddy.implementation;
 
-import net.bytebuddy.ClassFileVersion;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
 import net.bytebuddy.description.field.FieldDescription;
 import net.bytebuddy.description.method.MethodDescription;
@@ -35,6 +35,7 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static net.bytebuddy.matcher.ElementMatchers.*;
@@ -94,12 +95,17 @@ public class HashCodeMethod implements Implementation {
     private final ElementMatcher.Junction<? super FieldDescription.InDefinedShape> nonNullable;
 
     /**
+     * A matcher to determine that a field should be considered by its identity.
+     */
+    private final ElementMatcher.Junction<? super FieldDescription.InDefinedShape> identity;
+
+    /**
      * Creates a new hash code method implementation.
      *
      * @param offsetProvider The hash code's offset provider.
      */
     protected HashCodeMethod(OffsetProvider offsetProvider) {
-        this(offsetProvider, DEFAULT_MULTIPLIER, none(), none());
+        this(offsetProvider, DEFAULT_MULTIPLIER, none(), none(), none());
     }
 
     /**
@@ -109,15 +115,18 @@ public class HashCodeMethod implements Implementation {
      * @param multiplier     A multiplier for each value before adding a field's hash code value
      * @param ignored        A matcher to filter fields that should not be used for a hash codes computation.
      * @param nonNullable    A matcher to determine fields of a reference type that cannot be {@code null}.
+     * @param identity       A matcher to determine that a field should be considered by its identity.
      */
     private HashCodeMethod(OffsetProvider offsetProvider,
                            int multiplier,
                            ElementMatcher.Junction<? super FieldDescription.InDefinedShape> ignored,
-                           ElementMatcher.Junction<? super FieldDescription.InDefinedShape> nonNullable) {
+                           ElementMatcher.Junction<? super FieldDescription.InDefinedShape> nonNullable,
+                           ElementMatcher.Junction<? super FieldDescription.InDefinedShape> identity) {
         this.offsetProvider = offsetProvider;
         this.multiplier = multiplier;
         this.ignored = ignored;
         this.nonNullable = nonNullable;
+        this.identity = identity;
     }
 
     /**
@@ -166,7 +175,7 @@ public class HashCodeMethod implements Implementation {
      * @return A new version of this hash code method implementation that also ignores any fields matched by the provided matcher.
      */
     public HashCodeMethod withIgnoredFields(ElementMatcher<? super FieldDescription.InDefinedShape> ignored) {
-        return new HashCodeMethod(offsetProvider, multiplier, this.ignored.<FieldDescription.InDefinedShape>or(ignored), nonNullable);
+        return new HashCodeMethod(offsetProvider, multiplier, this.ignored.<FieldDescription.InDefinedShape>or(ignored), nonNullable, identity);
     }
 
     /**
@@ -178,7 +187,17 @@ public class HashCodeMethod implements Implementation {
      * the provided matcher.
      */
     public HashCodeMethod withNonNullableFields(ElementMatcher<? super FieldDescription.InDefinedShape> nonNullable) {
-        return new HashCodeMethod(offsetProvider, multiplier, ignored, this.nonNullable.<FieldDescription.InDefinedShape>or(nonNullable));
+        return new HashCodeMethod(offsetProvider, multiplier, ignored, this.nonNullable.<FieldDescription.InDefinedShape>or(nonNullable), identity);
+    }
+
+    /**
+     * Returns a new version of this hash code method implementation that considers the matched fields by their identity.
+     *
+     * @param identity A matcher to specify any fields that should be considered by their identity.
+     * @return A new version of this hash code method implementation that also considers the matched fields by their identity.
+     */
+    public HashCodeMethod withIdentityFields(ElementMatcher<? super FieldDescription.InDefinedShape> identity) {
+        return new HashCodeMethod(offsetProvider, multiplier, ignored, nonNullable, this.identity.<FieldDescription.InDefinedShape>or(identity));
     }
 
     /**
@@ -193,7 +212,7 @@ public class HashCodeMethod implements Implementation {
         if (multiplier == 0) {
             throw new IllegalArgumentException("Hash code multiplier must not be zero");
         }
-        return new HashCodeMethod(offsetProvider, multiplier, ignored, nonNullable);
+        return new HashCodeMethod(offsetProvider, multiplier, ignored, nonNullable, identity);
     }
 
     /**
@@ -213,7 +232,8 @@ public class HashCodeMethod implements Implementation {
         return new Appender(offsetProvider.resolve(implementationTarget.getInstrumentedType()),
                 multiplier,
                 implementationTarget.getInstrumentedType().getDeclaredFields().filter(not(isStatic().or(ignored))),
-                nonNullable);
+                nonNullable,
+                identity);
     }
 
     /**
@@ -293,7 +313,7 @@ public class HashCodeMethod implements Implementation {
              * {@inheritDoc}
              */
             public StackManipulation resolve(TypeDescription instrumentedType) {
-                return new StackManipulation.Compound(ClassConstant.of(instrumentedType), MethodInvocation.invoke(HASH_CODE).virtual(TypeDescription.CLASS));
+                return new StackManipulation.Compound(ClassConstant.of(instrumentedType), MethodInvocation.invoke(HASH_CODE).virtual(TypeDescription.ForLoadedType.of(Class.class)));
             }
         }
 
@@ -313,7 +333,7 @@ public class HashCodeMethod implements Implementation {
             public StackManipulation resolve(TypeDescription instrumentedType) {
                 return new StackManipulation.Compound(MethodVariableAccess.loadThis(),
                         MethodInvocation.invoke(GET_CLASS).virtual(instrumentedType),
-                        MethodInvocation.invoke(HASH_CODE).virtual(TypeDescription.CLASS));
+                        MethodInvocation.invoke(HASH_CODE).virtual(TypeDescription.ForLoadedType.of(Class.class)));
             }
         }
     }
@@ -381,16 +401,6 @@ public class HashCodeMethod implements Implementation {
          */
         @HashCodeAndEqualsPlugin.Enhance
         class UsingJump implements NullValueGuard {
-
-            /**
-             * An empty array.
-             */
-            private static final Object[] EMPTY = new Object[0];
-
-            /**
-             * An array that only contains an integer stack map frame.
-             */
-            private static final Object[] INTEGER = new Object[]{Opcodes.INTEGER};
 
             /**
              * The instrumented method.
@@ -462,9 +472,9 @@ public class HashCodeMethod implements Implementation {
                  */
                 public Size apply(MethodVisitor methodVisitor, Context implementationContext) {
                     methodVisitor.visitLabel(label);
-                    if (implementationContext.getClassFileVersion().isAtLeast(ClassFileVersion.JAVA_V6)) {
-                        methodVisitor.visitFrame(Opcodes.F_SAME1, EMPTY.length, EMPTY, INTEGER.length, INTEGER);
-                    }
+                    implementationContext.getFrameGeneration().same1(methodVisitor,
+                            TypeDescription.ForLoadedType.of(int.class),
+                            Arrays.asList(implementationContext.getInstrumentedType(), TypeDescription.ForLoadedType.of(Object.class)));
                     return Size.ZERO;
                 }
             }
@@ -626,6 +636,17 @@ public class HashCodeMethod implements Implementation {
                 methodVisitor.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/Arrays", "deepHashCode", "([Ljava/lang/Object;)I", false);
                 return Size.ZERO;
             }
+        },
+
+        /**
+         * A transformer for computing the identity hash code for a reference.
+         */
+        REFERENCE_IDENTITY {
+            /** {@inheritDoc} */
+            public Size apply(MethodVisitor methodVisitor, Context implementationContext) {
+                methodVisitor.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/System", "identityHashCode", "(Ljava/lang/Object;)I", false);
+                return Size.ZERO;
+            }
         };
 
         /**
@@ -634,6 +655,7 @@ public class HashCodeMethod implements Implementation {
          * @param typeDefinition The type definition to resolve.
          * @return The stack manipulation to apply.
          */
+        @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Assuming component type for array type.")
         public static StackManipulation of(TypeDefinition typeDefinition) {
             if (typeDefinition.represents(boolean.class)
                     || typeDefinition.represents(byte.class)
@@ -707,21 +729,29 @@ public class HashCodeMethod implements Implementation {
         private final ElementMatcher<? super FieldDescription.InDefinedShape> nonNullable;
 
         /**
+         * A matcher to determine that a field should be considered by its identity.
+         */
+        private final ElementMatcher<? super FieldDescription.InDefinedShape> identity;
+
+        /**
          * Creates a new appender for implementing a hash code method.
          *
          * @param initialValue      Loads the initial hash code onto the operand stack.
          * @param multiplier        A multiplier for each value before adding a field's hash code value.
          * @param fieldDescriptions A list of fields to include in the hash code computation.
          * @param nonNullable       A matcher to determine fields of a reference type that cannot be {@code null}.
+         * @param identity          A matcher to determine that a field should be considered by its identity.
          */
         protected Appender(StackManipulation initialValue,
                            int multiplier,
                            List<FieldDescription.InDefinedShape> fieldDescriptions,
-                           ElementMatcher<? super FieldDescription.InDefinedShape> nonNullable) {
+                           ElementMatcher<? super FieldDescription.InDefinedShape> nonNullable,
+                           ElementMatcher<? super FieldDescription.InDefinedShape> identity) {
             this.initialValue = initialValue;
             this.multiplier = multiplier;
             this.fieldDescriptions = fieldDescriptions;
             this.nonNullable = nonNullable;
+            this.identity = identity;
         }
 
         /**
@@ -741,14 +771,19 @@ public class HashCodeMethod implements Implementation {
                 stackManipulations.add(Multiplication.INTEGER);
                 stackManipulations.add(MethodVariableAccess.loadThis());
                 stackManipulations.add(FieldAccess.forField(fieldDescription).read());
-                NullValueGuard nullValueGuard = fieldDescription.getType().isPrimitive() || fieldDescription.getType().isArray() || nonNullable.matches(fieldDescription)
-                        ? NullValueGuard.NoOp.INSTANCE
-                        : new NullValueGuard.UsingJump(instrumentedMethod);
-                stackManipulations.add(nullValueGuard.before());
-                stackManipulations.add(ValueTransformer.of(fieldDescription.getType()));
-                stackManipulations.add(Addition.INTEGER);
-                stackManipulations.add(nullValueGuard.after());
-                padding = Math.max(padding, nullValueGuard.getRequiredVariablePadding());
+                if (!fieldDescription.getType().isPrimitive() && identity.matches(fieldDescription)) {
+                    stackManipulations.add(ValueTransformer.REFERENCE_IDENTITY);
+                    stackManipulations.add(Addition.INTEGER);
+                } else {
+                    NullValueGuard nullValueGuard = fieldDescription.getType().isPrimitive() || fieldDescription.getType().isArray() || nonNullable.matches(fieldDescription)
+                            ? NullValueGuard.NoOp.INSTANCE
+                            : new NullValueGuard.UsingJump(instrumentedMethod);
+                    stackManipulations.add(nullValueGuard.before());
+                    stackManipulations.add(ValueTransformer.of(fieldDescription.getType()));
+                    stackManipulations.add(Addition.INTEGER);
+                    stackManipulations.add(nullValueGuard.after());
+                    padding = Math.max(padding, nullValueGuard.getRequiredVariablePadding());
+                }
             }
             stackManipulations.add(MethodReturn.INTEGER);
             return new Size(new StackManipulation.Compound(stackManipulations).apply(methodVisitor, implementationContext).getMaximalSize(), instrumentedMethod.getStackSize() + padding);

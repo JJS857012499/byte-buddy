@@ -15,15 +15,17 @@
  */
 package net.bytebuddy.build;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.dynamic.scaffold.MethodGraph;
+import net.bytebuddy.dynamic.scaffold.TypeValidation;
 import net.bytebuddy.dynamic.scaffold.inline.MethodNameTransformer;
 import net.bytebuddy.implementation.Implementation;
+
+import java.io.Serializable;
 
 import static net.bytebuddy.matcher.ElementMatchers.isDeclaredBy;
 import static net.bytebuddy.matcher.ElementMatchers.not;
@@ -31,7 +33,7 @@ import static net.bytebuddy.matcher.ElementMatchers.not;
 /**
  * An entry point for a build tool which is responsible for the transformation's configuration.
  */
-public interface EntryPoint {
+public interface EntryPoint extends Serializable {
 
     /**
      * Returns the Byte Buddy instance to use.
@@ -58,19 +60,22 @@ public interface EntryPoint {
     /**
      * Default implementations for an entry point.
      */
-    @SuppressFBWarnings(value = "SE_BAD_FIELD", justification = "An enumeration does not serialize fields")
     enum Default implements EntryPoint {
 
         /**
          * An entry point that rebases a type.
          */
         REBASE {
-            /** {@inheritDoc} */
+            /**
+             * {@inheritDoc}
+             * */
             public ByteBuddy byteBuddy(ClassFileVersion classFileVersion) {
                 return new ByteBuddy(classFileVersion);
             }
 
-            /** {@inheritDoc} */
+            /**
+             * {@inheritDoc}
+             * */
             public DynamicType.Builder<?> transform(TypeDescription typeDescription,
                                                     ByteBuddy byteBuddy,
                                                     ClassFileLocator classFileLocator,
@@ -83,12 +88,16 @@ public interface EntryPoint {
          * An entry point that redefines a type.
          */
         REDEFINE {
-            /** {@inheritDoc} */
+            /**
+             * {@inheritDoc}
+             * */
             public ByteBuddy byteBuddy(ClassFileVersion classFileVersion) {
                 return new ByteBuddy(classFileVersion);
             }
 
-            /** {@inheritDoc} */
+            /**
+             * {@inheritDoc}
+             * */
             public DynamicType.Builder<?> transform(TypeDescription typeDescription,
                                                     ByteBuddy byteBuddy,
                                                     ClassFileLocator classFileLocator,
@@ -102,12 +111,16 @@ public interface EntryPoint {
          * not add any methods or considers intercepting inherited methods.
          */
         REDEFINE_LOCAL {
-            /** {@inheritDoc} */
+            /**
+             * {@inheritDoc}
+             * */
             public ByteBuddy byteBuddy(ClassFileVersion classFileVersion) {
                 return new ByteBuddy(classFileVersion).with(Implementation.Context.Disabled.Factory.INSTANCE);
             }
 
-            /** {@inheritDoc} */
+            /**
+             * {@inheritDoc}
+             * */
             public DynamicType.Builder<?> transform(TypeDescription typeDescription,
                                                     ByteBuddy byteBuddy,
                                                     ClassFileLocator classFileLocator,
@@ -121,20 +134,67 @@ public interface EntryPoint {
          * for the application of {@link net.bytebuddy.asm.AsmVisitorWrapper}s while improving performance.
          */
         DECORATE {
-            /** {@inheritDoc} */
+            /**
+             * {@inheritDoc}
+             * */
             public ByteBuddy byteBuddy(ClassFileVersion classFileVersion) {
                 return new ByteBuddy(classFileVersion)
                         .with(MethodGraph.Compiler.ForDeclaredMethods.INSTANCE)
                         .with(Implementation.Context.Disabled.Factory.INSTANCE);
             }
 
-            /** {@inheritDoc} */
+            /**
+             * {@inheritDoc}
+             * */
             public DynamicType.Builder<?> transform(TypeDescription typeDescription,
                                                     ByteBuddy byteBuddy,
                                                     ClassFileLocator classFileLocator,
                                                     MethodNameTransformer methodNameTransformer) {
                 return byteBuddy.decorate(typeDescription, classFileLocator);
             }
+        }
+    }
+
+    /**
+     * An entry point that wraps another entry point but disables validation.
+     */
+    @HashCodeAndEqualsPlugin.Enhance
+    class Unvalidated implements EntryPoint {
+
+        /**
+         * The serial version UID.
+         */
+        private static final long serialVersionUID = 1L;
+
+        /**
+         * The entry point to use.
+         */
+        private final EntryPoint delegate;
+
+        /**
+         * Creates a new entry point with disabled validation.
+         *
+         * @param delegate The entry point to use.
+         */
+        public Unvalidated(EntryPoint delegate) {
+            this.delegate = delegate;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public ByteBuddy byteBuddy(ClassFileVersion classFileVersion) {
+            return delegate.byteBuddy(classFileVersion).with(TypeValidation.DISABLED);
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public DynamicType.Builder<?> transform(TypeDescription typeDescription,
+                                                ByteBuddy byteBuddy,
+                                                ClassFileLocator classFileLocator,
+                                                MethodNameTransformer methodNameTransformer) {
+            return delegate.transform(typeDescription, byteBuddy, classFileLocator, methodNameTransformer);
         }
     }
 }

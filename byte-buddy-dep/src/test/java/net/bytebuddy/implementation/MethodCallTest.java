@@ -16,7 +16,6 @@ import net.bytebuddy.implementation.bytecode.member.MethodReturn;
 import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.test.utility.CallTraceable;
 import net.bytebuddy.test.utility.JavaVersionRule;
-import net.bytebuddy.test.utility.MockitoRule;
 import net.bytebuddy.utility.JavaConstant;
 import net.bytebuddy.utility.JavaType;
 import org.hamcrest.CoreMatchers;
@@ -24,9 +23,9 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.MethodRule;
-import org.junit.rules.TestRule;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.junit.MockitoJUnit;
 
 import java.lang.reflect.Method;
 import java.util.concurrent.Callable;
@@ -42,10 +41,10 @@ public class MethodCallTest {
 
     private static final String FOO = "foo", BAR = "bar", QUX = "qux", INVOKE_FOO = "invokeFoo";
 
-    private static final String SINGLE_DEFAULT_METHOD = "net.bytebuddy.test.precompiled.SingleDefaultMethodInterface";
+    private static final String SINGLE_DEFAULT_METHOD = "net.bytebuddy.test.precompiled.v8.SingleDefaultMethodInterface";
 
     @Rule
-    public TestRule methodRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Rule
     public MethodRule javaVersionRule = new JavaVersionRule();
@@ -141,11 +140,11 @@ public class MethodCallTest {
     @Test
     public void testMethodInvocationUsingStackManipulation() throws Exception {
         DynamicType.Loaded<SimpleMethod> loaded = new ByteBuddy()
-            .subclass(SimpleMethod.class)
-            .method(named(FOO))
-            .intercept(MethodCall.invoke(String.class.getMethod("toUpperCase")).on(new TextConstant(FOO), String.class))
-            .make()
-            .load(SimpleMethod.class.getClassLoader(), ClassLoadingStrategy.Default.WRAPPER);
+                .subclass(SimpleMethod.class)
+                .method(named(FOO))
+                .intercept(MethodCall.invoke(String.class.getMethod("toUpperCase")).on(new TextConstant(FOO), String.class))
+                .make()
+                .load(SimpleMethod.class.getClassLoader(), ClassLoadingStrategy.Default.WRAPPER);
         assertThat(loaded.getLoadedAuxiliaryTypes().size(), is(0));
         assertThat(loaded.getLoaded().getDeclaredMethods().length, is(1));
         assertThat(loaded.getLoaded().getDeclaredFields().length, is(0));
@@ -986,7 +985,7 @@ public class MethodCallTest {
         DynamicType.Loaded<SimpleMethod> loaded = new ByteBuddy()
                 .subclass(SimpleMethod.class)
                 .method(named(FOO))
-                .intercept(MethodCall.invoke(Foo.class.getDeclaredMethod(BAR, Object.class, Object.class)).with(TypeDescription.OBJECT, TypeDescription.STRING))
+                .intercept(MethodCall.invoke(Foo.class.getDeclaredMethod(BAR, Object.class, Object.class)).with(TypeDescription.ForLoadedType.of(Object.class), TypeDescription.ForLoadedType.of(String.class)))
                 .make()
                 .load(SimpleMethod.class.getClassLoader(), ClassLoadingStrategy.Default.WRAPPER);
         assertThat(loaded.getLoadedAuxiliaryTypes().size(), is(0));
@@ -1130,15 +1129,15 @@ public class MethodCallTest {
     @Test
     public void testConstructorIsAccessibleFromDifferentPackage() throws Exception {
         assertThat(new ByteBuddy()
-            .subclass(ProtectedConstructor.class, ConstructorStrategy.Default.NO_CONSTRUCTORS)
-            .name("foo.Bar")
-            .defineConstructor(Visibility.PUBLIC)
-            .intercept(MethodCall.invoke(ProtectedConstructor.class.getDeclaredConstructor()).onSuper())
-            .make()
-            .load(Foo.class.getClassLoader(), ClassLoadingStrategy.Default.WRAPPER)
-            .getLoaded()
-            .getConstructor()
-            .newInstance(), instanceOf(ProtectedConstructor.class));
+                .subclass(ProtectedConstructor.class, ConstructorStrategy.Default.NO_CONSTRUCTORS)
+                .name("foo.Bar")
+                .defineConstructor(Visibility.PUBLIC)
+                .intercept(MethodCall.invoke(ProtectedConstructor.class.getDeclaredConstructor()).onSuper())
+                .make()
+                .load(Foo.class.getClassLoader(), ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded()
+                .getConstructor()
+                .newInstance(), instanceOf(ProtectedConstructor.class));
     }
 
     @Test(expected = IllegalStateException.class)
@@ -1297,7 +1296,7 @@ public class MethodCallTest {
                 .intercept(MethodCall.invoke(Object.class.getConstructor()))
                 .make();
     }
-    
+
     @Test
     public void testConstructorCallResultIntoMethod() throws Exception {
         DynamicType.Loaded<ConstructorResult> loaded = new ByteBuddy()
@@ -1317,7 +1316,7 @@ public class MethodCallTest {
         assertThat(instance, instanceOf(ConstructorResult.class));
         assertThat(instance.foo(), instanceOf(ConstructorResult.Target.class));
     }
-    
+
     @Test
     public void testConstructorCallResultIntoField() throws Exception {
         DynamicType.Loaded<ConstructorResult> loaded = new ByteBuddy()
@@ -1340,21 +1339,21 @@ public class MethodCallTest {
         assertThat(foo, instanceOf(ConstructorResult.Target.class));
         assertThat(instance.field, equalTo(foo));
     }
-    
+
     public static class ConstructorResult {
-        
+
         public Target field;
-        
+
         public Target method(Target args) {
             return args;
         }
-        
+
         public Target foo() {
             return null;
         }
-        
+
         public static class Target {
-        
+
         }
     }
 

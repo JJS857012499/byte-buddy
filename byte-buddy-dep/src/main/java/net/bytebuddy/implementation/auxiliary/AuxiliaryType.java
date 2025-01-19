@@ -40,7 +40,7 @@ public interface AuxiliaryType {
     /**
      * The default type access of an auxiliary type. <b>This array must not be mutated</b>.
      */
-    @SuppressFBWarnings(value = {"MS_MUTABLE_ARRAY", "MS_OOI_PKGPROTECT"}, justification = "The array is not to be modified by contract")
+    @SuppressFBWarnings(value = {"MS_MUTABLE_ARRAY", "MS_OOI_PKGPROTECT"}, justification = "The array is not modified by class contract.")
     ModifierContributor.ForType[] DEFAULT_TYPE_MODIFIER = {SyntheticState.SYNTHETIC};
 
     /**
@@ -56,6 +56,13 @@ public interface AuxiliaryType {
     DynamicType make(String auxiliaryTypeName, ClassFileVersion classFileVersion, MethodAccessorFactory methodAccessorFactory);
 
     /**
+     * Produces a suffix that gives this auxiliary type a stable name. A best effort is made that this suffix is unique.
+     *
+     * @return The suffix for this auxiliary type.
+     */
+    String getSuffix();
+
+    /**
      * Representation of a naming strategy for an auxiliary type.
      */
     interface NamingStrategy {
@@ -64,7 +71,7 @@ public interface AuxiliaryType {
          * Names an auxiliary type.
          *
          * @param instrumentedType The instrumented type for which an auxiliary type is registered.
-         * @param auxiliaryType The named auxiliary type.
+         * @param auxiliaryType    The named auxiliary type.
          * @return The fully qualified name for the given auxiliary type.
          */
         String name(TypeDescription instrumentedType, AuxiliaryType auxiliaryType);
@@ -93,7 +100,34 @@ public interface AuxiliaryType {
              * {@inheritDoc}
              */
             public String name(TypeDescription instrumentedType, AuxiliaryType auxiliaryType) {
-                return instrumentedType.getName() + "$" + suffix + "$" + RandomString.hashOf(auxiliaryType.hashCode());
+                return instrumentedType.getName() + "$" + suffix + "$" + RandomString.hashOf(auxiliaryType);
+            }
+        }
+
+        /**
+         * Creates a naming strategy that uses stable suffixes that are provided by the auxiliary types themselves.
+         */
+        class Suffixing implements NamingStrategy {
+
+            /**
+             * The suffix to append to the instrumented type for creating names for the auxiliary types.
+             */
+            private final String suffix;
+
+            /**
+             * Creates a new suffixing random naming strategy.
+             *
+             * @param suffix The suffix to extend to the instrumented type.
+             */
+            public Suffixing(String suffix) {
+                this.suffix = suffix;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            public String name(TypeDescription instrumentedType, AuxiliaryType auxiliaryType) {
+                return instrumentedType.getName() + "$" + suffix + "$" + auxiliaryType.getSuffix();
             }
         }
 

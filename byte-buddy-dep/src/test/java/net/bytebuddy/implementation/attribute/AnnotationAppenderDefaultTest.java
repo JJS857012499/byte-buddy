@@ -7,14 +7,14 @@ import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.loading.ByteArrayClassLoader;
 import net.bytebuddy.test.utility.JavaVersionRule;
-import net.bytebuddy.test.utility.MockitoRule;
+import net.bytebuddy.utility.AsmClassWriter;
 import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.MethodRule;
-import org.junit.rules.TestRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 import org.objectweb.asm.*;
 
 import java.lang.annotation.Annotation;
@@ -33,7 +33,7 @@ public class AnnotationAppenderDefaultTest {
     private static final String FOOBAR = "foobar";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Rule
     public MethodRule javaVersionRule = new JavaVersionRule();
@@ -157,19 +157,19 @@ public class AnnotationAppenderDefaultTest {
 
     private Class<?> makeTypeWithAnnotation(Annotation annotation) throws Exception {
         when(valueFilter.isRelevant(any(AnnotationDescription.class), any(MethodDescription.InDefinedShape.class))).thenReturn(true);
-        ClassWriter classWriter = new ClassWriter(AsmVisitorWrapper.NO_FLAGS);
-        classWriter.visit(ClassFileVersion.ofThisVm().getMinorMajorVersion(),
+        AsmClassWriter classWriter = AsmClassWriter.Factory.Default.IMPLICIT.make(AsmVisitorWrapper.NO_FLAGS);
+        classWriter.getVisitor().visit(ClassFileVersion.ofThisVm().getMinorMajorVersion(),
                 Opcodes.ACC_PUBLIC,
                 BAR.replace('.', '/'),
                 null,
                 Type.getInternalName(Object.class),
                 null);
-        AnnotationVisitor annotationVisitor = classWriter.visitAnnotation(Type.getDescriptor(annotation.annotationType()), true);
+        AnnotationVisitor annotationVisitor = classWriter.getVisitor().visitAnnotation(Type.getDescriptor(annotation.annotationType()), true);
         when(target.visit(any(String.class), anyBoolean())).thenReturn(annotationVisitor);
         AnnotationDescription annotationDescription = AnnotationDescription.ForLoadedAnnotation.of(annotation);
         annotationAppender.append(annotationDescription, valueFilter);
-        classWriter.visitEnd();
-        Class<?> bar = new ByteArrayClassLoader(getClass().getClassLoader(), Collections.singletonMap(BAR, classWriter.toByteArray())).loadClass(BAR);
+        classWriter.getVisitor().visitEnd();
+        Class<?> bar = new ByteArrayClassLoader(getClass().getClassLoader(), Collections.singletonMap(BAR, classWriter.getBinaryRepresentation())).loadClass(BAR);
         assertThat(bar.getName(), is(BAR));
         assertThat(bar.getSuperclass(), CoreMatchers.<Class<?>>is(Object.class));
         return bar;
@@ -177,22 +177,22 @@ public class AnnotationAppenderDefaultTest {
 
     private Class<?> makeTypeWithSuperClassAnnotation(Annotation annotation) throws Exception {
         when(valueFilter.isRelevant(any(AnnotationDescription.class), any(MethodDescription.InDefinedShape.class))).thenReturn(true);
-        ClassWriter classWriter = new ClassWriter(AsmVisitorWrapper.NO_FLAGS);
-        classWriter.visit(ClassFileVersion.ofThisVm().getMinorMajorVersion(),
+        AsmClassWriter classWriter = AsmClassWriter.Factory.Default.IMPLICIT.make(AsmVisitorWrapper.NO_FLAGS);
+        classWriter.getVisitor().visit(ClassFileVersion.ofThisVm().getMinorMajorVersion(),
                 Opcodes.ACC_PUBLIC,
                 BAR.replace('.', '/'),
                 null,
                 Type.getInternalName(Object.class),
                 null);
-        AnnotationVisitor annotationVisitor = classWriter.visitTypeAnnotation(TypeReference.newSuperTypeReference(-1).getValue(),
+        AnnotationVisitor annotationVisitor = classWriter.getVisitor().visitTypeAnnotation(TypeReference.newSuperTypeReference(-1).getValue(),
                 null,
                 Type.getDescriptor(annotation.annotationType()),
                 true);
         when(target.visit(any(String.class), anyBoolean())).thenReturn(annotationVisitor);
         AnnotationDescription annotationDescription = AnnotationDescription.ForLoadedAnnotation.of(annotation);
         annotationAppender.append(annotationDescription, valueFilter);
-        classWriter.visitEnd();
-        Class<?> bar = new ByteArrayClassLoader(getClass().getClassLoader(), Collections.singletonMap(BAR, classWriter.toByteArray())).loadClass(BAR);
+        classWriter.getVisitor().visitEnd();
+        Class<?> bar = new ByteArrayClassLoader(getClass().getClassLoader(), Collections.singletonMap(BAR, classWriter.getBinaryRepresentation())).loadClass(BAR);
         assertThat(bar.getName(), is(BAR));
         assertThat(bar.getSuperclass(), CoreMatchers.<Class<?>>is(Object.class));
         return bar;
@@ -205,8 +205,8 @@ public class AnnotationAppenderDefaultTest {
         AnnotationDescription annotationDescription = mock(AnnotationDescription.class);
         when(annotationDescription.getRetention()).thenReturn(RetentionPolicy.SOURCE);
         annotationAppender.append(annotationDescription, valueFilter);
-        verifyZeroInteractions(valueFilter);
-        verifyZeroInteractions(annotationVisitor);
+        verifyNoMoreInteractions(valueFilter);
+        verifyNoMoreInteractions(annotationVisitor);
     }
 
     @Test
@@ -216,8 +216,8 @@ public class AnnotationAppenderDefaultTest {
         AnnotationDescription annotationDescription = mock(AnnotationDescription.class);
         when(annotationDescription.getRetention()).thenReturn(RetentionPolicy.SOURCE);
         annotationAppender.append(annotationDescription, valueFilter, 0, null);
-        verifyZeroInteractions(valueFilter);
-        verifyZeroInteractions(annotationVisitor);
+        verifyNoMoreInteractions(valueFilter);
+        verifyNoMoreInteractions(annotationVisitor);
     }
 
     @Retention(RetentionPolicy.RUNTIME)

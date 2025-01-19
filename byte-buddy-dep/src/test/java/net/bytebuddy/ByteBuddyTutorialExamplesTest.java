@@ -40,12 +40,13 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
+import java.security.ProtectionDomain;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
 
-import static net.bytebuddy.matcher.ElementMatchers.*;
 import static net.bytebuddy.matcher.ElementMatchers.not;
+import static net.bytebuddy.matcher.ElementMatchers.*;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -53,9 +54,9 @@ import static org.mockito.Mockito.mock;
 
 public class ByteBuddyTutorialExamplesTest {
 
-    private static final String DEFAULT_METHOD_INTERFACE = "net.bytebuddy.test.precompiled.SingleDefaultMethodInterface";
+    private static final String DEFAULT_METHOD_INTERFACE = "net.bytebuddy.test.precompiled.v8.SingleDefaultMethodInterface";
 
-    private static final String CONFLICTING_DEFAULT_METHOD_INTERFACE = "net.bytebuddy.test.precompiled.SingleDefaultMethodConflictingInterface";
+    private static final String CONFLICTING_DEFAULT_METHOD_INTERFACE = "net.bytebuddy.test.precompiled.v8.SingleDefaultMethodConflictingInterface";
 
     @Rule
     public MethodRule javaVersionRule = new JavaVersionRule();
@@ -164,7 +165,11 @@ public class ByteBuddyTutorialExamplesTest {
     @Test
     public void testTutorialGettingStartedJavaAgent() throws Exception {
         new AgentBuilder.Default().type(isAnnotatedWith(Rebase.class)).transform(new AgentBuilder.Transformer() {
-            public DynamicType.Builder<?> transform(DynamicType.Builder<?> builder, TypeDescription typeDescription, ClassLoader classLoader, JavaModule module) {
+            public DynamicType.Builder<?> transform(DynamicType.Builder<?> builder,
+                                                    TypeDescription typeDescription,
+                                                    ClassLoader classLoader,
+                                                    JavaModule module,
+                                                    ProtectionDomain protectionDomain) {
                 return builder.method(named("toString")).intercept(FixedValue.value("transformed"));
             }
         }).installOn(mock(Instrumentation.class));
@@ -185,7 +190,7 @@ public class ByteBuddyTutorialExamplesTest {
 
     @Test
     public void testFieldsAndMethodsDetailedMatcher() throws Exception {
-        assertThat(TypeDescription.OBJECT
+        assertThat(TypeDescription.ForLoadedType.of(Object.class)
                 .getDeclaredMethods()
                 .filter(named("toString").and(returns(String.class)).and(takesArguments(0))).size(), is(1));
     }
@@ -483,7 +488,7 @@ public class ByteBuddyTutorialExamplesTest {
 
         public StackManipulation assign(TypeDescription.Generic source, TypeDescription.Generic target, Typing typing) {
             if (!source.isPrimitive() && target.represents(String.class)) {
-                MethodDescription toStringMethod = TypeDescription.OBJECT.getDeclaredMethods()
+                MethodDescription toStringMethod = TypeDescription.ForLoadedType.of(Object.class).getDeclaredMethods()
                         .filter(named("toString"))
                         .getOnly();
                 return MethodInvocation.invoke(toStringMethod).virtual(source.asErasure());

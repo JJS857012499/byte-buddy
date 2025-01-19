@@ -1,14 +1,12 @@
 package net.bytebuddy.build;
 
 import net.bytebuddy.utility.StreamDrainer;
-import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.util.Iterator;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
@@ -16,21 +14,18 @@ import java.util.jar.Manifest;
 
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.fail;
 
 public class PluginEngineSourceForFolderTest {
+
+    @Rule
+    public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     private File folder;
 
     @Before
     public void setUp() throws Exception {
-        folder = File.createTempFile("foo", "bar");
-        assertThat(folder.delete(), is(true));
-        assertThat(folder.mkdir(), is(true));
-    }
-
-    @After
-    public void tearDown() throws Exception {
-        assertThat(folder.delete(), is(true));
+        folder = temporaryFolder.newFolder();
     }
 
     @Test
@@ -38,7 +33,7 @@ public class PluginEngineSourceForFolderTest {
         Plugin.Engine.Source.Origin origin = new Plugin.Engine.Source.ForFolder(folder).read();
         try {
             assertThat(origin.getManifest(), nullValue(Manifest.class));
-            assertThat(origin.getClassFileLocator().locate(Object.class.getName()).isResolved(), is(false));
+            assertThat(origin.toClassFileLocator(null).locate(Object.class.getName()).isResolved(), is(false));
             assertThat(origin.iterator().hasNext(), is(false));
         } finally {
             origin.close();
@@ -57,9 +52,9 @@ public class PluginEngineSourceForFolderTest {
         Plugin.Engine.Source.Origin origin = new Plugin.Engine.Source.ForFolder(folder).read();
         try {
             assertThat(origin.getManifest(), nullValue(Manifest.class));
-            assertThat(origin.getClassFileLocator().locate("Foo").isResolved(), is(true));
-            assertThat(origin.getClassFileLocator().locate("Foo").resolve(), is(new byte[]{1, 2, 3}));
-            assertThat(origin.getClassFileLocator().locate("Bar").isResolved(), is(false));
+            assertThat(origin.toClassFileLocator(null).locate("Foo").isResolved(), is(true));
+            assertThat(origin.toClassFileLocator(null).locate("Foo").resolve(), is(new byte[]{1, 2, 3}));
+            assertThat(origin.toClassFileLocator(null).locate("Bar").isResolved(), is(false));
             Iterator<Plugin.Engine.Source.Element> iterator = origin.iterator();
             assertThat(iterator.hasNext(), is(true));
             Plugin.Engine.Source.Element element = iterator.next();
@@ -92,10 +87,21 @@ public class PluginEngineSourceForFolderTest {
         Plugin.Engine.Source.Origin origin = new Plugin.Engine.Source.ForFolder(folder).read();
         try {
             assertThat(origin.getManifest(), nullValue(Manifest.class));
-            assertThat(origin.getClassFileLocator().locate("bar.Foo").isResolved(), is(true));
-            assertThat(origin.getClassFileLocator().locate("bar.Foo").resolve(), is(new byte[]{1, 2, 3}));
-            assertThat(origin.getClassFileLocator().locate("Bar").isResolved(), is(false));
+            assertThat(origin.toClassFileLocator(null).locate("bar.Foo").isResolved(), is(true));
+            assertThat(origin.toClassFileLocator(null).locate("bar.Foo").resolve(), is(new byte[]{1, 2, 3}));
+            assertThat(origin.toClassFileLocator(null).locate("Bar").isResolved(), is(false));
             Iterator<Plugin.Engine.Source.Element> iterator = origin.iterator();
+            assertThat(iterator.hasNext(), is(true));
+            Plugin.Engine.Source.Element folder = iterator.next();
+            assertThat(folder.getName(), is("bar/"));
+            assertThat(folder.resolveAs(Object.class), nullValue(Object.class));
+            assertThat(folder.resolveAs(File.class), is(file.getParentFile()));
+            try {
+                folder.getInputStream();
+                fail("Did not expect input stream to allow resolution from folder");
+            } catch (IOException ignored) {
+                /* expected */
+            }
             assertThat(iterator.hasNext(), is(true));
             Plugin.Engine.Source.Element element = iterator.next();
             assertThat(element.getName(), is("bar/Foo.class"));

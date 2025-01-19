@@ -1,14 +1,13 @@
 package net.bytebuddy.dynamic;
 
 import net.bytebuddy.test.utility.JavaVersionRule;
-import net.bytebuddy.test.utility.MockitoRule;
 import net.bytebuddy.utility.JavaModule;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.MethodRule;
-import org.junit.rules.TestRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import java.io.ByteArrayInputStream;
 
@@ -23,7 +22,7 @@ public class ClassFileLocatorForModuleTest {
     private static final String FOOBAR = "foo/bar";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Rule
     public MethodRule javaVersionRule = new JavaVersionRule();
@@ -55,12 +54,12 @@ public class ClassFileLocatorForModuleTest {
     @Test
     public void testLocatable() throws Exception {
         ByteArrayInputStream inputStream = new ByteArrayInputStream(new byte[]{1, 2, 3});
-        when(module.getResourceAsStream(FOOBAR + ".class")).thenReturn(inputStream);
+        when(module.getResourceAsStream(FOOBAR + ClassFileLocator.CLASS_FILE_EXTENSION)).thenReturn(inputStream);
         ClassFileLocator.Resolution resolution = new ClassFileLocator.ForModule(module)
                 .locate(FOOBAR);
         assertThat(resolution.isResolved(), is(true));
         assertThat(resolution.resolve(), is(new byte[]{1, 2, 3}));
-        verify(module).getResourceAsStream(FOOBAR + ".class");
+        verify(module).getResourceAsStream(FOOBAR + ClassFileLocator.CLASS_FILE_EXTENSION);
         verifyNoMoreInteractions(module);
     }
 
@@ -69,7 +68,7 @@ public class ClassFileLocatorForModuleTest {
         ClassFileLocator.Resolution resolution = new ClassFileLocator.ForModule(module)
                 .locate(FOOBAR);
         assertThat(resolution.isResolved(), is(false));
-        verify(module).getResourceAsStream(FOOBAR + ".class");
+        verify(module).getResourceAsStream(FOOBAR + ClassFileLocator.CLASS_FILE_EXTENSION);
         verifyNoMoreInteractions(module);
         resolution.resolve();
         fail();
@@ -86,6 +85,6 @@ public class ClassFileLocatorForModuleTest {
     @Test
     public void testClose() throws Exception {
         new ClassFileLocator.ForModule(module).close();
-        verifyZeroInteractions(module);
+        verifyNoMoreInteractions(module);
     }
 }

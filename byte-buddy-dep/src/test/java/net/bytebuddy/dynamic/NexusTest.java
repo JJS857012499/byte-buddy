@@ -3,14 +3,14 @@ package net.bytebuddy.dynamic;
 import net.bytebuddy.dynamic.loading.ByteArrayClassLoader;
 import net.bytebuddy.dynamic.loading.PackageDefinitionStrategy;
 import net.bytebuddy.implementation.LoadedTypeInitializer;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
-import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
+import java.lang.ref.SoftReference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -31,7 +31,7 @@ public class NexusTest {
     private static final int BAR = 42;
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private LoadedTypeInitializer loadedTypeInitializer;
@@ -194,7 +194,7 @@ public class NexusTest {
     @Test(expected = UnsupportedOperationException.class)
     @SuppressWarnings("unchecked")
     public void testUnavailableDispatcherCleanThrowsException() throws Exception {
-        new NexusAccessor.Dispatcher.Unavailable("unavailable").clean(mock(Reference.class));
+        new NexusAccessor.Dispatcher.Unavailable("unavailable").clean(new SoftReference<ClassLoader>(ClassLoader.getSystemClassLoader()));
     }
 
     @Test

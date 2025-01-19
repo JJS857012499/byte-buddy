@@ -1,11 +1,11 @@
 package net.bytebuddy.utility;
 
 import net.bytebuddy.description.type.TypeDescription;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -16,10 +16,10 @@ public class JavaConstantTest {
     private static final String FOO = "foo";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
-    private JavaConstant.Visitor<?> visitor;
+    private JavaConstant.Visitor<Object> visitor;
 
     @Mock
     private Object value;
@@ -41,9 +41,9 @@ public class JavaConstantTest {
     @Test
     @SuppressWarnings("unchecked")
     public void testVisitSimpleType() throws Exception {
-        when(visitor.onType((JavaConstant.Simple<TypeDescription>) JavaConstant.Simple.of(TypeDescription.OBJECT))).thenReturn(value);
-        assertThat(JavaConstant.Simple.of(TypeDescription.OBJECT).accept(visitor), is(value));
-        verify(visitor).onType((JavaConstant.Simple<TypeDescription>) JavaConstant.Simple.of(TypeDescription.OBJECT));
+        when(visitor.onType((JavaConstant.Simple<TypeDescription>) JavaConstant.Simple.of(TypeDescription.ForLoadedType.of(Object.class)))).thenReturn(value);
+        assertThat(JavaConstant.Simple.of(TypeDescription.ForLoadedType.of(Object.class)).accept(visitor), is(value));
+        verify(visitor).onType((JavaConstant.Simple<TypeDescription>) JavaConstant.Simple.of(TypeDescription.ForLoadedType.of(Object.class)));
         verifyNoMoreInteractions(visitor);
     }
 

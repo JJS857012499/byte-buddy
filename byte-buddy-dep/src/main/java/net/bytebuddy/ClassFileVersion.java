@@ -20,18 +20,18 @@ import net.bytebuddy.build.AccessControllerPlugin;
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
-import net.bytebuddy.utility.OpenedClassReader;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.objectweb.asm.Opcodes;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.lang.reflect.Method;
 import java.security.PrivilegedAction;
 
 /**
  * A wrapper object for representing a validated class file version in the format that is specified by the
  * <a href="http://docs.oracle.com/javase/specs/jvms/se7/html/jvms-4.html">JVMS</a>.
  */
-@HashCodeAndEqualsPlugin.Enhance
 public class ClassFileVersion implements Comparable<ClassFileVersion>, Serializable {
 
     /**
@@ -135,6 +135,64 @@ public class ClassFileVersion implements Comparable<ClassFileVersion>, Serializa
     public static final ClassFileVersion JAVA_V18 = new ClassFileVersion(Opcodes.V18);
 
     /**
+     * The class file version of Java 19.
+     */
+    public static final ClassFileVersion JAVA_V19 = new ClassFileVersion(Opcodes.V19);
+
+    /**
+     * The class file version of Java 20.
+     */
+    public static final ClassFileVersion JAVA_V20 = new ClassFileVersion(Opcodes.V20);
+
+    /**
+     * The class file version of Java 21.
+     */
+    public static final ClassFileVersion JAVA_V21 = new ClassFileVersion(Opcodes.V21);
+
+    /**
+     * The class file version of Java 22.
+     */
+    public static final ClassFileVersion JAVA_V22 = new ClassFileVersion(Opcodes.V22);
+
+    /**
+     * The class file version of Java 23.
+     */
+    public static final ClassFileVersion JAVA_V23 = new ClassFileVersion(Opcodes.V23);
+
+    /**
+     * The class file version of Java 24.
+     */
+    public static final ClassFileVersion JAVA_V24 = new ClassFileVersion(Opcodes.V24);
+
+    /**
+     * An array of class file versions in their sorting order.
+     */
+    private static final ClassFileVersion[] CLASS_FILE_VERSIONS = new ClassFileVersion[] {ClassFileVersion.JAVA_V1,
+            ClassFileVersion.JAVA_V2,
+            ClassFileVersion.JAVA_V3,
+            ClassFileVersion.JAVA_V4,
+            ClassFileVersion.JAVA_V5,
+            ClassFileVersion.JAVA_V6,
+            ClassFileVersion.JAVA_V7,
+            ClassFileVersion.JAVA_V8,
+            ClassFileVersion.JAVA_V9,
+            ClassFileVersion.JAVA_V10,
+            ClassFileVersion.JAVA_V11,
+            ClassFileVersion.JAVA_V12,
+            ClassFileVersion.JAVA_V13,
+            ClassFileVersion.JAVA_V14,
+            ClassFileVersion.JAVA_V15,
+            ClassFileVersion.JAVA_V16,
+            ClassFileVersion.JAVA_V17,
+            ClassFileVersion.JAVA_V18,
+            ClassFileVersion.JAVA_V19,
+            ClassFileVersion.JAVA_V20,
+            ClassFileVersion.JAVA_V21,
+            ClassFileVersion.JAVA_V22,
+            ClassFileVersion.JAVA_V23,
+            ClassFileVersion.JAVA_V24};
+
+    /**
      * A version locator for the executing JVM.
      */
     private static final VersionLocator VERSION_LOCATOR = doPrivileged(VersionLocator.Resolver.INSTANCE);
@@ -145,7 +203,7 @@ public class ClassFileVersion implements Comparable<ClassFileVersion>, Serializa
     private final int versionNumber;
 
     /**
-     * Creates a wrapper for a given minor-major release of the Java class file file.
+     * Creates a wrapper for a given minor-major release of the Java class file format.
      *
      * @param versionNumber The minor-major release number.
      */
@@ -166,14 +224,14 @@ public class ClassFileVersion implements Comparable<ClassFileVersion>, Serializa
     }
 
     /**
-     * Creates a wrapper for a given minor-major release of the Java class file file.
+     * Creates a wrapper for a given minor-major release of the Java class file format.
      *
      * @param versionNumber The minor-major release number.
      * @return A representation of the version number.
      */
     public static ClassFileVersion ofMinorMajor(int versionNumber) {
         ClassFileVersion classFileVersion = new ClassFileVersion(versionNumber);
-        if (classFileVersion.getMajorVersion() <= BASE_VERSION) {
+        if (classFileVersion.getMajorVersion() > 0 && classFileVersion.getMajorVersion() <= BASE_VERSION) {
             throw new IllegalArgumentException("Class version " + versionNumber + " is not valid");
         }
         return classFileVersion;
@@ -186,55 +244,20 @@ public class ClassFileVersion implements Comparable<ClassFileVersion>, Serializa
      * @return The appropriate class file version.
      */
     public static ClassFileVersion ofJavaVersionString(String javaVersionString) {
-        if (javaVersionString.equals("1.1")) {
-            return JAVA_V1;
-        } else if (javaVersionString.equals("1.2")) {
-            return JAVA_V2;
-        } else if (javaVersionString.equals("1.3")) {
-            return JAVA_V3;
-        } else if (javaVersionString.equals("1.4")) {
-            return JAVA_V4;
-        } else if (javaVersionString.equals("1.5") || javaVersionString.equals("5")) {
-            return JAVA_V5;
-        } else if (javaVersionString.equals("1.6") || javaVersionString.equals("6")) {
-            return JAVA_V6;
-        } else if (javaVersionString.equals("1.7") || javaVersionString.equals("7")) {
-            return JAVA_V7;
-        } else if (javaVersionString.equals("1.8") || javaVersionString.equals("8")) {
-            return JAVA_V8;
-        } else if (javaVersionString.equals("1.9") || javaVersionString.equals("9")) {
-            return JAVA_V9;
-        } else if (javaVersionString.equals("1.10") || javaVersionString.equals("10")) {
-            return JAVA_V10;
-        } else if (javaVersionString.equals("1.11") || javaVersionString.equals("11")) {
-            return JAVA_V11;
-        } else if (javaVersionString.equals("1.12") || javaVersionString.equals("12")) {
-            return JAVA_V12;
-        } else if (javaVersionString.equals("1.13") || javaVersionString.equals("13")) {
-            return JAVA_V13;
-        } else if (javaVersionString.equals("1.14") || javaVersionString.equals("14")) {
-            return JAVA_V14;
-        } else if (javaVersionString.equals("1.15") || javaVersionString.equals("15")) {
-            return JAVA_V15;
-        } else if (javaVersionString.equals("1.16") || javaVersionString.equals("16")) {
-            return JAVA_V16;
-        } else if (javaVersionString.equals("1.17") || javaVersionString.equals("17")) {
-            return JAVA_V17;
-        } else if (javaVersionString.equals("1.18") || javaVersionString.equals("18")) {
-            return JAVA_V18;
-        } else {
-            if (OpenedClassReader.EXPERIMENTAL) {
-                try {
-                    int version = Integer.parseInt(javaVersionString.startsWith("1.")
-                            ? javaVersionString.substring(2)
-                            : javaVersionString);
-                    if (version > 0) {
-                        return new ClassFileVersion(BASE_VERSION + version);
-                    }
-                } catch (NumberFormatException ignored) {
+        int index = javaVersionString.indexOf('.');
+        try {
+            int javaVersion;
+            if (index == -1) {
+                javaVersion = Integer.parseInt(javaVersionString);
+            } else {
+                javaVersion = Integer.parseInt(javaVersionString.substring(index + 1));
+                if (Integer.parseInt(javaVersionString.substring(0, index)) != 1 || javaVersion > 8) {
+                    throw new IllegalArgumentException("Java versions with minor version must be of format 1.[1-7]: " + javaVersionString);
                 }
             }
-            throw new IllegalArgumentException("Unknown Java version string: " + javaVersionString);
+            return ofJavaVersion(javaVersion);
+        } catch (NumberFormatException exception) {
+            throw new IllegalStateException("Failed to read Java version from: " + javaVersionString, exception);
         }
     }
 
@@ -246,49 +269,12 @@ public class ClassFileVersion implements Comparable<ClassFileVersion>, Serializa
      * @return A wrapper for the given Java class file version.
      */
     public static ClassFileVersion ofJavaVersion(int javaVersion) {
-        switch (javaVersion) {
-            case 1:
-                return JAVA_V1;
-            case 2:
-                return JAVA_V2;
-            case 3:
-                return JAVA_V3;
-            case 4:
-                return JAVA_V4;
-            case 5:
-                return JAVA_V5;
-            case 6:
-                return JAVA_V6;
-            case 7:
-                return JAVA_V7;
-            case 8:
-                return JAVA_V8;
-            case 9:
-                return JAVA_V9;
-            case 10:
-                return JAVA_V10;
-            case 11:
-                return JAVA_V11;
-            case 12:
-                return JAVA_V12;
-            case 13:
-                return JAVA_V13;
-            case 14:
-                return JAVA_V14;
-            case 15:
-                return JAVA_V15;
-            case 16:
-                return JAVA_V16;
-            case 17:
-                return JAVA_V17;
-            case 18:
-                return JAVA_V18;
-            default:
-                if (OpenedClassReader.EXPERIMENTAL && javaVersion > 0) {
-                    return new ClassFileVersion(BASE_VERSION + javaVersion);
-                } else {
-                    throw new IllegalArgumentException("Unknown Java version: " + javaVersion);
-                }
+        if (javaVersion < 1) {
+            throw new IllegalArgumentException("Java version must be positive: " + javaVersion);
+        } else if (javaVersion - 1 < CLASS_FILE_VERSIONS.length) {
+            return CLASS_FILE_VERSIONS[javaVersion - 1];
+        } else {
+            return new ClassFileVersion(BASE_VERSION + javaVersion);
         }
     }
 
@@ -298,7 +284,7 @@ public class ClassFileVersion implements Comparable<ClassFileVersion>, Serializa
      * @return The latest officially supported Java version.
      */
     public static ClassFileVersion latest() {
-        return ClassFileVersion.JAVA_V18;
+        return ClassFileVersion.JAVA_V24;
     }
 
     /**
@@ -317,10 +303,10 @@ public class ClassFileVersion implements Comparable<ClassFileVersion>, Serializa
      * by parsing the {@code java.version} property which is provided by {@link java.lang.System#getProperty(String)}. If the system
      * property is not available, the {@code fallback} version is returned.
      *
-     * @param fallback The version to fallback to if locating a class file version is not possible.
+     * @param fallback The version to fall back to if locating a class file version is not possible.
      * @return The currently running Java process's class file version or the fallback if locating this version is impossible.
      */
-    @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not be rethrown but trigger a fallback")
+    @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not be rethrown but trigger a fallback.")
     public static ClassFileVersion ofThisVm(ClassFileVersion fallback) {
         try {
             return ofThisVm();
@@ -374,7 +360,10 @@ public class ClassFileVersion implements Comparable<ClassFileVersion>, Serializa
         if (binaryRepresentation.length < 7) {
             throw new IllegalArgumentException("Supplied byte array is too short to be a class file with " + binaryRepresentation.length + " byte");
         }
-        return ofMinorMajor(binaryRepresentation[6] << 8 | binaryRepresentation[7] & 0xFF);
+        return ofMinorMajor(binaryRepresentation[4] << 24
+                | binaryRepresentation[5] << 16
+                | binaryRepresentation[6] << 8
+                | binaryRepresentation[7]);
     }
 
     /**
@@ -392,7 +381,7 @@ public class ClassFileVersion implements Comparable<ClassFileVersion>, Serializa
      * @return The major version this instance represents.
      */
     public short getMajorVersion() {
-        return (short) (versionNumber & 0xFF);
+        return (short) (versionNumber & 0xFFFF);
     }
 
     /**
@@ -401,7 +390,7 @@ public class ClassFileVersion implements Comparable<ClassFileVersion>, Serializa
      * @return The minor version this instance represents.
      */
     public short getMinorVersion() {
-        return (short) (versionNumber >> 16);
+        return (short) (versionNumber >>> 16);
     }
 
     /**
@@ -481,6 +470,21 @@ public class ClassFileVersion implements Comparable<ClassFileVersion>, Serializa
     }
 
     @Override
+    public int hashCode() {
+        return versionNumber;
+    }
+
+    @Override
+    public boolean equals(@MaybeNull Object other) {
+        if (this == other) {
+            return true;
+        } else if (other == null || getClass() != other.getClass()) {
+            return false;
+        }
+        return versionNumber == ((ClassFileVersion) other).versionNumber;
+    }
+
+    @Override
     public String toString() {
         return "Java " + getJavaVersion() + " (" + getMinorMajorVersion() + ")";
     }
@@ -489,6 +493,16 @@ public class ClassFileVersion implements Comparable<ClassFileVersion>, Serializa
      * A locator for the executing VM's Java version.
      */
     protected interface VersionLocator {
+
+        /**
+         * A suffix that might indicate an early access version of Java.
+         */
+        String EARLY_ACCESS = "-ea";
+
+        /**
+         * A suffix that might indicate an internal version of Java.
+         */
+        String INTERNAL = "-internal";
 
         /**
          * The property for reading the current VM's Java version.
@@ -515,12 +529,17 @@ public class ClassFileVersion implements Comparable<ClassFileVersion>, Serializa
             /**
              * {@inheritDoc}
              */
-            @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not be rethrown but trigger a fallback")
+            @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION", justification = "Exception should not be rethrown but trigger a fallback.")
             public VersionLocator run() {
                 try {
-                    return new Resolved(ClassFileVersion.ofJavaVersion((Integer) Class.forName(Runtime.class.getName() + "$Version")
-                            .getMethod("major")
-                            .invoke(Runtime.class.getMethod("version").invoke(null))));
+                    Class<?> type = Class.forName(Runtime.class.getName() + "$Version");
+                    Method method;
+                    try {
+                        method = type.getMethod("feature");
+                    } catch (NoSuchMethodException ignored) {
+                        method = type.getMethod("major");
+                    }
+                    return new Resolved(ClassFileVersion.ofJavaVersion((Integer) method.invoke(Runtime.class.getMethod("version").invoke(null))));
                 } catch (Throwable ignored) {
                     try {
                         String versionString = System.getProperty(JAVA_VERSION);
@@ -528,6 +547,11 @@ public class ClassFileVersion implements Comparable<ClassFileVersion>, Serializa
                             throw new IllegalStateException("Java version property is not set");
                         } else if (versionString.equals("0")) { // Used by Android, assume Java 6 defensively.
                             return new Resolved(ClassFileVersion.JAVA_V6);
+                        }
+                        if (versionString.endsWith(EARLY_ACCESS)) {
+                            versionString = versionString.substring(0, versionString.length() - EARLY_ACCESS.length());
+                        } else if (versionString.endsWith(INTERNAL)) {
+                            versionString = versionString.substring(0, versionString.length() - INTERNAL.length());
                         }
                         int[] versionIndex = {-1, 0, 0};
                         for (int index = 1; index < 3; index++) {

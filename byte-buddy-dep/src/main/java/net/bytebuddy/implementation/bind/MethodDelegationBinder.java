@@ -27,9 +27,9 @@ import net.bytebuddy.implementation.bytecode.assign.Assigner;
 import net.bytebuddy.implementation.bytecode.member.MethodInvocation;
 import net.bytebuddy.implementation.bytecode.member.MethodReturn;
 import net.bytebuddy.utility.CompoundList;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.objectweb.asm.MethodVisitor;
 
-import javax.annotation.Nullable;
 import java.io.PrintStream;
 import java.util.*;
 
@@ -347,7 +347,7 @@ public interface MethodDelegationBinder {
          * @return The target method's parameter index of this binding or {@code null} if no such argument binding
          * was applied for this binding.
          */
-        @Nullable
+        @MaybeNull
         Integer getTargetParameterIndex(Object parameterBindingToken);
 
         /**
@@ -543,7 +543,7 @@ public interface MethodDelegationBinder {
                 /**
                  * {@inheritDoc}
                  */
-                @Nullable
+                @MaybeNull
                 public Integer getTargetParameterIndex(Object parameterBindingToken) {
                     return registeredTargetIndices.get(parameterBindingToken);
                 }
@@ -781,7 +781,7 @@ public interface MethodDelegationBinder {
      * Implementations of this interface are able to attempt the resolution of two successful bindings of a method
      * to two different target methods in order to identify a dominating binding.
      */
-    @SuppressFBWarnings(value = "IC_SUPERCLASS_USES_SUBCLASS_DURING_INITIALIZATION", justification = "Safe initialization is implied")
+    @SuppressFBWarnings(value = "IC_SUPERCLASS_USES_SUBCLASS_DURING_INITIALIZATION", justification = "Safe initialization is implied.")
     interface AmbiguityResolver {
 
         /**

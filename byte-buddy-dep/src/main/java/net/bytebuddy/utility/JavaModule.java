@@ -22,14 +22,14 @@ import net.bytebuddy.description.annotation.AnnotationList;
 import net.bytebuddy.description.annotation.AnnotationSource;
 import net.bytebuddy.description.type.PackageDescription;
 import net.bytebuddy.utility.dispatcher.JavaDispatcher;
+import net.bytebuddy.utility.nullability.AlwaysNull;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.meta.When;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.AnnotatedElement;
 import java.security.PrivilegedAction;
+import java.util.Set;
 
 /**
  * Type-safe representation of a {@code java.lang.Module}. On platforms that do not support the module API, modules are represented by {@code null}.
@@ -39,7 +39,7 @@ public class JavaModule implements NamedElement.WithOptionalName, AnnotationSour
     /**
      * Canonical representation of a Java module on a JVM that does not support the module API.
      */
-    @Nonnull(when = When.NEVER)
+    @AlwaysNull
     public static final JavaModule UNSUPPORTED = null;
 
     /**
@@ -84,7 +84,7 @@ public class JavaModule implements NamedElement.WithOptionalName, AnnotationSour
      * @param type The type for which to describe the module.
      * @return A representation of the type's module or {@code null} if the current VM does not support modules.
      */
-    @Nullable
+    @MaybeNull
     public static JavaModule ofType(Class<?> type) {
         Object module = RESOLVER.getModule(type);
         return module == null
@@ -130,13 +130,22 @@ public class JavaModule implements NamedElement.WithOptionalName, AnnotationSour
     }
 
     /**
+     * Returns the packages of this module.
+     *
+     * @return A set of the names of the packages that are defined by this module.
+     */
+    public Set<String> getPackages() {
+        return MODULE.getPackages(module);
+    }
+
+    /**
      * Returns a resource stream for this module for a resource of the given name or {@code null} if such a resource does not exist.
      *
      * @param name The name of the resource.
      * @return An input stream for the resource or {@code null} if it does not exist.
      * @throws IOException If an I/O exception occurs.
      */
-    @Nullable
+    @MaybeNull
     public InputStream getResourceAsStream(String name) throws IOException {
         return MODULE.getResourceAsStream(module, name);
     }
@@ -146,7 +155,7 @@ public class JavaModule implements NamedElement.WithOptionalName, AnnotationSour
      *
      * @return The class loader of the represented module.
      */
-    @Nullable
+    @MaybeNull
     public ClassLoader getClassLoader() {
         return MODULE.getClassLoader(module);
     }
@@ -177,8 +186,10 @@ public class JavaModule implements NamedElement.WithOptionalName, AnnotationSour
      * @param module             The target module.
      * @return {@code true} if this module exports the supplied package to this module.
      */
-    public boolean isExported(@Nullable PackageDescription packageDescription, JavaModule module) {
-        return packageDescription == null || MODULE.isExported(this.module, packageDescription.getName(), module.unwrap());
+    public boolean isExported(@MaybeNull PackageDescription packageDescription, JavaModule module) {
+        return packageDescription == null
+                || packageDescription.isDefault()
+                || MODULE.isExported(this.module, packageDescription.getName(), module.unwrap());
     }
 
     /**
@@ -188,8 +199,10 @@ public class JavaModule implements NamedElement.WithOptionalName, AnnotationSour
      * @param module             The target module.
      * @return {@code true} if this module opens the supplied package to this module.
      */
-    public boolean isOpened(@Nullable PackageDescription packageDescription, JavaModule module) {
-        return packageDescription == null || MODULE.isOpen(this.module, packageDescription.getName(), module.unwrap());
+    public boolean isOpened(@MaybeNull PackageDescription packageDescription, JavaModule module) {
+        return packageDescription == null
+                || packageDescription.isDefault()
+                || MODULE.isOpen(this.module, packageDescription.getName(), module.unwrap());
     }
 
     /**
@@ -205,7 +218,7 @@ public class JavaModule implements NamedElement.WithOptionalName, AnnotationSour
     }
 
     @Override
-    public boolean equals(Object other) {
+    public boolean equals(@MaybeNull Object other) {
         if (this == other) {
             return true;
         } else if (!(other instanceof JavaModule)) {
@@ -232,7 +245,7 @@ public class JavaModule implements NamedElement.WithOptionalName, AnnotationSour
          * @param type The type for which to resolve the module.
          * @return The type's module or {@code null} if the module system is not supported.
          */
-        @Nullable
+        @MaybeNull
         @JavaDispatcher.Defaults
         Object getModule(Class<?> type);
     }
@@ -269,12 +282,20 @@ public class JavaModule implements NamedElement.WithOptionalName, AnnotationSour
         String getName(Object value);
 
         /**
+         * Returns the module's exported packages.
+         *
+         * @param value The {@code java.lang.Module} to check for its packages.
+         * @return The module's packages.
+         */
+        Set<String> getPackages(Object value);
+
+        /**
          * Returns the class loader of a module.
          *
          * @param value The {@code java.lang.Module} for which to return a class loader.
          * @return The module's class loader.
          */
-        @Nullable
+        @MaybeNull
         ClassLoader getClassLoader(Object value);
 
         /**
@@ -285,7 +306,7 @@ public class JavaModule implements NamedElement.WithOptionalName, AnnotationSour
          * @return An input stream for the resource or {@code null} if it does not exist.
          * @throws IOException If an I/O exception occurs.
          */
-        @Nullable
+        @MaybeNull
         InputStream getResourceAsStream(Object value, String name) throws IOException;
 
         /**

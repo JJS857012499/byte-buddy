@@ -18,8 +18,9 @@ package net.bytebuddy.dynamic.loading;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
 import net.bytebuddy.matcher.ElementMatcher;
+import net.bytebuddy.utility.nullability.MaybeNull;
+import net.bytebuddy.utility.nullability.UnknownNull;
 
-import javax.annotation.Nullable;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.net.URL;
@@ -60,7 +61,7 @@ public class MultipleParentClassLoader extends InjectionClassLoader {
     /**
      * Registers class loader as parallel capable if possible.
      */
-    @SuppressFBWarnings(value = "DP_DO_INSIDE_DO_PRIVILEGED", justification = "Must be invoked from targeting ClassLoader class.")
+    @SuppressFBWarnings(value = "DP_DO_INSIDE_DO_PRIVILEGED", justification = "Must be invoked from targeting class loader type.")
     private static void doRegisterAsParallelCapable() {
         try {
             Method method = ClassLoader.class.getDeclaredMethod("registerAsParallelCapable");
@@ -94,7 +95,7 @@ public class MultipleParentClassLoader extends InjectionClassLoader {
      * @param parents The parents of this class loader in their application order. This list must not contain {@code null},
      *                i.e. the bootstrap class loader which is an implicit parent of any class loader.
      */
-    public MultipleParentClassLoader(@Nullable ClassLoader parent, List<? extends ClassLoader> parents) {
+    public MultipleParentClassLoader(@MaybeNull ClassLoader parent, List<? extends ClassLoader> parents) {
         this(parent, parents, true);
     }
 
@@ -107,7 +108,7 @@ public class MultipleParentClassLoader extends InjectionClassLoader {
      *                i.e. the bootstrap class loader which is an implicit parent of any class loader.
      * @param sealed  {@code true} if the class loader is sealed for injection of additional classes.
      */
-    public MultipleParentClassLoader(@Nullable ClassLoader parent, List<? extends ClassLoader> parents, boolean sealed) {
+    public MultipleParentClassLoader(@MaybeNull ClassLoader parent, List<? extends ClassLoader> parents, boolean sealed) {
         super(parent, sealed);
         this.parents = parents;
     }
@@ -182,8 +183,8 @@ public class MultipleParentClassLoader extends InjectionClassLoader {
         /**
          * The currently represented enumeration or {@code null} if no such enumeration is currently selected.
          */
-        @Nullable
-        private Enumeration<URL> currentEnumeration;
+        @UnknownNull
+        private Enumeration<URL> current;
 
         /**
          * Creates a compound enumeration.
@@ -198,10 +199,10 @@ public class MultipleParentClassLoader extends InjectionClassLoader {
          * {@inheritDoc}
          */
         public boolean hasMoreElements() {
-            if (currentEnumeration != null && currentEnumeration.hasMoreElements()) {
+            if (current != null && current.hasMoreElements()) {
                 return true;
             } else if (!enumerations.isEmpty()) {
-                currentEnumeration = enumerations.remove(FIRST);
+                current = enumerations.remove(FIRST);
                 return hasMoreElements();
             } else {
                 return false;
@@ -211,10 +212,10 @@ public class MultipleParentClassLoader extends InjectionClassLoader {
         /**
          * {@inheritDoc}
          */
-        @SuppressFBWarnings(value = "UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR", justification = "Null reference is impossible due to element check")
+        @SuppressFBWarnings(value = "UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR", justification = "Null reference is avoided by element check.")
         public URL nextElement() {
             if (hasMoreElements()) {
-                return currentEnumeration.nextElement();
+                return current.nextElement();
             } else {
                 throw new NoSuchElementException();
             }
@@ -231,11 +232,6 @@ public class MultipleParentClassLoader extends InjectionClassLoader {
      */
     @HashCodeAndEqualsPlugin.Enhance
     public static class Builder {
-
-        /**
-         * Indicates the first index of a list.
-         */
-        private static final int ONLY = 0;
 
         /**
          * {@code true} if the created class loader is sealed.
@@ -438,11 +434,10 @@ public class MultipleParentClassLoader extends InjectionClassLoader {
          *
          * @return A suitable class loader.
          */
-        @SuppressFBWarnings(value = "DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED", justification = "Privilege is explicit user responsibility")
         public ClassLoader build() {
             return classLoaders.size() == 1
-                    ? classLoaders.get(ONLY)
-                    : new MultipleParentClassLoader(classLoaders);
+                    ? classLoaders.get(0)
+                    : doBuild(ClassLoadingStrategy.BOOTSTRAP_LOADER);
         }
 
         /**
@@ -472,8 +467,8 @@ public class MultipleParentClassLoader extends InjectionClassLoader {
          * @param parent The explicit parent class loader.
          * @return A multiple parent class loader that includes all collected class loaders and the explicit parent.
          */
-        @SuppressFBWarnings(value = "DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED", justification = "Privilege is explicit user responsibility")
-        private ClassLoader doBuild(@Nullable ClassLoader parent) {
+        @SuppressFBWarnings(value = "DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED", justification = "Assuring privilege is explicit user responsibility.")
+        private ClassLoader doBuild(@MaybeNull ClassLoader parent) {
             return new MultipleParentClassLoader(parent, classLoaders, sealed);
         }
     }

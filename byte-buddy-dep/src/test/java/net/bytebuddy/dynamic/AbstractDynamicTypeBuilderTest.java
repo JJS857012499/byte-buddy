@@ -29,14 +29,16 @@ import net.bytebuddy.implementation.bytecode.member.MethodReturn;
 import net.bytebuddy.pool.TypePool;
 import net.bytebuddy.test.utility.CallTraceable;
 import net.bytebuddy.test.utility.JavaVersionRule;
-import net.bytebuddy.test.utility.MockitoRule;
+import net.bytebuddy.utility.AsmClassWriter;
 import net.bytebuddy.utility.OpenedClassReader;
+import net.bytebuddy.utility.visitor.ContextClassVisitor;
 import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.invocation.InvocationOnMock;
+import org.mockito.junit.MockitoJUnit;
 import org.mockito.stubbing.Answer;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
@@ -64,7 +66,7 @@ public abstract class AbstractDynamicTypeBuilderTest {
 
     private static final String FOO = "foo", BAR = "bar", QUX = "qux", TO_STRING = "toString";
 
-    private static final String TYPE_VARIABLE_NAME = "net.bytebuddy.test.precompiled.TypeAnnotation", VALUE = "value";
+    private static final String TYPE_VARIABLE_NAME = "net.bytebuddy.test.precompiled.v8.TypeAnnotation", VALUE = "value";
 
     private static final int MODIFIERS = Opcodes.ACC_PUBLIC;
 
@@ -97,7 +99,7 @@ public abstract class AbstractDynamicTypeBuilderTest {
     private static final String STRING_FIELD = "stringField";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     private Type list, fooVariable;
 
@@ -354,6 +356,7 @@ public abstract class AbstractDynamicTypeBuilderTest {
                         mv.visitInsn(Opcodes.ARETURN);
                         mv.visitMaxs(-1, -1);
                         mv.visitEnd();
+                        super.visitEnd();
                     }
                 };
             }
@@ -1129,7 +1132,7 @@ public abstract class AbstractDynamicTypeBuilderTest {
 
     @Test
     public void testDeclaredAsMemberType() throws Exception {
-        TypeDescription sample = new TypeDescription.Latent("foo.Bar$Qux", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OBJECT) {
+        TypeDescription sample = new TypeDescription.Latent("foo.Bar$Qux", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)) {
             @Override
             public String getSimpleName() {
                 return "Qux";
@@ -1170,7 +1173,7 @@ public abstract class AbstractDynamicTypeBuilderTest {
     @Test
     public void testDeclaredAsAnonymousType() throws Exception {
         // Older JVMs derive the anonymous class property from a naming convention.
-        TypeDescription sample = new TypeDescription.Latent("foo.Bar$1", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OBJECT) {
+        TypeDescription sample = new TypeDescription.Latent("foo.Bar$1", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)) {
             @Override
             public String getSimpleName() {
                 return "";
@@ -1210,7 +1213,7 @@ public abstract class AbstractDynamicTypeBuilderTest {
 
     @Test
     public void testDeclaredAsLocalType() throws Exception {
-        TypeDescription sample = new TypeDescription.Latent("foo.Bar$Qux", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OBJECT) {
+        TypeDescription sample = new TypeDescription.Latent("foo.Bar$Qux", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)) {
             @Override
             public String getSimpleName() {
                 return "Qux";
@@ -1251,7 +1254,7 @@ public abstract class AbstractDynamicTypeBuilderTest {
     @Test
     public void testDeclaredAsAnonymousTypeInMethod() throws Exception {
         // Older JVMs derive the anonymous class property from a naming convention.
-        TypeDescription sample = new TypeDescription.Latent("foo.Bar$1", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OBJECT) {
+        TypeDescription sample = new TypeDescription.Latent("foo.Bar$1", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)) {
             @Override
             public String getSimpleName() {
                 return "";
@@ -1292,7 +1295,7 @@ public abstract class AbstractDynamicTypeBuilderTest {
     @Test
     public void testDeclaredAsLocalTypeInInitializer() throws Exception {
         // Older JVMs derive the anonymous class property from a naming convention.
-        TypeDescription sample = new TypeDescription.Latent("foo.Bar$Qux", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OBJECT) {
+        TypeDescription sample = new TypeDescription.Latent("foo.Bar$Qux", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)) {
             @Override
             public String getSimpleName() {
                 return "Qux";
@@ -1333,7 +1336,7 @@ public abstract class AbstractDynamicTypeBuilderTest {
     @Test
     public void testDeclaredAsAnonymousTypeInInitializer() throws Exception {
         // Older JVMs derive the anonymous class property from a naming convention.
-        TypeDescription sample = new TypeDescription.Latent("foo.Bar$1", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OBJECT) {
+        TypeDescription sample = new TypeDescription.Latent("foo.Bar$1", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)) {
             @Override
             public String getSimpleName() {
                 return "";
@@ -1373,7 +1376,7 @@ public abstract class AbstractDynamicTypeBuilderTest {
 
     @Test
     public void testDeclaredAsLocalTypeInMethod() throws Exception {
-        TypeDescription sample = new TypeDescription.Latent("foo.Bar$Qux", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OBJECT) {
+        TypeDescription sample = new TypeDescription.Latent("foo.Bar$Qux", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)) {
             @Override
             public String getSimpleName() {
                 return "Qux";
@@ -1415,7 +1418,7 @@ public abstract class AbstractDynamicTypeBuilderTest {
 
     @Test
     public void testDeclaredAsLocalTypeInConstructor() throws Exception {
-        TypeDescription sample = new TypeDescription.Latent("foo.Bar$Qux", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OBJECT) {
+        TypeDescription sample = new TypeDescription.Latent("foo.Bar$Qux", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)) {
             @Override
             public String getSimpleName() {
                 return "Qux";
@@ -1456,7 +1459,7 @@ public abstract class AbstractDynamicTypeBuilderTest {
     @Test
     @JavaVersionRule.Enforce(11)
     public void testNestMates() throws Exception {
-        TypeDescription sample = new TypeDescription.Latent("foo.Bar", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OBJECT);
+        TypeDescription sample = new TypeDescription.Latent("foo.Bar", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class));
         Class<?> outer = new ByteBuddy()
                 .subclass(Object.class)
                 .name("foo.Qux")
@@ -1482,7 +1485,7 @@ public abstract class AbstractDynamicTypeBuilderTest {
     public void testPermittedSubclasses() throws Exception {
         TypeDescription sample = new TypeDescription.Latent("foo.Qux",
                 Opcodes.ACC_PUBLIC,
-                new TypeDescription.Latent("foo.Bar", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OBJECT).asGenericType());
+                new TypeDescription.Latent("foo.Bar", Opcodes.ACC_PUBLIC, TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class)).asGenericType());
         Class<?> type = createPlainEmpty()
                 .visit(new JavaVersionAdjustment())
                 .permittedSubclass(sample)
@@ -1506,11 +1509,44 @@ public abstract class AbstractDynamicTypeBuilderTest {
     @Test
     public void testAuxiliaryTypes() throws Exception {
         Map<TypeDescription, byte[]> auxiliaryTypes = createPlain()
-                .require(TypeDescription.VOID, new byte[]{1, 2, 3})
+                .require(TypeDescription.ForLoadedType.of(void.class), new byte[]{1, 2, 3})
                 .make()
                 .getAuxiliaryTypes();
         assertThat(auxiliaryTypes.size(), is(1));
-        assertThat(auxiliaryTypes.get(TypeDescription.VOID).length, is(3));
+        assertThat(auxiliaryTypes.get(TypeDescription.ForLoadedType.of(void.class)).length, is(3));
+    }
+
+    @Test
+    public void testWrapClassVisitor() throws Exception {
+        TypeDescription typeDescription = createPlain()
+                .make()
+                .getTypeDescription();
+        AsmClassWriter classWriter = AsmClassWriter.Factory.Default.IMPLICIT.make(AsmVisitorWrapper.NO_FLAGS);
+        ContextClassVisitor classVisitor = createPlain()
+                .defineMethod(FOO, Object.class, Visibility.PUBLIC, Ownership.STATIC)
+                .throwing(Exception.class)
+                .intercept(new Implementation.Simple(new TextConstant(FOO), MethodReturn.REFERENCE))
+                .wrap(classWriter.getVisitor());
+        classVisitor.visit(ClassFileVersion.ofThisVm().getMinorMajorVersion(),
+                typeDescription.getActualModifiers(true),
+                typeDescription.getInternalName(),
+                typeDescription.getGenericSignature(),
+                typeDescription.getSuperClass().asErasure().getInternalName(),
+                typeDescription.getInterfaces().asErasures().toInternalNames());
+        classVisitor.visitEnd();
+        assertThat(classVisitor.getAuxiliaryTypes().size(), is(0));
+        assertThat(classVisitor.getLoadedTypeInitializer().isAlive(), is(false));
+        Class<?> type = new DynamicType.Default.Unloaded<Object>(typeDescription,
+                classWriter.getBinaryRepresentation(),
+                LoadedTypeInitializer.NoOp.INSTANCE,
+                Collections.<DynamicType>emptyList(),
+                TypeResolutionStrategy.Passive.INSTANCE).load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER).getLoaded();
+        assertThat(type.getName(), is(typeDescription.getName()));
+        Method method = type.getDeclaredMethod(FOO);
+        assertThat(method.getReturnType(), CoreMatchers.<Class<?>>is(Object.class));
+        assertThat(method.getExceptionTypes(), is(new Class<?>[]{Exception.class}));
+        assertThat(method.getModifiers(), is(Modifier.PUBLIC | Modifier.STATIC));
+        assertThat(method.invoke(null), is((Object) FOO));
     }
 
     @Retention(RetentionPolicy.RUNTIME)
@@ -1561,7 +1597,7 @@ public abstract class AbstractDynamicTypeBuilderTest {
         public InstrumentedType prepare(InstrumentedType instrumentedType) {
             return instrumentedType.withField(new FieldDescription.Token(FOO,
                     MODIFIERS,
-                    TypeDescription.Generic.OBJECT,
+                    TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class),
                     Collections.singletonList(AnnotationDescription.Builder.ofType(SampleAnnotation.class).define(FOO, BAR).build())));
         }
 
@@ -1576,8 +1612,8 @@ public abstract class AbstractDynamicTypeBuilderTest {
             return instrumentedType.withMethod(new MethodDescription.Token(FOO,
                     MODIFIERS,
                     Collections.<TypeVariableToken>emptyList(),
-                    TypeDescription.Generic.OBJECT,
-                    Collections.singletonList(new ParameterDescription.Token(TypeDescription.Generic.OBJECT,
+                    TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class),
+                    Collections.singletonList(new ParameterDescription.Token(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class),
                             Collections.singletonList(AnnotationDescription.Builder.ofType(SampleAnnotation.class).define(FOO, QUX).build()))),
                     Collections.singletonList(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Exception.class)),
                     Collections.singletonList(AnnotationDescription.Builder.ofType(SampleAnnotation.class).define(FOO, BAR).build()),

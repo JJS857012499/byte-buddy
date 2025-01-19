@@ -86,7 +86,7 @@ public interface ConstructorStrategy {
         },
 
         /**
-         * This strategy is adding a default constructor that calls it's super types default constructor. If no such
+         * This strategy is adding a default constructor that calls its super types default constructor. If no such
          * constructor is defined by the super class, an {@link IllegalArgumentException} is thrown. Note that the default
          * constructor needs to be visible to its sub type for this strategy to work. The declared default constructor of
          * the created class is declared public and without annotations.
@@ -361,9 +361,10 @@ public interface ConstructorStrategy {
          * {@inheritDoc}
          */
         public List<MethodDescription.Token> extractConstructors(TypeDescription instrumentedType) {
-            if (instrumentedType.getSuperClass() == null) {
+            TypeDescription.Generic superClass = instrumentedType.getSuperClass();
+            if (superClass == null) {
                 throw new IllegalArgumentException("Cannot extract constructors for " + instrumentedType);
-            } else if (instrumentedType.getSuperClass().getDeclaredMethods().filter(isConstructor()).isEmpty()) {
+            } else if (superClass.getDeclaredMethods().filter(isConstructor()).isEmpty()) {
                 throw new IllegalStateException("Cannot define default constructor for class without super class constructor");
             }
             return Collections.singletonList(new MethodDescription.Token(Opcodes.ACC_PUBLIC));
@@ -373,12 +374,13 @@ public interface ConstructorStrategy {
          * {@inheritDoc}
          */
         public MethodRegistry inject(TypeDescription instrumentedType, MethodRegistry methodRegistry) {
-            if (instrumentedType.getSuperClass() == null) {
+            TypeDescription.Generic superClass = instrumentedType.getSuperClass();
+            if (superClass == null) {
                 throw new IllegalArgumentException("Cannot inject constructors for " + instrumentedType);
             }
-            MethodList<?> candidates = instrumentedType.getSuperClass().getDeclaredMethods().filter(isConstructor().and(elementMatcher));
+            MethodList<?> candidates = superClass.getDeclaredMethods().filter(isConstructor().and(elementMatcher));
             if (candidates.isEmpty()) {
-                throw new IllegalStateException("No possible candidate for super constructor invocation in " + instrumentedType.getSuperClass());
+                throw new IllegalStateException("No possible candidate for super constructor invocation in " + superClass);
             } else if (!candidates.filter(takesArguments(0)).isEmpty()) {
                 candidates = candidates.filter(takesArguments(0));
             } else if (candidates.size() > 1) {

@@ -16,18 +16,19 @@
 package net.bytebuddy.build.gradle;
 
 import net.bytebuddy.build.Plugin;
-import net.bytebuddy.build.gradle.api.*;
+import net.bytebuddy.utility.nullability.MaybeNull;
 import org.gradle.api.file.ConfigurableFileCollection;
-import org.gradle.api.tasks.InputFiles;
-import org.gradle.api.tasks.OutputDirectory;
-import org.gradle.api.tasks.TaskAction;
+import org.gradle.api.file.DirectoryProperty;
+import org.gradle.api.file.FileCollection;
+import org.gradle.api.tasks.Optional;
+import org.gradle.api.tasks.*;
+import org.gradle.work.Incremental;
+import org.gradle.work.InputChanges;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.io.File;
 import java.io.IOException;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 /**
  * A Byte Buddy task implementation that supports incremental compilation.
@@ -37,15 +38,22 @@ public abstract class ByteBuddyTask extends AbstractByteBuddyTask {
     /**
      * The incremental builder to apply or {@code null} if no incremental build should be applied.
      */
-    @Nullable
+    @MaybeNull
     private IncrementalResolver incrementalResolver;
+
+    /**
+     * A set of classes that is used for discovery of plugins.
+     */
+    @MaybeNull
+    private FileCollection discoverySet;
 
     /**
      * Creates a new Byte Buddy task.
      */
     @Inject
+    @SuppressWarnings("this-escape")
     public ByteBuddyTask() {
-        new ByteBuddyTaskExtension().configure(this);
+        new ByteBuddyTaskExtension(null).configure(this);
     }
 
     /**
@@ -81,7 +89,7 @@ public abstract class ByteBuddyTask extends AbstractByteBuddyTask {
      * @return The incremental builder to apply or {@code null} if no incremental build should be applied.
      */
     @Internal
-    @Nullable
+    @MaybeNull
     public IncrementalResolver getIncrementalResolver() {
         return incrementalResolver;
     }
@@ -91,8 +99,29 @@ public abstract class ByteBuddyTask extends AbstractByteBuddyTask {
      *
      * @param incrementalResolver The incremental builder to apply or {@code null} if no incremental build should be applied.
      */
-    public void setIncrementalResolver(@Nullable IncrementalResolver incrementalResolver) {
+    public void setIncrementalResolver(@MaybeNull IncrementalResolver incrementalResolver) {
         this.incrementalResolver = incrementalResolver;
+    }
+
+    /**
+     * Returns the source set to resolve plugin names from or {@code null} if no such source set is used.
+     *
+     * @return The source set to resolve plugin names from or {@code null} if no such source set is used.
+     */
+    @MaybeNull
+    @InputFiles
+    @Optional
+    public FileCollection getDiscoverySet() {
+        return discoverySet;
+    }
+
+    /**
+     * Defines the source set to resolve plugin names from or {@code null} if no such source set is used.
+     *
+     * @param discoverySet The source set to resolve plugin names from or {@code null} if no such source set is used.
+     */
+    public void setDiscoverySet(@MaybeNull FileCollection discoverySet) {
+        this.discoverySet = discoverySet;
     }
 
     @Override
@@ -110,6 +139,12 @@ public abstract class ByteBuddyTask extends AbstractByteBuddyTask {
         return getClassPath();
     }
 
+    @Override
+    @MaybeNull
+    protected Iterable<File> discoverySet() {
+        return discoverySet;
+    }
+
     /**
      * Applies this task.
      *
@@ -121,7 +156,7 @@ public abstract class ByteBuddyTask extends AbstractByteBuddyTask {
         Plugin.Engine.Source source;
         if (inputChanges.isIncremental() && getIncrementalResolver() != null) {
             getLogger().debug("Applying incremental build");
-            List<File> files = getIncrementalResolver().apply(getProject(),
+            List<File> files = getIncrementalResolver().apply(getLogger(),
                     inputChanges.getFileChanges(getSource()),
                     source(),
                     target(),
@@ -131,8 +166,8 @@ public abstract class ByteBuddyTask extends AbstractByteBuddyTask {
                     : new IncrementalSource(source(), files);
         } else {
             getLogger().debug("Applying non-incremental build");
-            if (getProject().delete(getTarget().getAsFileTree())) {
-                getLogger().debug("Deleted all target files in {}", getTarget());
+            if (deleteRecursively(getTarget().getAsFileTree().getFiles())) {
+                getLogger().debug("Deleted target {} to prepare new non-incremental build", getTarget());
             }
             source = source().exists()
                     ? new Plugin.Engine.Source.ForFolder(source())
@@ -237,6 +272,7 @@ public abstract class ByteBuddyTask extends AbstractByteBuddyTask {
          */
         @Inject
         public WithIncrementalClassPath() {
+            /* empty */
         }
     }
 }

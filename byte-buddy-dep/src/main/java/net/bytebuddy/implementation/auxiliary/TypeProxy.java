@@ -15,7 +15,6 @@
  */
 package net.bytebuddy.implementation.auxiliary;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.build.HashCodeAndEqualsPlugin;
@@ -36,12 +35,12 @@ import net.bytebuddy.implementation.bytecode.member.MethodInvocation;
 import net.bytebuddy.implementation.bytecode.member.MethodReturn;
 import net.bytebuddy.implementation.bytecode.member.MethodVariableAccess;
 import net.bytebuddy.matcher.ElementMatchers;
+import net.bytebuddy.utility.RandomString;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
 import java.io.Serializable;
-import java.util.List;
 
 import static net.bytebuddy.matcher.ElementMatchers.*;
 
@@ -112,6 +111,15 @@ public class TypeProxy implements AuxiliaryType {
     /**
      * {@inheritDoc}
      */
+    public String getSuffix() {
+        return RandomString.hashOf(proxiedType.hashCode())
+                + (ignoreFinalizer ? "I" : "0")
+                + (serializableProxy ? "S" : "0");
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     public DynamicType make(String auxiliaryTypeName,
                             ClassFileVersion classFileVersion,
                             MethodAccessorFactory methodAccessorFactory) {
@@ -140,12 +148,11 @@ public class TypeProxy implements AuxiliaryType {
         /**
          * The stack manipulation that throws the abstract method error.
          */
-        private final StackManipulation implementation;
+        private final transient StackManipulation implementation;
 
         /**
          * Creates the singleton instance.
          */
-        @SuppressFBWarnings(value = "SE_BAD_FIELD_STORE", justification = "Fields of enumerations are never serialized")
         AbstractMethodErrorThrow() {
             TypeDescription abstractMethodError = TypeDescription.ForLoadedType.of(AbstractMethodError.class);
             MethodDescription constructor = abstractMethodError.getDeclaredMethods()
@@ -388,14 +395,14 @@ public class TypeProxy implements AuxiliaryType {
         private final TypeDescription proxiedType;
 
         /**
+         * The constructor to invoke to create the proxy.
+         */
+        private final MethodDescription.InDefinedShape constructor;
+
+        /**
          * The implementation target this type proxy is created for.
          */
         private final Implementation.Target implementationTarget;
-
-        /**
-         * The parameter types of the constructor that should be called.
-         */
-        private final List<TypeDescription> constructorParameters;
 
         /**
          * {@code true} if any finalizers should be ignored for the delegation.
@@ -411,19 +418,19 @@ public class TypeProxy implements AuxiliaryType {
          * Creates a new stack operation for creating a type proxy by calling one of its constructors.
          *
          * @param proxiedType           The type for the type proxy to subclass or implement.
+         * @param constructor           The constructor to invoke to create the proxy.
          * @param implementationTarget  The implementation target this type proxy is created for.
-         * @param constructorParameters The parameter types of the constructor that should be called.
          * @param ignoreFinalizer       {@code true} if any finalizers should be ignored for the delegation.
          * @param serializableProxy     Determines if the proxy should be serializable.
          */
         public ForSuperMethodByConstructor(TypeDescription proxiedType,
+                                           MethodDescription.InDefinedShape constructor,
                                            Implementation.Target implementationTarget,
-                                           List<TypeDescription> constructorParameters,
                                            boolean ignoreFinalizer,
                                            boolean serializableProxy) {
             this.proxiedType = proxiedType;
+            this.constructor = constructor;
             this.implementationTarget = implementationTarget;
-            this.constructorParameters = constructorParameters;
             this.ignoreFinalizer = ignoreFinalizer;
             this.serializableProxy = serializableProxy;
         }
@@ -432,22 +439,23 @@ public class TypeProxy implements AuxiliaryType {
          * {@inheritDoc}
          */
         public Size apply(MethodVisitor methodVisitor, Implementation.Context implementationContext) {
-            TypeDescription proxyType = implementationContext
-                    .register(new TypeProxy(proxiedType,
-                            implementationTarget,
-                            InvocationFactory.Default.SUPER_METHOD,
-                            ignoreFinalizer,
-                            serializableProxy));
-            StackManipulation[] constructorValue = new StackManipulation[constructorParameters.size()];
+            TypeDescription proxyType = implementationContext.register(new TypeProxy(proxiedType,
+                        implementationTarget,
+                        InvocationFactory.Default.SUPER_METHOD,
+                        ignoreFinalizer,
+                        serializableProxy));
+            StackManipulation[] constructorValue = new StackManipulation[constructor.getParameters().size()];
             int index = 0;
-            for (TypeDescription parameterType : constructorParameters) {
+            for (TypeDescription parameterType : constructor.getParameters().asTypeList().asErasures()) {
                 constructorValue[index++] = DefaultValue.of(parameterType);
             }
             return new Compound(
                     TypeCreation.of(proxyType),
                     Duplication.SINGLE,
                     new Compound(constructorValue),
-                    MethodInvocation.invoke(proxyType.getDeclaredMethods().filter(isConstructor().and(takesArguments(constructorParameters))).getOnly()),
+                    MethodInvocation.invoke(proxyType.getDeclaredMethods()
+                            .filter(isConstructor().and(takesArguments(constructor.getParameters().asTypeList().asErasures())))
+                            .getOnly()),
                     Duplication.SINGLE,
                     MethodVariableAccess.loadThis(),
                     FieldAccess.forField(proxyType.getDeclaredFields().filter((named(INSTANCE_FIELD))).getOnly()).write()

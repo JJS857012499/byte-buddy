@@ -1,6 +1,7 @@
 package net.bytebuddy.build;
 
 import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.ClassFileVersion;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
@@ -74,20 +75,6 @@ public class CachedReturnPluginTest {
         Object instance = transformed.getConstructor().newInstance();
         assertThat(transformed.getMethod(FOO).invoke(instance), is(value));
         assertThat(transformed.getMethod(FOO).invoke(instance), is(value));
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testCannotConstructAdvice() throws Exception {
-        Constructor<?> constructor = Class.forName(CachedReturnPlugin.class.getName() + "$" + adviceArgument.getSimpleName(),
-                true,
-                CachedReturnPlugin.class.getClassLoader()).getDeclaredConstructor();
-        constructor.setAccessible(true);
-        try {
-            constructor.newInstance();
-            fail();
-        } catch (InvocationTargetException exception) {
-            throw (Exception) exception.getTargetException();
-        }
     }
 
     public static class BooleanSample {

@@ -3,13 +3,13 @@ package net.bytebuddy.description.type;
 import org.junit.Test;
 
 import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.MatcherAssert.*;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 public class TypeDescriptionGenericOfParameterizedTypeForGenerifiedErasureTest {
 
     @Test
     public void testNonGenerifiedType() throws Exception {
-        TypeDescription.Generic typeDescription = TypeDescription.Generic.OfParameterizedType.ForGenerifiedErasure.of(TypeDescription.OBJECT);
+        TypeDescription.Generic typeDescription = TypeDescription.Generic.OfParameterizedType.ForGenerifiedErasure.of(TypeDescription.ForLoadedType.of(Object.class));
         assertThat(typeDescription.getSort(), is(TypeDefinition.Sort.NON_GENERIC));
     }
 

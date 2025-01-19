@@ -15,16 +15,28 @@
 log/
 target/
 site/
+maven-wrapper.jar
+maven-checksum-extension.jar
 
 # Gradle
 .gradle/
-byte-buddy-gradle-plugin/build/
-byte-buddy-gradle-plugin/buildSrc/build/
-byte-buddy-gradle-plugin/gradle/build/
-byte-buddy-gradle-plugin/gradle/wrapper/
+build/
+!**/src/**/build/
+gradle-*-bin.zip
+gradle-wrapper.jar
 
 # Shade plugin
 dependency-reduced-pom.xml
 
+# Versions plugin
+pom.xml.versionsBackup
+
+# Release plugin
+pom.xml.releaseBackup
+release.properties
+
 # Android
 */gen/*
+
+# JVM
+.attach*

@@ -9,16 +9,17 @@ import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.BuildTask;
 import org.gradle.testkit.runner.GradleRunner;
 import org.gradle.testkit.runner.TaskOutcome;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.rules.MethodRule;
+import org.w3c.dom.Document;
 
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathFactory;
 import java.io.*;
-import java.util.ArrayList;
+import java.net.URL;
+import java.security.CodeSource;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
@@ -37,11 +38,43 @@ public class ByteBuddyPluginTest {
 
     private File folder;
 
+    private File byteBuddyJar;
+
     @Before
     public void setUp() throws Exception {
         folder = File.createTempFile("byte-buddy-gradle-plugin", "");
         assertThat(folder.delete(), is(true));
         assertThat(folder.mkdir(), is(true));
+        CodeSource source = ByteBuddyPluginTest.class.getProtectionDomain().getCodeSource();
+        if (source == null) {
+            throw new IllegalStateException("Failed to resolve code source");
+        }
+        URL location = source.getLocation();
+        if (location == null || !location.getProtocol().equals("file")) {
+            throw new IllegalStateException("Expected location to be a file location: " + location);
+        }
+        File file = new File(location.getPath());
+        while (!new File(file, "pom.xml").isFile()) {
+            file = file.getParentFile();
+        }
+        while (new File(file.getParentFile(), "pom.xml").isFile()) {
+            file = file.getParentFile();
+        }
+        assertThat(file.isDirectory(), is(true));
+        InputStream inputStream = new FileInputStream(new File(file, "pom.xml"));
+        Document document;
+        try {
+            document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(inputStream);
+        } finally {
+            inputStream.close();
+        }
+        String version = (String) XPathFactory.newInstance()
+                .newXPath()
+                .compile("/project/version")
+                .evaluate(document, XPathConstants.STRING);
+        assertThat(version, notNullValue(String.class));
+        byteBuddyJar = new File(file, "byte-buddy/target/byte-buddy-" + version + ".jar");
+        assertThat(byteBuddyJar.isFile(), is(true));
     }
 
     @After
@@ -67,45 +100,59 @@ public class ByteBuddyPluginTest {
     @IntegrationRule.Enforce
     public void testPluginExecution() throws Exception {
         write("build.gradle",
-                "plugins {",
-                "  id 'java'",
-                "  id 'net.bytebuddy.byte-buddy-gradle-plugin'",
-                "}",
-                "",
-                "import net.bytebuddy.build.Plugin;",
-                "import net.bytebuddy.description.type.TypeDescription;",
-                "import net.bytebuddy.dynamic.ClassFileLocator;",
-                "import net.bytebuddy.dynamic.DynamicType;",
-                "",
-                "class SamplePlugin implements Plugin {",
-                "  @Override boolean matches(TypeDescription target) {",
-                "    return target.getSimpleName().equals(\"SampleClass\");",
-                "  }",
-                "  @Override DynamicType.Builder<?> apply(DynamicType.Builder<?> builder, " +
-                        "TypeDescription typeDescription, " +
-                        "ClassFileLocator classFileLocator) {",
-                "    return builder.defineField(\"" + FOO + "\", Void.class);",
-                "  }",
-                "  @Override void close() { }",
-                "}",
-                "",
-                "byteBuddy {",
-                "  transformation {",
-                "    plugin = SamplePlugin.class",
+            "plugins {",
+            "  id 'java'",
+            "  id 'net.bytebuddy.byte-buddy-gradle-plugin'",
+            "}",
+            "",
+            "byteBuddy {",
+            "  transformation {",
+            "    plugin = sample.SamplePlugin.class",
+            "  }",
+            "}");
+        write("buildSrc/build.gradle",
+                "dependencies {",
+                "  if (gradle.gradleVersion.startsWith(\"2.\")) {",
+                "    compile files('" + byteBuddyJar.getAbsolutePath().replace("\\", "\\\\") + "')",
+                "  } else {",
+                "    implementation files('" + byteBuddyJar.getAbsolutePath().replace("\\", "\\\\") + "')",
                 "  }",
                 "}");
-        write("src/main/java/sample/SampleClass.java", "public class SampleClass { }");
+        write("buildSrc/src/main/java/sample/SamplePlugin.java",
+            "package sample;",
+            "",
+            "import net.bytebuddy.build.Plugin;",
+            "import net.bytebuddy.description.type.TypeDescription;",
+            "import net.bytebuddy.dynamic.ClassFileLocator;",
+            "import net.bytebuddy.dynamic.DynamicType;",
+            "",
+            "public class SamplePlugin implements Plugin {",
+            "",
+            "  public boolean matches(TypeDescription target) {",
+            "    return target.getSimpleName().equals(\"SampleClass\");",
+            "  }",
+            "",
+            "  public DynamicType.Builder<?> apply(DynamicType.Builder<?> builder, " +
+                    "TypeDescription typeDescription, " +
+                    "ClassFileLocator classFileLocator) {",
+            "    return builder.defineField(\"" + FOO + "\", Void.class);",
+            "  }",
+            "",
+            "  public void close() { }",
+            "}");
+        write("src/main/java/sample/SampleClass.java",
+            "package sample;",
+            "",
+            "public class SampleClass { }");
         BuildResult result = GradleRunner.create()
-                .withProjectDir(folder)
-                .withArguments("build",
-                        "-D" + ByteBuddyPlugin.LEGACY + "=true",
-                        "-Dorg.gradle.unsafe.configuration-cache=true")
-                .withPluginClasspath()
-                .build();
+            .withProjectDir(folder)
+            .withArguments("build", "-Dorg.gradle.unsafe.configuration-cache=true")
+            .withPluginClasspath()
+            .build();
         BuildTask task = result.task(":byteBuddy");
         assertThat(task, notNullValue(BuildTask.class));
         assertThat(task.getOutcome(), is(TaskOutcome.SUCCESS));
-        assertResult("SampleClass.class", FOO);
+        assertResult(FOO, "sample/", "SampleClass.class");
         assertThat(result.task(":byteBuddyTest"), nullValue(BuildTask.class));
     }
 
@@ -113,50 +160,66 @@ public class ByteBuddyPluginTest {
     @IntegrationRule.Enforce
     public void testPluginWithArgumentsExecution() throws Exception {
         write("build.gradle",
-                "plugins {",
-                "  id 'java'",
-                "  id 'net.bytebuddy.byte-buddy-gradle-plugin'",
-                "}",
-                "",
-                "import net.bytebuddy.build.Plugin;",
-                "import net.bytebuddy.description.type.TypeDescription;",
-                "import net.bytebuddy.dynamic.ClassFileLocator;",
-                "import net.bytebuddy.dynamic.DynamicType;",
-                "",
-                "class SamplePlugin implements Plugin {",
-                "  private final String value;",
-                "  SamplePlugin(String value) { this.value = value; }",
-                "  @Override boolean matches(TypeDescription target) {",
-                "    return target.getSimpleName().equals(\"SampleClass\");",
-                "  }",
-                "  @Override DynamicType.Builder<?> apply(DynamicType.Builder<?> builder, " +
-                        "TypeDescription typeDescription, " +
-                        "ClassFileLocator classFileLocator) {",
-                "    return builder.defineField(value, Void.class);",
-                "  }",
-                "  @Override void close() { }",
-                "}",
-                "",
-                "byteBuddy {",
-                "  transformation {",
-                "    plugin = SamplePlugin.class",
-                "    argument {",
-                "      value = '" + FOO + "'",
-                "    }",
-                "  }",
-                "}");
-        write("src/main/java/sample/SampleClass.java", "public class SampleClass { }");
+            "plugins {",
+            "  id 'java'",
+            "  id 'net.bytebuddy.byte-buddy-gradle-plugin'",
+            "}",
+            "",
+            "byteBuddy {",
+            "  transformation {",
+            "    plugin = sample.SamplePlugin.class",
+            "    argument {",
+            "      value = '" + FOO + "'",
+            "    }",
+            "  }",
+            "}");
+        write("buildSrc/build.gradle",
+            "dependencies {",
+            "  if (gradle.gradleVersion.startsWith(\"2.\")) {",
+            "    compile files('" + byteBuddyJar.getAbsolutePath().replace("\\", "\\\\") + "')",
+            "  } else {",
+            "    implementation files('" + byteBuddyJar.getAbsolutePath().replace("\\", "\\\\") + "')",
+            "  }",
+            "}");
+        write("buildSrc/src/main/java/sample/SamplePlugin.java",
+            "package sample;",
+            "",
+            "import net.bytebuddy.build.Plugin;",
+            "import net.bytebuddy.description.type.TypeDescription;",
+            "import net.bytebuddy.dynamic.ClassFileLocator;",
+            "import net.bytebuddy.dynamic.DynamicType;",
+            "",
+            "public class SamplePlugin implements Plugin {",
+            "",
+            "  private final String value;",
+            "",
+            "  public SamplePlugin(String value) { this.value = value; }",
+            "",
+            "  public boolean matches(TypeDescription target) {",
+            "    return target.getSimpleName().equals(\"SampleClass\");",
+            "  }",
+            "",
+            "  public DynamicType.Builder<?> apply(DynamicType.Builder<?> builder, " +
+                    "TypeDescription typeDescription, " +
+                    "ClassFileLocator classFileLocator) {",
+            "    return builder.defineField(value, Void.class);",
+            "  }",
+            "",
+            "  public void close() { }",
+            "}");
+        write("src/main/java/sample/SampleClass.java",
+            "package sample;",
+            "",
+            "public class SampleClass { }");
         BuildResult result = GradleRunner.create()
-                .withProjectDir(folder)
-                .withArguments("build",
-                        "-D" + ByteBuddyPlugin.LEGACY + "=true",
-                        "-Dorg.gradle.unsafe.configuration-cache=true")
-                .withPluginClasspath()
-                .build();
+            .withProjectDir(folder)
+            .withArguments("build", "-Dorg.gradle.unsafe.configuration-cache=true")
+            .withPluginClasspath()
+            .build();
         BuildTask task = result.task(":byteBuddy");
         assertThat(task, notNullValue(BuildTask.class));
         assertThat(task.getOutcome(), is(TaskOutcome.SUCCESS));
-        assertResult("SampleClass.class", FOO);
+        assertResult(FOO, "sample/", "SampleClass.class");
         assertThat(result.task(":byteBuddyTest"), nullValue(BuildTask.class));
     }
 
@@ -181,14 +244,19 @@ public class ByteBuddyPluginTest {
         }
     }
 
-    private void assertResult(String name, final String expectation) throws IOException {
+    private void assertResult(final String expectation, String... path) throws IOException {
         File jar = new File(folder, "build/libs/" + folder.getName() + ".jar");
         assertThat(jar.isFile(), is(true));
-        JarInputStream jarInputStream = new JarInputStream(new FileInputStream(jar));
+        InputStream inputStream = new FileInputStream(jar);
         try {
-            JarEntry entry = jarInputStream.getNextJarEntry();
-            assertThat(entry, notNullValue(JarEntry.class));
-            assertThat(entry.getName(), is(name));
+            JarInputStream jarInputStream = new JarInputStream(inputStream);
+            String concatenation = "";
+            for (int index = 0; index < path.length; index++) {
+                JarEntry entry = jarInputStream.getNextJarEntry();
+                assertThat(entry, notNullValue(JarEntry.class));
+                concatenation += path[index];
+                assertThat(entry.getName(), is(concatenation));
+            }
             new ClassReader(jarInputStream).accept(new ClassVisitor(OpenedClassReader.ASM_API) {
 
                 private boolean found;
@@ -196,7 +264,7 @@ public class ByteBuddyPluginTest {
                 @Override
                 public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
                     assertThat(name, is(expectation));
-                    found  = true;
+                    found = true;
                     return null;
                 }
 
@@ -207,8 +275,9 @@ public class ByteBuddyPluginTest {
             }, ClassReader.SKIP_CODE);
             jarInputStream.closeEntry();
             assertThat(jarInputStream.getNextJarEntry(), nullValue(JarEntry.class));
-        } finally {
             jarInputStream.close();
+        } finally {
+            inputStream.close();
         }
     }
 }

@@ -15,6 +15,7 @@
  */
 package net.bytebuddy.build;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.description.annotation.AnnotationDescription;
 import net.bytebuddy.description.field.FieldDescription;
 import net.bytebuddy.description.method.MethodDescription;
@@ -25,10 +26,14 @@ import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.implementation.EqualsMethod;
 import net.bytebuddy.implementation.HashCodeMethod;
+import net.bytebuddy.implementation.attribute.AnnotationValueFilter;
+import net.bytebuddy.implementation.attribute.MethodAttributeAppender;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
+import net.bytebuddy.utility.nullability.MaybeNull;
+import org.objectweb.asm.AnnotationVisitor;
+import org.objectweb.asm.MethodVisitor;
 
-import javax.annotation.Nullable;
 import java.lang.annotation.*;
 import java.util.Comparator;
 
@@ -39,7 +44,7 @@ import static net.bytebuddy.matcher.ElementMatchers.*;
  * {@link Enhance} annotation is present and no explicit method declaration was added. This plugin does not need to be closed.
  */
 @HashCodeAndEqualsPlugin.Enhance
-public class HashCodeAndEqualsPlugin implements Plugin, Plugin.Factory {
+public class HashCodeAndEqualsPlugin implements Plugin, Plugin.Factory, MethodAttributeAppender.Factory, MethodAttributeAppender {
 
     /**
      * A description of the {@link Enhance#invokeSuper()} method.
@@ -91,6 +96,32 @@ public class HashCodeAndEqualsPlugin implements Plugin, Plugin.Factory {
     }
 
     /**
+     * Defines the binary name of a runtime-visible annotation type that should be added to the parameter of the
+     * {@link Object#equals(Object)} method, or {@code null} if no such name should be defined.
+     */
+    @MaybeNull
+    @ValueHandling(ValueHandling.Sort.REVERSE_NULLABILITY)
+    private final String annotationType;
+
+    /**
+     * Creates a new hash code equals plugin.
+     */
+    public HashCodeAndEqualsPlugin() {
+        this(null);
+    }
+
+    /**
+     * Creates a new hash code equals plugin.
+     *
+     * @param annotationType Defines the binary name of a runtime-visible annotation type that should be added to the
+     *                       parameter of the {@link Object#equals(Object)} method, or {@code null} if no such name
+     *                       should be defined.
+     */
+    public HashCodeAndEqualsPlugin(@MaybeNull String annotationType) {
+        this.annotationType = annotationType;
+    }
+
+    /**
      * {@inheritDoc}
      */
     public Plugin make() {
@@ -100,13 +131,14 @@ public class HashCodeAndEqualsPlugin implements Plugin, Plugin.Factory {
     /**
      * {@inheritDoc}
      */
-    public boolean matches(@Nullable TypeDescription target) {
+    public boolean matches(@MaybeNull TypeDescription target) {
         return target != null && target.getDeclaredAnnotations().isAnnotationPresent(Enhance.class);
     }
 
     /**
      * {@inheritDoc}
      */
+    @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "Annotation presence is required by matcher.")
     public DynamicType.Builder<?> apply(DynamicType.Builder<?> builder, TypeDescription typeDescription, ClassFileLocator classFileLocator) {
         AnnotationDescription.Loadable<Enhance> enhance = typeDescription.getDeclaredAnnotations().ofType(Enhance.class);
         if (typeDescription.getDeclaredMethods().filter(isHashCode()).isEmpty()) {
@@ -118,7 +150,8 @@ public class HashCodeAndEqualsPlugin implements Plugin, Plugin.Factory {
                             ? ElementMatchers.<FieldDescription>none()
                             : ElementMatchers.<FieldDescription>isSynthetic())
                     .withIgnoredFields(new ValueMatcher(ValueHandling.Sort.IGNORE))
-                    .withNonNullableFields(nonNullable(new ValueMatcher(ValueHandling.Sort.REVERSE_NULLABILITY))));
+                    .withNonNullableFields(nonNullable(new ValueMatcher(ValueHandling.Sort.REVERSE_NULLABILITY)))
+                    .withIdentityFields(isAnnotatedWith(Identity.class)));
         }
         if (typeDescription.getDeclaredMethods().filter(isEquals()).isEmpty()) {
             EqualsMethod equalsMethod = enhance.getValue(ENHANCE_INVOKE_SUPER).load(Enhance.class.getClassLoader()).resolve(Enhance.InvokeSuper.class)
@@ -128,6 +161,7 @@ public class HashCodeAndEqualsPlugin implements Plugin, Plugin.Factory {
                             : ElementMatchers.<FieldDescription>isSynthetic())
                     .withIgnoredFields(new ValueMatcher(ValueHandling.Sort.IGNORE))
                     .withNonNullableFields(nonNullable(new ValueMatcher(ValueHandling.Sort.REVERSE_NULLABILITY)))
+                    .withIdentityFields(isAnnotatedWith(Identity.class))
                     .withFieldOrder(AnnotationOrderComparator.INSTANCE);
             if (enhance.getValue(ENHANCE_SIMPLE_COMPARISON_FIRST).resolve(Boolean.class)) {
                 equalsMethod = equalsMethod
@@ -138,7 +172,7 @@ public class HashCodeAndEqualsPlugin implements Plugin, Plugin.Factory {
             }
             builder = builder.method(isEquals()).intercept(enhance.getValue(ENHANCE_PERMIT_SUBCLASS_EQUALITY).resolve(Boolean.class)
                     ? equalsMethod.withSubclassEquality()
-                    : equalsMethod);
+                    : equalsMethod).attribute(this);
         }
         return builder;
     }
@@ -161,10 +195,49 @@ public class HashCodeAndEqualsPlugin implements Plugin, Plugin.Factory {
     }
 
     /**
+     * {@inheritDoc}
+     */
+    public MethodAttributeAppender make(TypeDescription typeDescription) {
+        return this;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void apply(MethodVisitor methodVisitor, MethodDescription methodDescription, AnnotationValueFilter annotationValueFilter) {
+        if (annotationType != null) {
+            AnnotationVisitor annotationVisitor = methodVisitor.visitParameterAnnotation(0,
+                    "L" + annotationType.replace('.', '/') + ";",
+                    true);
+            if (annotationVisitor != null) {
+                annotationVisitor.visitEnd();
+            }
+        }
+    }
+
+    /**
      * A version of the {@link HashCodeAndEqualsPlugin} that assumes that all fields are non-nullable unless they are explicitly marked.
      */
     @HashCodeAndEqualsPlugin.Enhance
     public static class WithNonNullableFields extends HashCodeAndEqualsPlugin {
+
+        /**
+         * Creates a new hash code equals plugin where fields are assumed nullable by default.
+         */
+        public WithNonNullableFields() {
+            this(null);
+        }
+
+        /**
+         * Creates a new hash code equals plugin where fields are assumed nullable by default.
+         *
+         * @param annotationType Defines the binary name of a runtime-visible annotation type that should be added to the
+         *                       parameter of the {@link Object#equals(Object)} method, or {@code null} if no such name
+         *                       should be defined.
+         */
+        public WithNonNullableFields(@MaybeNull String annotationType) {
+            super(annotationType);
+        }
 
         /**
          * {@inheritDoc}
@@ -261,7 +334,7 @@ public class HashCodeAndEqualsPlugin implements Plugin, Plugin.Factory {
                                     ? EqualsMethod.isolated()
                                     : EqualsMethod.requiringSuperClassEquality();
                         }
-                        typeDefinition = typeDefinition.getSuperClass().asErasure();
+                        typeDefinition = typeDefinition.getSuperClass();
                     }
                     return EqualsMethod.isolated();
                 }
@@ -395,6 +468,17 @@ public class HashCodeAndEqualsPlugin implements Plugin, Plugin.Factory {
     }
 
     /**
+     * Indicates that a field should be compared by identity. Hash codes are then determined by
+     * {@link System#identityHashCode(Object)}. Fields that are compared by identity are implicitly null-safe.
+     */
+    @Documented
+    @Target(ElementType.FIELD)
+    @Retention(RetentionPolicy.RUNTIME)
+    public @interface Identity {
+        /* empty */
+    }
+
+    /**
      * A comparator that arranges fields in the order of {@link Sorted}.
      */
     protected enum AnnotationOrderComparator implements Comparator<FieldDescription.InDefinedShape> {
@@ -426,7 +510,7 @@ public class HashCodeAndEqualsPlugin implements Plugin, Plugin.Factory {
      * An element matcher for a {@link ValueHandling} annotation.
      */
     @HashCodeAndEqualsPlugin.Enhance
-    protected static class ValueMatcher implements ElementMatcher<FieldDescription> {
+    protected static class ValueMatcher extends ElementMatcher.Junction.ForNonNullValues<FieldDescription> {
 
         /**
          * The matched value.
@@ -445,10 +529,7 @@ public class HashCodeAndEqualsPlugin implements Plugin, Plugin.Factory {
         /**
          * {@inheritDoc}
          */
-        public boolean matches(@Nullable FieldDescription target) {
-            if (target == null) {
-                return false;
-            }
+        protected boolean doMatch(FieldDescription target) {
             AnnotationDescription.Loadable<ValueHandling> annotation = target.getDeclaredAnnotations().ofType(ValueHandling.class);
             return annotation != null && annotation.getValue(VALUE_HANDLING_VALUE).load(ValueHandling.class.getClassLoader()).resolve(ValueHandling.Sort.class) == sort;
         }

@@ -1,11 +1,11 @@
 package net.bytebuddy.matcher;
 
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 
 import java.util.Arrays;
 
@@ -16,7 +16,7 @@ import static org.mockito.Mockito.*;
 public class CollectionElementMatcherTest extends AbstractElementMatcherTest<CollectionElementMatcher<?>> {
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     private Iterable<Object> iterable;
 
@@ -55,6 +55,6 @@ public class CollectionElementMatcherTest extends AbstractElementMatcherTest<Col
     @Test
     public void testNoMatchIndex() throws Exception {
         assertThat(new CollectionElementMatcher<Object>(2, elementMatcher).matches(iterable), is(false));
-        verifyZeroInteractions(elementMatcher);
+        verifyNoMoreInteractions(elementMatcher);
     }
 }

@@ -3,7 +3,8 @@ package net.bytebuddy.implementation.attribute;
 import org.junit.Test;
 import org.mockito.Mock;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 public class RecordComponentAttributeAppenderCompoundTest extends AbstractRecordComponentAttributeAppenderTest {
 
@@ -18,6 +19,6 @@ public class RecordComponentAttributeAppenderCompoundTest extends AbstractRecord
         verifyNoMoreInteractions(first);
         verify(second).apply(recordComponentVisitor, recordComponentDescription, annotationValueFilter);
         verifyNoMoreInteractions(second);
-        verifyZeroInteractions(instrumentedType);
+        verifyNoMoreInteractions(instrumentedType);
     }
 }

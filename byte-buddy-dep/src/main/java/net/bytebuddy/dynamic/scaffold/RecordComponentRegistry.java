@@ -22,8 +22,8 @@ import net.bytebuddy.dynamic.Transformer;
 import net.bytebuddy.implementation.attribute.RecordComponentAttributeAppender;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.LatentMatcher;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
-import javax.annotation.Nullable;
 import java.util.*;
 
 /**
@@ -289,7 +289,7 @@ public interface RecordComponentRegistry {
                 /**
                  * {@inheritDoc}
                  */
-                public boolean matches(@Nullable RecordComponentDescription target) {
+                public boolean matches(@MaybeNull RecordComponentDescription target) {
                     return matcher.matches(target);
                 }
             }

@@ -17,8 +17,7 @@ package net.bytebuddy.build.maven;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import net.bytebuddy.build.Plugin;
-
-import javax.annotation.Nullable;
+import net.bytebuddy.utility.nullability.MaybeNull;
 
 /**
  * Describes an argument to a {@link Plugin} constructor.
@@ -34,7 +33,7 @@ public class PluginArgument {
     /**
      * The argument value.
      */
-    @Nullable
+    @MaybeNull
     public String value;
 
     /**

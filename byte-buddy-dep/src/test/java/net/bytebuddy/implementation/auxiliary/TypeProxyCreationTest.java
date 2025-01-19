@@ -15,12 +15,12 @@ import net.bytebuddy.implementation.Implementation;
 import net.bytebuddy.implementation.MethodAccessorFactory;
 import net.bytebuddy.implementation.bytecode.StackManipulation;
 import net.bytebuddy.matcher.ElementMatcher;
-import net.bytebuddy.test.utility.MockitoRule;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
+import org.junit.rules.MethodRule;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -39,7 +39,7 @@ public class TypeProxyCreationTest {
     private static final String FOO = "foo", BAR = "bar";
 
     @Rule
-    public TestRule mockitoRule = new MockitoRule(this);
+    public MethodRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private Implementation.Target implementationTarget;
@@ -75,9 +75,18 @@ public class TypeProxyCreationTest {
         when(proxyMethod.getParameters()).thenReturn(new ParameterList.Explicit.ForTypes(proxyMethod, foo, foo, foo));
         when(proxyMethod.getDeclaringType()).thenReturn(foo);
         when(proxyMethod.getInternalName()).thenReturn(FOO);
-        when(proxyMethod.getDescriptor()).thenReturn(FOO);
-        when(proxyMethod.getReturnType()).thenReturn(TypeDescription.Generic.OBJECT);
+        when(proxyMethod.getDescriptor()).thenReturn("()L" + FOO + ";");
+        when(proxyMethod.getReturnType()).thenReturn(TypeDescription.Generic.OfNonGenericType.ForLoadedType.of(Object.class));
         when(proxyMethod.asDefined()).thenReturn(proxyMethod);
+    }
+
+    @Test
+    public void testSuffix() {
+        assertThat(new TypeProxy(foo,
+                implementationTarget,
+                invocationFactory,
+                true,
+                false).getSuffix(), is("4b944o3I0"));
     }
 
     @Test
@@ -98,7 +107,7 @@ public class TypeProxyCreationTest {
         assertThat(dynamicType.getName(), is(BAR));
         assertThat(dynamicType.getDeclaredMethods().size(), is(2));
         assertThat(dynamicType.isAssignableTo(Serializable.class), is(false));
-        verifyZeroInteractions(methodAccessorFactory);
+        verifyNoMoreInteractions(methodAccessorFactory);
         for (MethodDescription methodDescription : fooMethods) {
             verify(invocationFactory).invoke(implementationTarget, foo, methodDescription);
         }
@@ -213,8 +222,8 @@ public class TypeProxyCreationTest {
                 .thenReturn(new StackManipulation.Size(0, 0));
         when(methodAccessorFactory.registerAccessorFor(specialMethodInvocation, MethodAccessorFactory.AccessType.DEFAULT)).thenReturn(proxyMethod);
         StackManipulation stackManipulation = new TypeProxy.ForSuperMethodByConstructor(foo,
+                new MethodDescription.ForLoadedConstructor(Foo.class.getConstructor(Void.class)),
                 implementationTarget,
-                Collections.singletonList((TypeDescription) TypeDescription.ForLoadedType.of(Void.class)),
                 true,
                 false);
         MethodVisitor methodVisitor = mock(MethodVisitor.class);
